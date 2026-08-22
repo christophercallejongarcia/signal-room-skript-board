@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph Browser["Browser: public product shell"]
+        Tabs["Nine workspace tabs"]
+        Demo["Synthetic demo state"]
+        Views["Briefs, radar, ideas, labs"]
+        Tabs --> Views
+        Demo --> Views
+    end
+
+    subgraph Core["Shared contracts"]
+        Source["SourceConnector"]
+        Ranker["SignalScorer"]
+        Store["StorageAdapter"]
+        Strategy["StrategyProvider"]
+    end
+
+    subgraph Yours["Your private implementation"]
+        Providers["Collection providers"]
+        Logic["Scoring and audience theory"]
+        Database["Cloud database and scheduler"]
+        Prompts["Private prompts and context"]
+    end
+
+    Views --> Core
+    Source -. replace .-> Providers
+    Ranker -. replace .-> Logic
+    Store -. replace .-> Database
+    Strategy -. replace .-> Prompts

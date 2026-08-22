@@ -1,0 +1,10 @@
+flowchart TD
+    Web["Next.js product shell"] --> Contracts["Domain contracts"]
+    Contracts --> DemoSource["Synthetic source"]
+    Contracts --> DemoScore["Transparent demo scorer"]
+    Web --> LocalBridge["Optional localhost bridge"]
+    LocalBridge --> Codex["Codex SDK and CLI"]
+
+    Contracts -. production .-> Provider["Collection provider"]
+    Contracts -. production .-> Database["Database and job system"]
+    Contracts -. production .-> PrivateScore["Private signal method"]

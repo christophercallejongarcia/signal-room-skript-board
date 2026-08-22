@@ -1,0 +1,9 @@
+flowchart TD
+    Browser["Ideas tab"] -->|"bounded JSON"| Bridge["localhost bridge"]
+    Bridge --> Validate["size and schema checks"]
+    Validate --> Prompt["generic strategy prompt"]
+    Prompt --> SDK["Codex SDK"]
+    SDK --> Schema["structured response"]
+    Schema --> Browser
+
+    Secrets["CLI auth and local environment"] -. "never exposed" .-> Bridge

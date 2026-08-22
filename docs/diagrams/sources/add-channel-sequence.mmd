@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor Person
+    participant UI as Tracked Channels
+    participant API as Your API
+    participant Connector as SourceConnector
+    participant Queue as Job queue
+    participant Store as StorageAdapter
+
+    Person->>UI: Submit network and handle
+    UI->>API: POST tracked channel
+    API->>Connector: Resolve canonical channel
+    Connector-->>API: Channel ID and public metadata
+    API->>Store: Upsert watch target
+    API->>Queue: Enqueue initial backfill
+    Queue->>Connector: Collect bounded history
+    Queue->>Store: Save normalized records and cursor
+    Store-->>UI: Channel ready

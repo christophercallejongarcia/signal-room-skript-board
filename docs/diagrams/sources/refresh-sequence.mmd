@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor Person
+    participant UI as Web app
+    participant Job as Refresh job
+    participant Source as Source connector
+    participant Store as Storage adapter
+    participant Ranker as Signal scorer
+
+    Person->>UI: Request refresh
+    UI->>Job: Enqueue one idempotent run
+    Job->>Source: Collect since cursor
+    Source-->>Job: Normalized records and next cursor
+    Job->>Store: Upsert creators and records
+    Job->>Ranker: Rank current window
+    Ranker-->>Store: Save derived signal metadata
+    Store-->>UI: Updated snapshot
+    UI-->>Person: Show completion and timestamp

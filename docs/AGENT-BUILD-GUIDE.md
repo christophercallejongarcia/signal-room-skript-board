@@ -49,16 +49,7 @@ Before adding AI:
 
 ## Recommended implementation order
 
-```mermaid
-flowchart LR
-    Contracts["Confirm contracts"] --> Source["Add one source"]
-    Source --> Store["Persist canonical records"]
-    Store --> Jobs["Add idempotent refresh"]
-    Jobs --> Score["Add evidence-linked scoring"]
-    Score --> Brief["Compose briefing"]
-    Brief --> Strategy["Add optional strategy"]
-    Strategy --> Eval["Evaluate and harden"]
-```
+![Recommended implementation order from confirming contracts through evaluation and hardening](diagrams/rendered/implementation-order.png)
 
 Do not begin with the strategy model. Reliable evidence and explicit scoring semantics come first.
 

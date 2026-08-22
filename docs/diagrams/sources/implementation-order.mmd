@@ -1,0 +1,8 @@
+flowchart TD
+    Contracts["Confirm contracts"] --> Source["Add one source"]
+    Source --> Store["Persist canonical records"]
+    Store --> Jobs["Add idempotent refresh"]
+    Jobs --> Score["Add evidence-linked scoring"]
+    Score --> Brief["Compose briefing"]
+    Brief --> Strategy["Add optional strategy"]
+    Strategy --> Eval["Evaluate and harden"]

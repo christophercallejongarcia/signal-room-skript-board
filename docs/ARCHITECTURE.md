@@ -13,18 +13,7 @@ Signal Room Starter is split into a product shell, stable domain contracts, repl
 
 ## Runtime topology
 
-```mermaid
-flowchart TD
-    Web["Next.js product shell"] --> Contracts["Domain contracts"]
-    Contracts --> DemoSource["Synthetic source"]
-    Contracts --> DemoScore["Transparent demo scorer"]
-    Web --> LocalBridge["Optional localhost bridge"]
-    LocalBridge --> Codex["Codex SDK and CLI"]
-
-    Contracts -. production .-> Provider["Collection provider"]
-    Contracts -. production .-> Database["Database and job system"]
-    Contracts -. production .-> PrivateScore["Private signal method"]
-```
+![Runtime topology for the product shell, domain contracts, local bridge, and production adapters](diagrams/rendered/runtime-topology.png)
 
 ## Domain model
 
@@ -67,19 +56,7 @@ Raw provider payloads should be stored separately when needed for debugging or r
 
 ## Recommended production layers
 
-```mermaid
-flowchart LR
-    Schedule["Scheduler"] --> Queue["Job queue"]
-    Button["Refresh request"] --> Queue
-    Queue --> Worker["Collection worker"]
-    Worker --> Provider["Public data provider"]
-    Worker --> Raw["Raw evidence store"]
-    Raw --> Normalize["Normalizer"]
-    Normalize --> Canonical["Canonical records"]
-    Canonical --> Ranker["Private ranker"]
-    Ranker --> Derived["Derived signal views"]
-    Derived --> Web["Web app"]
-```
+![Recommended production layers from scheduling and collection through normalized records and derived views](diagrams/rendered/production-layers.png)
 
 The UI should read the last complete snapshot. It should not wait for a full collection job in one browser request.
 

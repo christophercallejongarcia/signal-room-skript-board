@@ -1,0 +1,11 @@
+flowchart TD
+    Schedule["Scheduler"] --> Queue["Job queue"]
+    Button["Refresh request"] --> Queue
+    Queue --> Worker["Collection worker"]
+    Worker --> Provider["Public data provider"]
+    Worker --> Raw["Raw evidence store"]
+    Raw --> Normalize["Normalizer"]
+    Normalize --> Canonical["Canonical records"]
+    Canonical --> Ranker["Private ranker"]
+    Ranker --> Derived["Derived signal views"]
+    Derived --> Web["Web app"]

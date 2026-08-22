@@ -33,36 +33,7 @@ Signal Room Starter is a clean-room foundation for collecting public creator sig
 
 ## The system at a glance
 
-```mermaid
-flowchart LR
-    subgraph Browser["Browser: public product shell"]
-        Tabs["Nine workspace tabs"]
-        Demo["Synthetic demo state"]
-        Views["Briefs, radar, ideas, labs"]
-        Tabs --> Views
-        Demo --> Views
-    end
-
-    subgraph Core["Shared contracts"]
-        Source["SourceConnector"]
-        Ranker["SignalScorer"]
-        Store["StorageAdapter"]
-        Strategy["StrategyProvider"]
-    end
-
-    subgraph Yours["Your private implementation"]
-        Providers["Collection providers"]
-        Logic["Scoring and audience theory"]
-        Database["Cloud database and scheduler"]
-        Prompts["Private prompts and context"]
-    end
-
-    Views --> Core
-    Source -. replace .-> Providers
-    Ranker -. replace .-> Logic
-    Store -. replace .-> Database
-    Strategy -. replace .-> Prompts
-```
+![System architecture showing the public product shell, shared contracts, and private implementations](docs/diagrams/rendered/system-at-a-glance.png)
 
 The contracts are the deliberate seam. The interface can remain recognizable while every meaningful intelligence decision is replaced.
 
@@ -88,39 +59,11 @@ npm run check
 
 ## How the data loop works
 
-```mermaid
-flowchart TD
-    A["Scheduled refresh or manual refresh"] --> B["SourceConnector.collect"]
-    B --> C["Normalize into SignalRecord"]
-    C --> D["StorageAdapter.saveSignals"]
-    D --> E["SignalScorer.rank"]
-    E --> F["Discover and Trend Radar"]
-    E --> G["Evidence packet"]
-    G --> H["Briefing and Ideas"]
-    H --> I["Human review"]
-```
+![Data loop from refresh through collection, normalization, ranking, briefing, and human review](docs/diagrams/rendered/data-loop.png)
 
 ### What Refresh should mean in a production build
 
-```mermaid
-sequenceDiagram
-    actor Person
-    participant UI as Web app
-    participant Job as Refresh job
-    participant Source as Source connector
-    participant Store as Storage adapter
-    participant Ranker as Signal scorer
-
-    Person->>UI: Request refresh
-    UI->>Job: Enqueue one idempotent run
-    Job->>Source: Collect since cursor
-    Source-->>Job: Normalized records and next cursor
-    Job->>Store: Upsert creators and records
-    Job->>Ranker: Rank current window
-    Ranker-->>Store: Save derived signal metadata
-    Store-->>UI: Updated snapshot
-    UI-->>Person: Show completion and timestamp
-```
+![Refresh sequence from a person requesting a refresh through collection, ranking, and completion](docs/diagrams/rendered/refresh-sequence.png)
 
 A browser button should not scrape an entire network directly. In a real deployment it should request a bounded background job, report its state, and render the last valid snapshot while work continues.
 
@@ -128,25 +71,7 @@ A browser button should not scrape an entire network directly. In a real deploym
 
 The demo stores a new channel in browser memory. A production adapter should follow this lifecycle:
 
-```mermaid
-sequenceDiagram
-    actor Person
-    participant UI as Tracked Channels
-    participant API as Your API
-    participant Connector as SourceConnector
-    participant Queue as Job queue
-    participant Store as StorageAdapter
-
-    Person->>UI: Submit network and handle
-    UI->>API: POST tracked channel
-    API->>Connector: Resolve canonical channel
-    Connector-->>API: Channel ID and public metadata
-    API->>Store: Upsert watch target
-    API->>Queue: Enqueue initial backfill
-    Queue->>Connector: Collect bounded history
-    Queue->>Store: Save normalized records and cursor
-    Store-->>UI: Channel ready
-```
+![Tracked-channel sequence from submitting a handle through validation, backfill, and storage](docs/diagrams/rendered/add-channel-sequence.png)
 
 Build the handler to be idempotent. The same network and canonical channel ID should not create duplicate watch targets.
 
@@ -154,17 +79,7 @@ Build the handler to be idempotent. The same network and canonical channel ID sh
 
 The browser never imports the Codex SDK. A small Node process listens on `127.0.0.1`, validates a narrow evidence packet, starts a read-only Codex thread, and returns structured JSON.
 
-```mermaid
-flowchart LR
-    Browser["Ideas tab"] -->|"bounded JSON"| Bridge["localhost bridge"]
-    Bridge --> Validate["size and schema checks"]
-    Validate --> Prompt["generic strategy prompt"]
-    Prompt --> SDK["Codex SDK"]
-    SDK --> Schema["structured response"]
-    Schema --> Browser
-
-    Secrets["CLI auth and local environment"] -. "never exposed" .-> Bridge
-```
+![Codex bridge flow showing bounded browser input, validation, the local SDK, and structured output](docs/diagrams/rendered/codex-bridge.png)
 
 Start it in a second terminal:
 
@@ -252,26 +167,7 @@ Full recipes are in [docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md).
 
 ## The public-private boundary
 
-```mermaid
-flowchart TB
-    subgraph Safe["Appropriate for a public starter"]
-        S1["UI and navigation"]
-        S2["Type contracts"]
-        S3["Synthetic fixtures"]
-        S4["Transparent sample math"]
-        S5["Generic local bridge"]
-        S6["Provider integration guidance"]
-    end
-
-    subgraph Private["Keep in your private system"]
-        P1["Watchlists and creator identity"]
-        P2["Tuned thresholds and weights"]
-        P3["Prompts, rubrics, and corpus"]
-        P4["Runtime output and research"]
-        P5["Credentials and provider IDs"]
-        P6["Audience strategy and operating notes"]
-    end
-```
+![Public and private boundary separating the starter shell from identity-specific intelligence](docs/diagrams/rendered/public-private-boundary.png)
 
 This repository intentionally does **not** include:
 
@@ -320,6 +216,14 @@ The build guide includes acceptance checks and a recommended sequence for agent-
 - [Agent build guide](docs/AGENT-BUILD-GUIDE.md)
 - [Security model](docs/SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
+
+### Updating the diagrams
+
+The rendered images are committed so GitHub mobile and other Markdown viewers never need Mermaid support. Edit the matching `.mmd` file in `docs/diagrams/sources`, then regenerate every image:
+
+```bash
+npm run diagrams
+```
 
 ## License
 

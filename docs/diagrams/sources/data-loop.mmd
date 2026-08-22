@@ -1,0 +1,9 @@
+flowchart TD
+    A["Scheduled refresh or manual refresh"] --> B["SourceConnector.collect"]
+    B --> C["Normalize into SignalRecord"]
+    C --> D["StorageAdapter.saveSignals"]
+    D --> E["SignalScorer.rank"]
+    E --> F["Discover and Trend Radar"]
+    E --> G["Evidence packet"]
+    G --> H["Briefing and Ideas"]
+    H --> I["Human review"]
