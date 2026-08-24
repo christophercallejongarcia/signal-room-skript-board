@@ -43,3 +43,17 @@ Before editing, read:
 ## Definition of done
 
 A change is done when it builds, its tests pass, demo mode still works, secrets stay server-side, and the documentation explains the new adapter and its trust boundary.
+
+<!-- convex-ai-start -->
+
+This project uses [Convex](https://convex.dev) as its backend.
+
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
+
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
+
+<!-- convex-ai-end -->
