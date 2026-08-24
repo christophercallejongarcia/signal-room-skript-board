@@ -13,3 +13,7 @@ data/covers
 
 # local issue tracker (mattpocock/skills)
 .scratch/
+
+# review output and claudex loop state
+reviews/
+.claude/claudex/
