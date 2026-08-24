@@ -27,6 +27,8 @@ export function scoreDemoSignal(record: SignalRecord, creator: Creator, now = ne
     score,
     relativeReach: Math.round(relativeReach * 100) / 100,
     velocity: Math.round(velocity),
+    outlier: Math.round(relativeReach * 100) / 100,
+    channelRelative: 0,
     reason,
   };
 }
