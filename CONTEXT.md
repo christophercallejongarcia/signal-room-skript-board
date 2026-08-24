@@ -38,6 +38,10 @@ Nicht: "Delta-Sync", "Update", "Incremental Scrape".
 Ein protokollierter Durchlauf von Backfill oder Delta-Refresh (Art, Start, Ende, geprüfte Creators, neue Signale, Fehler), Tabelle `runs`; Kosten pro Run sind geplant (SPEC T3.6).
 Nicht: "Job", "Execution", "Sync".
 
+**Cover**
+Das Vorschaubild eines Signals. Der Connector liefert die signierte CDN-Adresse als `thumbnailUrl`; der Cover-Cache (`lib/adapters/storage/cover-cache.ts`) lädt sie einmal nach `data/covers/<externalId>.jpg`, und die UI rendert nur `coverUrl` (`/api/covers/<externalId>`), sonst den Platzhalter.
+Nicht: "Thumbnail" (nur noch als Feldname `thumbnailUrl` für die Quelle), "Preview", "Poster".
+
 ## Scoring
 
 **Outlier**

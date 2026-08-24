@@ -94,11 +94,7 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
   const outlier = signal.outlier ?? 0;
   return (
     <div className={reel ? "signal-media reel" : "signal-media"}>
-      {signal.thumbnailUrl ? (
-        <img src={signal.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
-      ) : (
-        <SignalArtwork seed={signal.thumbnailSeed} topic={signal.topic} index={index} />
-      )}
+      <CoverImage signal={signal} index={index} lazy />
       <div className="badge-row">
         <span>{isOutlier(signal, threshold) && <span className="badge outlier">{outlier.toFixed(1)}x</span>}</span>
         {isNew(signal.publishedAt, now) && <span className="badge lime">NEW</span>}
@@ -108,6 +104,16 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
       )}
     </div>
   );
+}
+
+/** Renders the cached cover; falls back to the generative artwork when none is cached or the file went missing. */
+function CoverImage({ signal, index, className, lazy }: { signal: SignalRecord; index: number; className?: string; lazy?: boolean }) {
+  const [broken, setBroken] = useState(false);
+  if (signal.coverUrl && !broken) {
+    return <img className={className} src={signal.coverUrl} alt="" loading={lazy ? "lazy" : undefined} onError={() => setBroken(true)} />;
+  }
+  const art = <SignalArtwork seed={signal.thumbnailSeed} topic={signal.topic} index={index} />;
+  return className ? <div className={className}>{art}</div> : art;
 }
 
 function SignalArtwork({ seed, topic, index = 0 }: { seed: string; topic: string; index?: number }) {
@@ -387,7 +393,7 @@ function DiscoverView({
         <div className="toolbar-facts">
           <span><strong>{stats.knownVideos}</strong> videos</span>
           <span><strong>{creators.length}</strong> channels</span>
-          <span><strong>{rankedSignals.filter((s) => s.thumbnailUrl).length}</strong> visual reads</span>
+          <span><strong>{rankedSignals.filter((s) => s.coverUrl).length}</strong> visual reads</span>
           <span>{lastRefresh}</span>
         </div>
       </div>
@@ -553,11 +559,7 @@ function BriefingView({ rankedSignals, creators }: { rankedSignals: Ranked[]; cr
           return (
             <article className={index === 0 ? "brief-row top" : "brief-row"} key={signal.id}>
               <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              {signal.thumbnailUrl ? (
-                <img className="mini" src={signal.thumbnailUrl} alt="" referrerPolicy="no-referrer" />
-              ) : (
-                <div className="mini"><SignalArtwork seed={signal.thumbnailSeed} topic={signal.topic} index={index} /></div>
-              )}
+              <CoverImage signal={signal} index={index} className="mini" />
               <div>
                 <div className="meta">
                   <span>{creator?.network ?? "source"}</span>
@@ -1072,7 +1074,7 @@ function ProfileView({ creators, rankedSignals }: { creators: Creator[]; rankedS
         <tbody>
           {mine.map((signal) => (
             <tr key={signal.id}>
-              <td><div className="thumb-cell">{signal.thumbnailUrl ? <img className="mini" src={signal.thumbnailUrl} alt="" referrerPolicy="no-referrer" /> : <span className="mini" />}<div><strong>{signal.title}</strong><small>{signal.format ?? "video"}</small></div></div></td>
+              <td><div className="thumb-cell">{signal.coverUrl ? <img className="mini" src={signal.coverUrl} alt="" /> : <span className="mini" />}<div><strong>{signal.title}</strong><small>{signal.format ?? "video"}</small></div></div></td>
               <td className="hide-sm muted">{timeAgo(signal.publishedAt, nowMs)}</td>
               <td className="right num">{formatNumber(signal.plays ?? signal.views)}</td>
               <td className="right lime">{(signal.outlier ?? 0).toFixed(2)}x</td>

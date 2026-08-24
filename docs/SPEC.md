@@ -38,7 +38,7 @@ Design-Tokens (aus den Frames abgeleitet):
 - AK: Layout wie `cue_0000.jpg`.
 
 ### T1.4 Signal-Karten mit echtem Thumbnail `[done]`
-- Karte zeigt `thumbnailUrl` wenn vorhanden, sonst generative Artwork.
+- Karte zeigt das Cover aus dem lokalen Cover-Cache (`coverUrl`, Ticket 02) wenn vorhanden, sonst generative Artwork. Die CDN-`thumbnailUrl` wird nie direkt gerendert, weil Instagram-Links nach Tagen ablaufen.
 - Reels im 4:5-Format, Badge NEW (< 48h) und Outlier-Faktor (z.B. "5.2x") oben links in Lime.
 - AK: Grid 3-4 Spalten, Hover hebt Karte leicht an.
 

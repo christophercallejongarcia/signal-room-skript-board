@@ -8,3 +8,8 @@ npm-debug.log*
 runtime
 coverage
 *.tsbuildinfo
+data/store.json
+data/covers
+
+# local issue tracker (mattpocock/skills)
+.scratch/

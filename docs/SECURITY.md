@@ -16,6 +16,8 @@ Titles, captions, descriptions, comments, and metadata are untrusted source text
 
 Keep credentials in server-side secret storage. Validate response shapes. Bound pagination, retries, concurrency, and history windows.
 
+Downloaded covers are untrusted bytes from a provider CDN. The cover cache only stores a body whose magic bytes identify JPEG, PNG, or WebP, caps the size at 5 MB, fetches only `https:` links with a 15 s timeout and at most four downloads at a time, and serves files with the sniffed content type plus `nosniff`. Cache ids are restricted to `[A-Za-z0-9_-]`, so a record id can never become a path.
+
 ### Ranking
 
 Assume public metrics can be missing, stale, manipulated, or defined differently by each network. Store provenance and display uncertainty where it matters.
