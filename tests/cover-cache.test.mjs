@@ -122,3 +122,15 @@ test("only https links are fetched; a stored http or file link is never requeste
     assert.deepEqual(result, { cached: 0, skipped: 0, failed: 2 });
   });
 });
+
+test("a redirecting link is not followed and a body over 5 MB is dropped", async () => {
+  await withDir(async (dir) => {
+    const redirect = async () => new Response(null, { status: 302, headers: { location: "https://internal/x" } });
+    const r1 = await cacheCovers([records[0]], { dir, fetch: redirect });
+    assert.deepEqual(r1, { cached: 0, skipped: 0, failed: 1 });
+    const big = Buffer.concat([JPEG, Buffer.alloc(5 * 1024 * 1024)]);
+    const r2 = await cacheCovers([records[0]], { dir, fetch: async () => new Response(big, { status: 200 }) });
+    assert.deepEqual(r2, { cached: 0, skipped: 0, failed: 1 });
+    assert.deepEqual(await readdir(dir), []);
+  });
+});

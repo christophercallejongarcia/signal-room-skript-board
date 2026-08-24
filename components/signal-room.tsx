@@ -106,11 +106,16 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
   );
 }
 
-/** Renders the cached cover; falls back to the generative artwork when none is cached or the file went missing. */
+/**
+ * Renders the cached cover. Until the cache has the file, the CDN link is tried
+ * once (fresh records still resolve); an expired link or a missing file falls
+ * back to the generative artwork instead of a broken image.
+ */
 function CoverImage({ signal, index, className, lazy }: { signal: SignalRecord; index: number; className?: string; lazy?: boolean }) {
   const [broken, setBroken] = useState(false);
-  if (signal.coverUrl && !broken) {
-    return <img className={className} src={signal.coverUrl} alt="" loading={lazy ? "lazy" : undefined} onError={() => setBroken(true)} />;
+  const src = signal.coverUrl ?? signal.thumbnailUrl;
+  if (src && !broken) {
+    return <img className={className} src={src} alt="" loading={lazy ? "lazy" : undefined} referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
   }
   const art = <SignalArtwork seed={signal.thumbnailSeed} topic={signal.topic} index={index} />;
   return className ? <div className={className}>{art}</div> : art;

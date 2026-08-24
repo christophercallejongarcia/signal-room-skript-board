@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 // Relative import so `node --test` can load this file without the "@/" alias.
 import type { CoverCacheResult, SignalRecord } from "../../contracts";
@@ -60,12 +60,32 @@ function isFetchableUrl(url: string): boolean {
   }
 }
 
+/** Reads at most MAX_BYTES; aborts the stream as soon as the limit is crossed. */
+async function readBounded(response: Response): Promise<Uint8Array | null> {
+  const declared = Number(response.headers.get("content-length") ?? 0);
+  if (declared > MAX_BYTES) return null;
+  if (!response.body) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = response.body.getReader();
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    total += next.value.byteLength;
+    if (total > MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(next.value);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function download(url: string, file: string, fetchImpl: FetchLike): Promise<boolean> {
   if (!isFetchableUrl(url)) return false;
-  const response = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "follow" });
+  // No redirects: a CDN link that redirects could point the server at an internal host.
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "manual" });
   if (!response.ok) return false;
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length === 0 || bytes.length > MAX_BYTES || !sniffImageType(bytes)) return false;
+  const bytes = await readBounded(response);
+  if (!bytes || bytes.length === 0 || !sniffImageType(bytes)) return false;
   await mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${randomUUID()}.tmp`;
   try {
@@ -123,13 +143,12 @@ export async function readCover(id: string, dir = COVER_DIR): Promise<{ bytes: B
   }
 }
 
-/** Sets coverUrl on records whose cover is on disk. The UI never loads CDN links. */
+/** Sets coverUrl on records whose cover is on disk. One directory read, not one stat per record. */
 export async function withCoverUrls<T extends Pick<SignalRecord, "externalId">>(records: T[], dir = COVER_DIR): Promise<(T & { coverUrl?: string })[]> {
-  return Promise.all(
-    records.map(async (record) => {
-      const id = record.externalId;
-      if (!id || !isCoverId(id) || !(await exists(coverPath(id, dir)))) return record;
-      return { ...record, coverUrl: coverUrl(id) };
-    }),
-  );
+  const cached = new Set((await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".jpg")).map((f) => f.slice(0, -4)));
+  return records.map((record) => {
+    const id = record.externalId;
+    if (!id || !isCoverId(id) || !cached.has(id)) return record;
+    return { ...record, coverUrl: coverUrl(id) };
+  });
 }
