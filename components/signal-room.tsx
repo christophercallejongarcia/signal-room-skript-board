@@ -36,9 +36,10 @@ import {
   countOutliers,
   filterDiscover,
   isOutlier,
-  mergeStoreWithDemo,
+  storeOrDemo,
   type DiscoverView as DiscoverViewMode,
   type OutlierThreshold,
+  type PublishedWindow,
 } from "@/lib/discover-filter";
 import type { SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyResponse } from "@/lib/contracts";
@@ -136,13 +137,13 @@ export function SignalRoom() {
     const response = await fetch("/api/signals");
     if (!response.ok) return;
     const data = (await response.json()) as { creators: Creator[]; signals: SignalRecord[] };
-    if (data.creators.length === 0) return;
     // One real creator hides every demo fixture. Demo only exists for an empty store.
-    const store = mergeStoreWithDemo(data, { creators: demoCreators, signals: demoSignals });
+    const store = storeOrDemo(data, { creators: demoCreators, signals: demoSignals });
+    const isLive = store === data;
     setCreators(store.creators);
     setSignals(store.signals);
-    setLive(true);
-    setLastRefresh("Stored snapshot");
+    setLive(isLive);
+    setLastRefresh(isLive ? "Stored snapshot" : "Demo snapshot");
   }
 
   useEffect(() => {
@@ -356,7 +357,7 @@ function DiscoverView({
   onThreshold: (threshold: OutlierThreshold) => void;
 }) {
   const [view, setView] = useState<DiscoverViewMode>("all");
-  const [published, setPublished] = useState("90");
+  const [published, setPublished] = useState<PublishedWindow>("90");
   const [channel, setChannel] = useState("all");
   const [sort, setSort] = useState<"newest" | "outlier" | "views">("newest");
   const [perPage, setPerPage] = useState(24);
@@ -366,7 +367,7 @@ function DiscoverView({
   const networkCreators = creators.filter((creator) => creator.network === network);
   const nowMs = Date.now();
 
-  const filters = { network, channel, published, now: nowMs, threshold };
+  const filters = { network, creatorId: channel, published, now: nowMs, threshold };
   // Counter and outlier view share one predicate, so the stat block always equals the card count.
   const outliers = countOutliers(rankedSignals, creators, filters);
   const filtered = filterDiscover(rankedSignals, creators, { ...filters, view })
@@ -418,7 +419,7 @@ function DiscoverView({
         </div>
         <div>
           <label htmlFor="f-published">Published</label>
-          <select id="f-published" value={published} onChange={(e) => setPublished(e.target.value)}>
+          <select id="f-published" value={published} onChange={(e) => setPublished(e.target.value as PublishedWindow)}>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>

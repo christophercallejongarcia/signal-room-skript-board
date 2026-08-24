@@ -6,7 +6,7 @@ import {
   countOutliers,
   filterDiscover,
   isOutlier,
-  mergeStoreWithDemo,
+  storeOrDemo,
 } from "../lib/discover-filter.ts";
 
 const NOW = Date.parse("2026-08-24T12:00:00.000Z");
@@ -47,13 +47,13 @@ test("isOutlier compares against the given threshold", () => {
 });
 
 test("stat count equals outlier-view card count for every filter combination", () => {
-  const channels = ["all", "a", "b"];
+  const creatorIds = ["all", "a", "b"];
   const windows = ["7", "30", "90", "all"];
   for (const network of ["instagram", "youtube"]) {
-    for (const channel of channels) {
+    for (const creatorId of creatorIds) {
       for (const published of windows) {
         for (const threshold of OUTLIER_THRESHOLDS) {
-          const filters = { network, channel, published, now: NOW, threshold };
+          const filters = { network, creatorId, published, now: NOW, threshold };
           const cards = filterDiscover(signals, creators, { ...filters, view: "outliers" });
           assert.equal(countOutliers(signals, creators, filters), cards.length, JSON.stringify(filters));
         }
@@ -63,11 +63,11 @@ test("stat count equals outlier-view card count for every filter combination", (
 });
 
 test("outlier view respects threshold, window, channel and network", () => {
-  const base = { network: "instagram", channel: "all", published: "all", now: NOW };
+  const base = { network: "instagram", creatorId: "all", published: "all", now: NOW };
   assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "outliers", threshold: 2 }).map((s) => s.id), ["s1", "s3"]);
   assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "outliers", threshold: 1.5 }).map((s) => s.id), ["s1", "s2", "s3"]);
   assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "outliers", threshold: 1.5, published: "7" }).map((s) => s.id), ["s1", "s2"]);
-  assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "outliers", threshold: 1.5, channel: "b" }).map((s) => s.id), ["s3"]);
+  assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "outliers", threshold: 1.5, creatorId: "b" }).map((s) => s.id), ["s3"]);
   assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "all", threshold: 5 }).map((s) => s.id), ["s1", "s2", "s3", "s4"]);
   assert.deepEqual(filterDiscover(signals, creators, { ...base, view: "saved", threshold: 2 }), []);
 });
@@ -75,6 +75,6 @@ test("outlier view respects threshold, window, channel and network", () => {
 test("real creators replace demo fixtures entirely; empty store keeps demo", () => {
   const demo = { creators: [creators[2]], signals: [signals[4]] };
   const real = { creators: [creators[0]], signals: [signals[0]] };
-  assert.deepEqual(mergeStoreWithDemo(real, demo), real);
-  assert.deepEqual(mergeStoreWithDemo({ creators: [], signals: [] }, demo), demo);
+  assert.equal(storeOrDemo(real, demo), real);
+  assert.equal(storeOrDemo({ creators: [], signals: [] }, demo), demo);
 });

@@ -13,7 +13,7 @@ Zwei erklärbare Kennzahlen, beide in `lib/adapters/scoring/outlier.ts` (Wortlau
 - Outlier = `plays / audience` (Fallback `views`). 5.0 bedeutet fünfmal so viele Plays wie Follower. Das ist die Primärsortierung in Discover.
 - Channel-Relative = `plays / median(plays)` über den gehaltenen Korpus desselben Creators. Zeigt, ob ein Reel über der eigenen Baseline liegt.
 
-Die Schwelle `OUTLIER_THRESHOLD = 2` steht in `lib/config.ts`. Ab 2.0 gilt ein Signal als Outlier, bekommt das Badge und zählt im Stat-Block "2x+ outliers". Der zusätzliche `score` dient nur als Tiebreaker.
+Die Standard-Schwelle ist 2 (`DEFAULT_OUTLIER_THRESHOLD` in `lib/discover-filter.ts`, re-exportiert als `OUTLIER_THRESHOLD` in `lib/config.ts`). Seit Ticket 03 (2026-08-24) ist die Schwelle in der Discover-Filterleiste wählbar (1.5x, 2x, 3x, 5x). Badge, Stat-Block-Zähler und Outlier-Filter teilen das Prädikat `isOutlier(signal, threshold)` aus `lib/discover-filter.ts`, damit der Zähler immer der Kartenanzahl entspricht. Der Erklärsatz aus `describeOutlier` nennt nur die Faktoren und kein Urteil, weil das Urteil von der gewählten Schwelle abhängt. Der zusätzliche `score` dient nur als Tiebreaker.
 
 ## Konsequenzen
 

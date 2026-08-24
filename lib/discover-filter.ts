@@ -7,13 +7,15 @@ export type OutlierThreshold = (typeof OUTLIER_THRESHOLDS)[number];
 export const DEFAULT_OUTLIER_THRESHOLD: OutlierThreshold = 2;
 
 export type DiscoverView = "all" | "outliers" | "saved";
+export type PublishedWindow = "7" | "30" | "90" | "all";
+export const PUBLISHED_WINDOWS: PublishedWindow[] = ["7", "30", "90", "all"];
 
 export type DiscoverFilters = {
   network: Network;
   /** creator id or "all" */
-  channel: string;
-  /** days as string ("7", "30", "90") or "all" */
-  published: string;
+  creatorId: string;
+  /** days back, or "all" */
+  published: PublishedWindow;
   /** epoch ms used for the published window */
   now: number;
   threshold: number;
@@ -26,7 +28,7 @@ export function isOutlier(signal: { outlier?: number }, threshold: number) {
   return (signal.outlier ?? 0) >= threshold;
 }
 
-function inWindow(signal: Pick<SignalRecord, "publishedAt">, published: string, now: number) {
+function inWindow(signal: Pick<SignalRecord, "publishedAt">, published: PublishedWindow, now: number) {
   if (published === "all") return true;
   return now - new Date(signal.publishedAt).getTime() <= Number(published) * DAY;
 }
@@ -36,7 +38,7 @@ export function filterScope<T extends RankedSignal>(signals: T[], creators: Crea
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
   return signals
     .filter((signal) => creatorMap.get(signal.creatorId)?.network === filters.network)
-    .filter((signal) => filters.channel === "all" || signal.creatorId === filters.channel)
+    .filter((signal) => filters.creatorId === "all" || signal.creatorId === filters.creatorId)
     .filter((signal) => inWindow(signal, filters.published, filters.now));
 }
 
@@ -57,9 +59,9 @@ export function countOutliers(signals: RankedSignal[], creators: Creator[], filt
   return filterDiscover(signals, creators, { ...filters, view: "outliers" }).length;
 }
 
-export type Store = { creators: Creator[]; signals: SignalRecord[] };
+export type CorpusSnapshot = { creators: Creator[]; signals: SignalRecord[] };
 
 /** Demo fixtures only exist for an empty store. One real creator hides them everywhere. */
-export function mergeStoreWithDemo(store: Store, demo: Store): Store {
+export function storeOrDemo(store: CorpusSnapshot, demo: CorpusSnapshot): CorpusSnapshot {
   return store.creators.length > 0 ? store : demo;
 }

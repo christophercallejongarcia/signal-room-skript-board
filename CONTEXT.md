@@ -49,7 +49,7 @@ Der Faktor `plays / median(plays)` über den gehaltenen Korpus desselben Creator
 Nicht: "Baseline-Ratio", "Creator-Relative", "Median-Score".
 
 **Schwelle**
-Der Wert `OUTLIER_THRESHOLD` (2) in `lib/config.ts`, ab dem ein Signal als Outlier gilt und das Badge bekommt.
+Der Faktor, ab dem ein Signal als Outlier gilt und Badge, Zähler und Outlier-Filter greifen. In Discover wählbar (1.5x, 2x, 3x, 5x), Standard `DEFAULT_OUTLIER_THRESHOLD` = 2 in `lib/discover-filter.ts`, re-exportiert als `OUTLIER_THRESHOLD` in `lib/config.ts`.
 Nicht: "Cutoff", "Limit", "Grenzwert".
 
 ## Formate und Inhalte
