@@ -101,8 +101,10 @@ Entscheidung: ADR-0002 (Reels+Posts-Merge).
 - AK: Zweiter POST für denselben Handle antwortet `existing: true`.
 
 ### T3.5 Delta-Refresh `/api/refresh` (POST)
-- Für alle Creators nur Posts neuer als `lastCheckedAt` holen (`onlyPostsNewerThan`).
-- Aktualisiert bestehende Records (Plays/Likes/Comments ändern sich).
+- Für alle Creators nur Posts neuer als `lastCheckedAt` minus einen Tag Überlappung holen (`onlyPostsNewerThan`).
+- Aktualisiert bestehende Records (Plays/Likes/Comments ändern sich), keine Duplikate.
+- Jeder Lauf landet als `Run` in `runs` (Status, Dauer, Creators, neu/aktualisiert, Fehler pro Creator); Profile-Tab zeigt die letzten zehn.
+- Ein fehlschlagender Creator bricht den Lauf nicht ab, behält aber seinen Cursor.
 - AK: Zweiter Lauf am selben Tag kostet < 10 % des Backfills (Apify-Compute).
 
 ### T3.6 Kosten-Guard

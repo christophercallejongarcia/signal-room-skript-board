@@ -19,6 +19,8 @@ export const bulkUpsert = mutation({
   args: { records: v.array(v.any()) },
   handler: async (ctx, { records }) => {
     let inserted = 0;
+    let updated = 0;
+    const seen = new Set<string>();
     for (const raw of records) {
       const record = clean(raw);
       const existing = await ctx.db
@@ -26,11 +28,13 @@ export const bulkUpsert = mutation({
         .withIndex("by_external_id", (q) => q.eq("id", record.id))
         .unique();
       if (existing) await ctx.db.patch(existing._id, record);
-      else {
-        await ctx.db.insert("signals", record);
-        inserted += 1;
-      }
+      else await ctx.db.insert("signals", record);
+      // A duplicate inside one batch counts once, same as mergeSignals in the file store.
+      if (seen.has(record.id)) continue;
+      seen.add(record.id);
+      if (existing) updated += 1;
+      else inserted += 1;
     }
-    return { inserted, updated: records.length - inserted };
+    return { inserted, updated };
   },
 });

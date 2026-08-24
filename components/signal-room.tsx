@@ -41,7 +41,7 @@ import {
   type OutlierThreshold,
   type PublishedWindow,
 } from "@/lib/discover-filter";
-import type { SignalRecord } from "@/lib/contracts";
+import type { RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyResponse } from "@/lib/contracts";
 
 const navItems = [
@@ -78,6 +78,16 @@ function formatThreshold(value: number) {
 
 function isNew(publishedAt: string, now: number) {
   return now - new Date(publishedAt).getTime() < HOURS_48;
+}
+
+function formatDuration(ms: number) {
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = Math.round(ms / 1000);
+  return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+}
+
+function formatStarted(iso: string) {
+  return new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function timeAgo(iso: string, now: number) {
@@ -141,6 +151,8 @@ export function SignalRoom() {
   const [live, setLive] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState("Demo snapshot");
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [runsState, setRunsState] = useState<"loading" | "ready" | "error">("loading");
   const [addState, setAddState] = useState<"idle" | "loading" | "error">("idle");
   const [threshold, setThreshold] = useState<OutlierThreshold>(DEFAULT_OUTLIER_THRESHOLD);
 
@@ -157,8 +169,21 @@ export function SignalRoom() {
     setLastRefresh(isLive ? "Stored snapshot" : "Demo snapshot");
   }
 
+  async function loadRuns() {
+    try {
+      const response = await fetch("/api/runs");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { runs: Run[] };
+      setRuns(data.runs);
+      setRunsState("ready");
+    } catch {
+      setRunsState("error");
+    }
+  }
+
   useEffect(() => {
     loadStore().catch(() => {});
+    loadRuns();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
@@ -178,10 +203,15 @@ export function SignalRoom() {
     try {
       const response = await fetch("/api/refresh", { method: "POST" });
       if (response.ok) {
-        await loadStore();
-        setLastRefresh("Refreshed just now");
+        const result = (await response.json()) as RefreshResult;
+        await Promise.all([loadStore(), loadRuns()]);
+        const failed = result.errors?.length ?? 0;
+        if (failed === 0) setLastRefresh("Refreshed just now");
+        else if (failed >= result.creatorsChecked) setLastRefresh("Refresh failed");
+        else setLastRefresh(`Refreshed with ${failed} of ${result.creatorsChecked} creators failing`);
       } else {
         setLastRefresh("Refresh failed");
+        await loadRuns();
       }
     } catch {
       setLastRefresh("Refresh failed");
@@ -320,6 +350,7 @@ export function SignalRoom() {
             network={network}
             onNetwork={setNetwork}
             onAdd={() => setShowAddCreator(true)}
+            issues={runs[0]?.errors.length ?? 0}
           />
         )}
         {activeTab === "ideas" && (
@@ -327,7 +358,7 @@ export function SignalRoom() {
         )}
         {activeTab === "thumbnails" && <ThumbnailsView />}
         {activeTab === "titles" && <TitlesView />}
-        {activeTab === "profile" && <ProfileView creators={creators} rankedSignals={rankedSignals} />}
+        {activeTab === "profile" && <ProfileView creators={creators} rankedSignals={rankedSignals} runs={runs} runsState={runsState} />}
       </main>
 
       {showAddCreator && <AddCreatorDialog onClose={() => setShowAddCreator(false)} onSubmit={addCreator} state={addState} />}
@@ -699,12 +730,15 @@ function ChannelsView({
   network,
   onNetwork,
   onAdd,
+  issues,
 }: {
   creators: Creator[];
   rankedSignals: Ranked[];
   network: Network;
   onNetwork: (network: Network) => void;
   onAdd: () => void;
+  /** Creators that failed in the most recent run. */
+  issues: number;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("name");
@@ -760,7 +794,7 @@ function ChannelsView({
         <div><strong>{list.length}</strong><span>Active creators</span></div>
         <div><strong>{checked}</strong><span>Checked at least once</span></div>
         <div><strong>{rankedSignals.filter((s) => creators.find((c) => c.id === s.creatorId)?.network === network).length}</strong><span>Videos retained</span></div>
-        <div><strong>0</strong><span>Collection issues</span></div>
+        <div><strong>{issues}</strong><span>Collection issues</span></div>
       </div>
 
       <div className="table-tools">
@@ -1040,7 +1074,7 @@ function TitlesView() {
   );
 }
 
-function ProfileView({ creators, rankedSignals }: { creators: Creator[]; rankedSignals: Ranked[] }) {
+function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: Creator[]; rankedSignals: Ranked[]; runs: Run[]; runsState: "loading" | "ready" | "error" }) {
   const owned = creators.filter((c) => c.owned);
   const ownedIds = new Set(owned.map((c) => c.id));
   const nowMs = Date.now();
@@ -1086,6 +1120,27 @@ function ProfileView({ creators, rankedSignals }: { creators: Creator[]; rankedS
             </tr>
           ))}
           {mine.length === 0 && <tr><td colSpan={4}><div className="empty-state">No owned uploads yet.</div></td></tr>}
+        </tbody>
+      </table>
+
+      <div className="section-head"><div><p className="kicker">Collection log</p><h2>Last runs</h2></div><p className="note">Every refresh is logged: window, counts, and which creators failed. A failing creator keeps its cursor and is retried next run.</p></div>
+      <table className="desk-table">
+        <thead><tr><th>Started</th><th>Status</th><th className="hide-sm">Duration</th><th className="right">Creators</th><th className="right">New</th><th className="right">Updated</th><th className="hide-sm">Errors</th></tr></thead>
+        <tbody>
+          {runs.slice(0, 10).map((run) => (
+            <tr key={run.id}>
+              <td><strong>{formatStarted(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
+              <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
+              <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
+              <td className="right num">{run.creatorsChecked}</td>
+              <td className="right num">{run.recordsAdded}</td>
+              <td className="right num">{run.recordsUpdated}</td>
+              <td className="hide-sm muted">{run.errors.length === 0 ? "—" : run.errors.map((e) => `${e.handle}: ${e.message}`).join(" · ")}</td>
+            </tr>
+          ))}
+          {runsState === "loading" && runs.length === 0 && <tr><td colSpan={7}><div className="empty-state">Loading runs…</div></td></tr>}
+          {runsState === "error" && <tr><td colSpan={7}><div className="empty-state">Run log unavailable. Reload to try again.</div></td></tr>}
+          {runsState === "ready" && runs.length === 0 && <tr><td colSpan={7}><div className="empty-state">No runs yet. Hit refresh to log the first one.</div></td></tr>}
         </tbody>
       </table>
 

@@ -1,6 +1,6 @@
-import type { Creator, StorageAdapter } from "@/lib/contracts";
-import { createConvexStorage } from "./convex";
-import { fileStorage } from "./file";
+import type { Creator, StorageAdapter } from "../../contracts";
+import { createConvexStorage } from "./convex.ts";
+import { fileStorage } from "./file.ts";
 
 export type Storage = StorageAdapter & { upsertCreator(creator: Creator): Promise<void> };
 

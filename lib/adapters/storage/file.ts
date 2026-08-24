@@ -1,17 +1,20 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Creator, SignalRecord, StorageAdapter } from "@/lib/contracts";
+import type { Creator, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import { mergeSignals } from "../../refresh-window.ts";
 
-type Store = { creators: Creator[]; signals: SignalRecord[] };
+type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[] };
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
-const EMPTY: Store = { creators: [], signals: [] };
+/** Runs kept in the file store; Convex keeps everything. */
+const MAX_RUNS = 100;
+const EMPTY: Store = { creators: [], signals: [], runs: [] };
 
 async function load(): Promise<Store> {
   try {
     const raw = await readFile(STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as Partial<Store>;
-    return { creators: parsed.creators ?? [], signals: parsed.signals ?? [] };
+    return { creators: parsed.creators ?? [], signals: parsed.signals ?? [], runs: parsed.runs ?? [] };
   } catch {
     return { ...EMPTY };
   }
@@ -51,12 +54,23 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
     return (await load()).signals;
   },
   async saveSignals(records) {
+    return serialized(async () => {
+      const store = await load();
+      const { signals, inserted, updated } = mergeSignals(store.signals, records);
+      store.signals = signals;
+      await save(store);
+      return { inserted, updated };
+    });
+  },
+  async saveRun(run) {
     await serialized(async () => {
       const store = await load();
-      const byId = new Map(store.signals.map((s) => [s.externalId ?? s.id, s]));
-      for (const record of records) byId.set(record.externalId ?? record.id, { ...byId.get(record.externalId ?? record.id), ...record });
-      store.signals = [...byId.values()];
+      store.runs = [run, ...store.runs.filter((r) => r.id !== run.id)].slice(0, MAX_RUNS);
       await save(store);
     });
+  },
+  async listRuns(limit = 10) {
+    const runs = (await load()).runs;
+    return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, limit);
   },
 };

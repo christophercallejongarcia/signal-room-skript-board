@@ -1,6 +1,7 @@
-import type { Creator, SignalRecord, SourceConnector } from "@/lib/contracts";
-import { BACKFILL_DAYS, MAX_RESULTS_PER_CREATOR } from "@/lib/config";
-import { runActor } from "./apify-client";
+import type { Creator, SignalRecord, SourceConnector } from "../../contracts";
+import { MAX_RESULTS_PER_CREATOR } from "../../config.ts";
+import { refreshWindowSince } from "../../refresh-window.ts";
+import { runActor } from "./apify-client.ts";
 
 type ApifyProfile = {
   username?: string;
@@ -93,27 +94,32 @@ function mapPost(post: ApifyPost, creator: Creator): SignalRecord | null {
   };
 }
 
-function sinceFor(creator: Creator) {
-  if (creator.lastCheckedAt) return creator.lastCheckedAt.slice(0, 10);
-  return `${BACKFILL_DAYS} days`;
-}
+export type ActorRunner = typeof runActor;
 
-export async function collectForCreator(creator: Creator): Promise<SignalRecord[]> {
+export async function collectForCreator(creator: Creator, run: ActorRunner = runActor): Promise<SignalRecord[]> {
   const handle = normalizeHandle(creator.handle);
   // "posts" misses reels on many accounts (only the grid/carousel tab); "reels" misses image posts.
   // Fetch both and merge by shortCode so the corpus is complete.
-  const since = sinceFor(creator);
-  const batches = await Promise.all(
-    (["reels", "posts"] as const).map((resultsType) =>
-      runActor<ApifyPost>("apify~instagram-scraper", {
+  // A failing stream throws (naming every failed stream): the caller must not
+  // advance lastCheckedAt on a partial result.
+  const since = refreshWindowSince(creator);
+  const streams = ["reels", "posts"] as const;
+  const settled = await Promise.allSettled(
+    streams.map((resultsType) =>
+      run<ApifyPost>("apify~instagram-scraper", {
         directUrls: [`https://www.instagram.com/${handle}/`],
         resultsType,
         resultsLimit: MAX_RESULTS_PER_CREATOR,
         onlyPostsNewerThan: since,
         addParentData: false,
-      }).catch(() => [] as ApifyPost[]),
+      }),
     ),
   );
+  const failures = settled.flatMap((result, i) =>
+    result.status === "rejected" ? [`${streams[i]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`] : [],
+  );
+  if (failures.length) throw new Error(failures.join("; "));
+  const batches = settled.map((result) => (result.status === "fulfilled" ? result.value : []));
   const seen = new Set<string>();
   const records: SignalRecord[] = [];
   for (const item of batches.flat()) {

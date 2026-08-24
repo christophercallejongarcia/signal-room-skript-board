@@ -31,11 +31,11 @@ Der erste Import beim Aufnehmen in die Watchlist: Beiträge der letzten `BACKFIL
 Nicht: "Initial-Sync", "Full-Scrape", "Import".
 
 **Delta-Refresh**
-Der Folgelauf über `/api/refresh`, der nur Beiträge neuer als `lastCheckedAt` holt; Zähler älterer Beiträge bleiben unverändert (Aktualisierung ist geplant, Ticket 05).
+Der Folgelauf über `/api/refresh`, der pro Creator das Fenster seit `lastCheckedAt` minus `OVERLAP_DAYS` (1) holt (`lib/refresh-window.ts`); bekannte Signale bekommen frische Plays/Likes/Kommentare, Felder ohne neuen Wert (z. B. `coverUrl`) bleiben. `lastCheckedAt` rückt nur vor, wenn beide Actor-Streams erfolgreich waren und das Speichern durch ist.
 Nicht: "Delta-Sync", "Update", "Incremental Scrape".
 
 **Run**
-Ein protokollierter Durchlauf von Backfill oder Delta-Refresh (Art, Start, Ende, geprüfte Creators, neue Signale, Fehler), Tabelle `runs`; Kosten pro Run sind geplant (SPEC T3.6).
+Ein protokollierter Durchlauf von Backfill (`lib/collect.ts` `runBackfill`, aus `POST /api/creators`) oder Delta-Refresh (`runRefresh`): Art, Status (`ok`/`partial`/`failed`), Start, Ende, Dauer, geprüfte Creators, neue und aktualisierte Signale, Fehler pro Creator. Tabelle `runs` (Convex) bzw. `runs` in `data/store.json`; `GET /api/runs` liefert die letzten zehn für den Profile-Tab. Kosten pro Run sind geplant (SPEC T3.6).
 Nicht: "Job", "Execution", "Sync".
 
 **Cover**

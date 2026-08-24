@@ -1,6 +1,20 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+/** Shape of one logged collection pass; shared with convex/runs.ts so the validator is declared once. */
+export const runFields = {
+  id: v.string(),
+  kind: v.union(v.literal("backfill"), v.literal("refresh")),
+  status: v.union(v.literal("ok"), v.literal("partial"), v.literal("failed")),
+  startedAt: v.string(),
+  finishedAt: v.string(),
+  durationMs: v.number(),
+  creatorsChecked: v.number(),
+  recordsAdded: v.number(),
+  recordsUpdated: v.number(),
+  errors: v.array(v.object({ creatorId: v.string(), handle: v.string(), message: v.string() })),
+};
+
 export default defineSchema({
   creators: defineTable({
     id: v.string(),
@@ -41,12 +55,7 @@ export default defineSchema({
     storyboard: v.optional(v.any()),
     createdAt: v.string(),
   }),
-  runs: defineTable({
-    kind: v.string(),
-    startedAt: v.string(),
-    finishedAt: v.optional(v.string()),
-    creatorsChecked: v.number(),
-    recordsAdded: v.number(),
-    error: v.optional(v.string()),
-  }),
+  runs: defineTable(runFields)
+    .index("by_external_id", ["id"])
+    .index("by_startedAt", ["startedAt"]),
 });

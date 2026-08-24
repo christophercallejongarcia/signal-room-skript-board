@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { Creator, Network } from "@/lib/contracts";
 import { normalizeHandle, resolveProfile } from "@/lib/adapters/sources/apify-instagram";
 import { getStorage } from "@/lib/adapters/storage";
-import { collectAndStore } from "@/lib/collect";
+import { runBackfill } from "@/lib/collect";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       avatarUrl: profile.avatarUrl,
       url: profile.url,
     };
-    const { recordsAdded, covers } = await collectAndStore(creator);
+    const { recordsAdded, covers } = await runBackfill(creator);
     return NextResponse.json({ creator, existing: false, recordsAdded, covers });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

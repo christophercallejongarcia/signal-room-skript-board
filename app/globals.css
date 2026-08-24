@@ -832,3 +832,5 @@ main {
   .desk-table .hide-sm { display: none; }
   .spark-row { grid-template-columns: 1fr; }
 }
+.status-chip.run-partial svg { color: #ffd75c; }
+.status-chip.run-failed svg { color: #ff6546; }

@@ -50,12 +50,33 @@ export type RankedSignal = SignalRecord & {
 /** Outcome of one cover-cache pass. skipped = already on disk, failed = no file written (retried next refresh). */
 export type CoverCacheResult = { cached: number; skipped: number; failed: number };
 
+/** Result of one storage write: inserted = new ids, updated = ids that already existed. */
+export type SaveResult = { inserted: number; updated: number };
+
+export type RunError = { creatorId: string; handle: string; message: string };
+
+/** One logged collection pass. ok = no errors, partial = some creators failed, failed = every creator failed. */
+export type Run = {
+  id: string;
+  kind: "backfill" | "refresh";
+  status: "ok" | "partial" | "failed";
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  creatorsChecked: number;
+  recordsAdded: number;
+  recordsUpdated: number;
+  errors: RunError[];
+};
+
 export type RefreshResult = {
   creatorsChecked: number;
   recordsAdded: number;
+  recordsUpdated: number;
   completedAt: string;
   covers?: CoverCacheResult;
   errors?: string[];
+  runId?: string;
 };
 
 export type StrategyRequest = {
@@ -85,7 +106,10 @@ export interface StorageAdapter {
   listCreators(): Promise<Creator[]>;
   addCreator(creator: Creator): Promise<void>;
   listSignals(): Promise<SignalRecord[]>;
-  saveSignals(records: SignalRecord[]): Promise<void>;
+  saveSignals(records: SignalRecord[]): Promise<SaveResult>;
+  saveRun(run: Run): Promise<void>;
+  /** Newest first. */
+  listRuns(limit?: number): Promise<Run[]>;
 }
 
 export interface StrategyProvider {
