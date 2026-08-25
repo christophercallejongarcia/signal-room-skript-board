@@ -1,5 +1,6 @@
 import http from "node:http";
 import { Codex } from "@openai/codex-sdk";
+import { codexAuthState } from "./auth.mjs";
 import { buildStrategyPrompt, strategyOutputSchema, validateStrategyRequest } from "./request.mjs";
 
 const HOST = "127.0.0.1";
@@ -53,6 +54,9 @@ function createCodex() {
 
 async function runStrategy(input) {
   const request = validateStrategyRequest(input);
+  if (codexAuthState() === "logged-out") {
+    throw Object.assign(new Error("Codex is not logged in. Run `codex login` in a terminal."), { status: 503 });
+  }
   const codex = createCodex();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
@@ -94,7 +98,12 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    return sendJson(response, 200, { ok: true, service: "signal-room-codex-bridge" }, origin);
+    return sendJson(
+      response,
+      200,
+      { ok: true, service: "signal-room-codex-bridge", codex: codexAuthState() },
+      origin,
+    );
   }
 
   if (request.method === "POST" && url.pathname === "/v1/strategy") {
@@ -104,14 +113,10 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, result, origin);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown bridge error.";
-      const clientError = /required|must be|too large|Unexpected token|JSON/.test(message);
+      const status = error?.status ?? (/required|must be|too large|Unexpected token|JSON/.test(message) ? 400 : 500);
+      const exposed = status === 500 ? "The local Codex strategy run failed." : message;
       console.error("Strategy request failed:", message);
-      return sendJson(
-        response,
-        clientError ? 400 : 500,
-        { error: clientError ? message : "The local Codex strategy run failed." },
-        origin,
-      );
+      return sendJson(response, status, { error: exposed, codex: codexAuthState() }, origin);
     }
   }
 

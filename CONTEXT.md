@@ -73,8 +73,12 @@ Ein gespeicherter Content-Ansatz (Titel, Ziel, Storyboard) in der Tabelle `ideas
 Nicht: "Draft", "Konzept".
 
 **Strategy-Provider**
-Die Komponente, die aus Evidenz (Top-Outlier-Reels) eine Idea erzeugt; läuft über den lokalen Bridge mit Codex SDK, siehe ADR-0004.
+Die Komponente, die aus einem Evidenzpaket eine Idea erzeugt; läuft über den lokalen Bridge mit Codex SDK, siehe ADR-0004. Antwortet auf Deutsch.
 Nicht: "LLM", "KI-Backend", "Agent".
+
+**Evidenzpaket**
+Die Eingabe des Strategy-Providers: die stärksten Outlier-Reels des Fensters aus dem gespeicherten Korpus (`lib/strategy-evidence.ts`), je Eintrag Titel, Creator-Handle, Caption-Auszug, Plays und Outlier. Fenster und Anzahl stehen in `lib/config.ts` (`STRATEGY_EVIDENCE_WINDOW_DAYS` 30, `STRATEGY_EVIDENCE_LIMIT` 10), die Schwelle ist `OUTLIER_THRESHOLD`. Demo-Fixtures kommen nie hinein.
+Nicht: "Kontext", "Prompt-Daten", "Sample".
 
 **Bridge**
 Der lokale Prozess `bridge/server.mjs`, der Strategy-Anfragen der Web-App entgegennimmt und ans Codex SDK weiterreicht.

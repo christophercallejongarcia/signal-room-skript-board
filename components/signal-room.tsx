@@ -41,8 +41,33 @@ import {
   type OutlierThreshold,
   type PublishedWindow,
 } from "@/lib/discover-filter";
+import {
+  OUTLIER_THRESHOLD,
+  STRATEGY_AUDIENCE,
+  STRATEGY_EVIDENCE_LIMIT,
+  STRATEGY_EVIDENCE_WINDOW_DAYS,
+  STRATEGY_GOAL,
+} from "@/lib/config";
+import { selectEvidence } from "@/lib/strategy-evidence";
 import type { RefreshResult, Run, SignalRecord } from "@/lib/contracts";
-import type { Creator, Network, StrategyResponse } from "@/lib/contracts";
+import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
+
+/** The web app only ever talks to the local bridge, never to a model endpoint (ADR-0004). */
+const bridgeUrl = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL || "http://127.0.0.1:3211";
+
+/** Reachability plus Codex login, as reported by the bridge health route. */
+type BridgeHealth = "checking" | "online" | "offline" | "logged-out";
+
+/** An Idea captured from a strategy run, held for this session. Persistence lands with ticket 08. */
+type CapturedIdea = StrategyResponse & { id: string; capturedAt: string; evidenceCount: number };
+
+/** The strategy panel's own state. These four always travel together. */
+type StrategyState = {
+  result: StrategyResponse | null;
+  phase: "idle" | "loading" | "error";
+  error: string;
+  evidence: StrategyEvidenceItem[];
+};
 
 const navItems = [
   { id: "discover", label: "Discover", icon: House },
@@ -181,17 +206,39 @@ export function SignalRoom() {
     }
   }
 
+  async function checkBridge() {
+    setBridge("checking");
+    try {
+      const response = await fetch(`${bridgeUrl}/health`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const health = (await response.json()) as { codex?: string };
+      setBridge(health.codex === "logged-out" ? "logged-out" : "online");
+    } catch {
+      setBridge("offline");
+    }
+  }
+
   useEffect(() => {
     loadStore().catch(() => {});
     loadRuns();
+    checkBridge();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
   const [strategyState, setStrategyState] = useState<"idle" | "loading" | "error">("idle");
+  const [strategyError, setStrategyError] = useState("");
+  const [bridge, setBridge] = useState<BridgeHealth>("checking");
+  const [captured, setCaptured] = useState<CapturedIdea[]>([]);
 
   const rankedSignals = useMemo(
     () => (live ? outlierScorer : demoScorer).rank(signals, creators, live ? new Date() : new Date("2026-08-22T16:00:00.000Z")),
     [creators, signals, live],
+  );
+
+  /** Evidence is the stored corpus only. Demo fixtures never reach the Strategy-Provider. */
+  const evidence = useMemo(
+    () => (live ? selectEvidence(rankedSignals, creators, { now: Date.now() }) : []),
+    [live, rankedSignals, creators],
   );
 
   const activeNav = navItems.find((item) => item.id === activeTab) ?? navItems[0];
@@ -262,28 +309,61 @@ export function SignalRoom() {
     setShowAddCreator(false);
   }
 
-  async function generateStrategy() {
+  async function generateStrategy(input: { idea: string; goal: string }) {
+    if (!live) {
+      setStrategyState("error");
+      setStrategyError(
+        "The corpus is empty, the cards show demo fixtures. Add a creator to the watchlist first.",
+      );
+      return;
+    }
+    if (evidence.length === 0) {
+      setStrategyState("error");
+      setStrategyError(
+        `No reel above ${OUTLIER_THRESHOLD}x outlier in the last ${STRATEGY_EVIDENCE_WINDOW_DAYS} days. Refresh, then try again.`,
+      );
+      return;
+    }
+
     setStrategyState("loading");
     setStrategy(null);
+    setStrategyError("");
+
+    const goal = [STRATEGY_GOAL, input.goal.trim(), input.idea.trim() && `Working idea: ${input.idea.trim()}`]
+      .filter(Boolean)
+      .join(" ");
 
     try {
-      const endpoint = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL || "http://127.0.0.1:3211";
-      const response = await fetch(`${endpoint}/v1/strategy`, {
+      const response = await fetch(`${bridgeUrl}/v1/strategy`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          goal: "Turn the strongest current signal into a useful evidence-led creator story.",
-          audience: "Builders and small teams adopting practical AI workflows.",
-          evidence: rankedSignals.slice(0, 3).map(({ title, topic, score }) => ({ title, topic, score })),
-        }),
+        body: JSON.stringify({ goal, audience: STRATEGY_AUDIENCE, evidence }),
       });
 
-      if (!response.ok) throw new Error("The local bridge is unavailable.");
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || `The bridge answered with HTTP ${response.status}.`);
+      }
       setStrategy((await response.json()) as StrategyResponse);
       setStrategyState("idle");
-    } catch {
+    } catch (error) {
       setStrategyState("error");
+      setStrategyError(error instanceof Error ? error.message : "The bridge is unreachable.");
+      checkBridge();
     }
+  }
+
+  function captureIdea() {
+    if (!strategy) return;
+    setCaptured((current) => [
+      {
+        ...strategy,
+        id: `idea-${current.length + 1}-${strategy.angle.slice(0, 24)}`,
+        capturedAt: new Date().toISOString(),
+        evidenceCount: evidence.length,
+      },
+      ...current,
+    ]);
   }
 
   const knownVideos = rankedSignals.length;
@@ -354,7 +434,15 @@ export function SignalRoom() {
           />
         )}
         {activeTab === "ideas" && (
-          <IdeasView strategy={strategy} strategyState={strategyState} onGenerate={generateStrategy} />
+          <IdeasView
+            strategy={{ result: strategy, phase: strategyState, error: strategyError, evidence }}
+            live={live}
+            bridge={bridge}
+            captured={captured}
+            onGenerate={generateStrategy}
+            onRecheckBridge={checkBridge}
+            onCapture={captureIdea}
+          />
         )}
         {activeTab === "thumbnails" && <ThumbnailsView />}
         {activeTab === "titles" && <TitlesView />}
@@ -843,17 +931,37 @@ function ChannelsView({
   );
 }
 
+/** What the user has to do to get the bridge into a usable state. */
+const bridgeCopy: Record<BridgeHealth, { label: string; hint: string; tone: "muted" | "ok" | "bad" }> = {
+  checking: { label: "Checking the bridge", hint: "One moment.", tone: "muted" },
+  online: { label: "Bridge reachable, Codex logged in", hint: "Ready.", tone: "ok" },
+  offline: { label: "Bridge not reachable", hint: "Run npm run bridge in a second terminal.", tone: "bad" },
+  "logged-out": { label: "Codex not logged in", hint: "Run codex login in a terminal, then check again.", tone: "bad" },
+};
+
 function IdeasView({
   strategy,
-  strategyState,
+  live,
+  bridge,
+  captured,
   onGenerate,
+  onRecheckBridge,
+  onCapture,
 }: {
-  strategy: StrategyResponse | null;
-  strategyState: "idle" | "loading" | "error";
-  onGenerate: () => void;
+  strategy: StrategyState;
+  live: boolean;
+  bridge: BridgeHealth;
+  captured: CapturedIdea[];
+  onGenerate: (input: { idea: string; goal: string }) => void;
+  onRecheckBridge: () => void;
+  onCapture: () => void;
 }) {
   const [idea, setIdea] = useState("");
   const [goal, setGoal] = useState("");
+  const status = bridgeCopy[bridge];
+  const { result, phase, error, evidence } = strategy;
+  const blocked = bridge === "offline" || bridge === "logged-out" || phase === "loading";
+
   return (
     <div className="view-stack">
       <section className="hero">
@@ -863,9 +971,9 @@ function IdeasView({
           <p className="hero-sub">Capture a working idea, test how it reads as short form and long form, then develop it into a storyboard with the local strategy bridge.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{demoIdeas.length}</strong><span>captured ideas</span></div>
-          <div><strong>{demoIdeas.filter((i) => i.state === "Ready to brief").length}</strong><span>ready to brief</span></div>
-          <div className="lime"><strong>{strategy ? 1 : 0}</strong><span>angles generated</span></div>
+          <div><strong>{captured.length}</strong><span>captured ideas</span></div>
+          <div><strong>{evidence.length}</strong><span>outlier reels as evidence</span></div>
+          <div className="lime"><strong>{result ? 1 : 0}</strong><span>angles generated</span></div>
         </div>
       </section>
 
@@ -881,6 +989,35 @@ function IdeasView({
             <div><span>Reasoning</span><select defaultValue="medium"><option>Low</option><option>Medium</option><option>High</option></select></div>
           </div>
         </div>
+
+        <div className={`bridge-status ${status.tone}`}>
+          <span className="dot" aria-hidden="true" />
+          <div>
+            <strong>{status.label}</strong>
+            <p>{status.hint}</p>
+          </div>
+          <button className="ghost-button" type="button" onClick={onRecheckBridge}>
+            <ArrowsClockwise size={13} /> Check again
+          </button>
+        </div>
+
+        <div className="evidence-note">
+          {live ? (
+            <>
+              <strong>{evidence.length} of at most {STRATEGY_EVIDENCE_LIMIT} outlier reels</strong>
+              <span>
+                from {OUTLIER_THRESHOLD}x outlier up, last {STRATEGY_EVIDENCE_WINDOW_DAYS} days
+                {evidence.length > 0 && `: ${[...new Set(evidence.map((item) => item.creator))].join(", ")}`}
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>No corpus</strong>
+              <span>The cards show demo fixtures. The strategy bridge never sees them.</span>
+            </>
+          )}
+        </div>
+
         <div className="panel-body">
           <div>
             <label htmlFor="idea-text">Idea</label>
@@ -895,18 +1032,52 @@ function IdeasView({
         <div className="panel-foot">
           <span>Uses the local strategy bridge. Nothing is sent to an API key.</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="secondary-button" type="button">Capture idea</button>
-            <button className="primary-button" type="button" onClick={onGenerate} disabled={strategyState === "loading"}>Generate angle <ArrowRight size={15} /></button>
+            <button className="secondary-button" type="button" onClick={onCapture} disabled={!result}>Capture idea</button>
+            <button className="primary-button" type="button" onClick={() => onGenerate({ idea, goal })} disabled={blocked}>Generate angle <ArrowRight size={15} /></button>
           </div>
         </div>
-        {strategyState === "loading" && <div className="strategy-loading"><span /><span /><span /><p>Reading the evidence packet</p></div>}
-        {strategyState === "error" && (
-          <div className="strategy-error"><WarningCircle size={20} weight="fill" /><h3>Bridge is offline</h3><p>Run <code>npm run bridge</code> locally, then try again.</p><div><button className="secondary-button" onClick={onGenerate}>Try again</button></div></div>
+        {phase === "loading" && <div className="strategy-loading"><span /><span /><span /><p>Reading the evidence packet</p></div>}
+        {phase === "error" && (
+          <div className="strategy-error">
+            <WarningCircle size={20} weight="fill" />
+            <h3>No angle</h3>
+            <p>{error || "The bridge is unreachable."}</p>
+            <div><button className="secondary-button" onClick={() => onGenerate({ idea, goal })}>Try again</button></div>
+          </div>
         )}
-        {strategy && (
-          <div className="strategy-result"><span>Suggested angle</span><h3>{strategy.angle}</h3><p>{strategy.rationale}</p><dl><dt>Opening</dt><dd>{strategy.opening}</dd><dt>Proof to show</dt><dd>{strategy.proofToShow.join(", ")}</dd><dt>Cautions</dt><dd>{strategy.cautions.join(", ")}</dd></dl></div>
+        {result && (
+          <div className="strategy-result">
+            <span>Suggested angle from {evidence.length} outlier reels</span>
+            <h3>{result.angle}</h3>
+            <p>{result.rationale}</p>
+            <dl>
+              <dt>Opening</dt><dd>{result.opening}</dd>
+              <dt>Proof to show</dt><dd>{result.proofToShow.join(", ")}</dd>
+              <dt>Cautions</dt><dd>{result.cautions.join(", ")}</dd>
+            </dl>
+            <div><button className="secondary-button" type="button" onClick={onCapture}>Capture idea</button></div>
+          </div>
         )}
       </section>
+
+      {captured.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <p className="kicker">Captured ideas</p>
+              <h2>This session</h2>
+              <p>Writing them to the ideas table lands with ticket 08.</p>
+            </div>
+          </div>
+          {captured.map((item, index) => (
+            <div className="idea-row" key={item.id}>
+              <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+              <div><small>{item.evidenceCount} reels as evidence</small><h3>{item.angle}</h3></div>
+              <span className="state">Not saved</span>
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="idea-columns">
         <section>

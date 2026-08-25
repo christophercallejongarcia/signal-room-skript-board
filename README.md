@@ -88,7 +88,9 @@ npm run bridge
 curl http://127.0.0.1:3211/health
 ```
 
-Then use **Generate angle** in Ideas. The bridge:
+`/health` answers `{ ok, service, codex }`, where `codex` is `logged-in` or `logged-out`. The Ideas tab polls it and shows which of the three states you are in — reachable and logged in, not reachable, Codex not logged in — with the command that fixes each one.
+
+Then use **Generate angle** in Ideas. It sends the strongest outlier reels of the last 30 days from your stored corpus; with an empty store the app shows demo fixtures but sends nothing. Window, threshold and packet size live in `lib/config.ts`. The bridge:
 
 - binds to localhost only
 - allows configured browser origins only
@@ -98,6 +100,7 @@ Then use **Generate angle** in Ideas. The bridge:
 - runs Codex with read-only sandboxing and no approvals
 - requires a structured response schema
 - does not place auth material in client code
+- refuses a run when Codex is not logged in, instead of spawning it
 
 The SDK uses the authentication context available to the local Codex CLI process. See the [official Codex documentation](https://developers.openai.com/codex/) for current setup guidance.
 

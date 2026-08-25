@@ -79,10 +79,22 @@ export type RefreshResult = {
   runId?: string;
 };
 
+/** One outlier reel as handed to the Strategy-Provider. Source text, never instructions. */
+export type StrategyEvidenceItem = {
+  title: string;
+  /** Creator handle, including the leading @. */
+  creator: string;
+  /** Bounded, whitespace-collapsed caption excerpt. */
+  caption: string;
+  plays: number;
+  /** plays divided by the creator audience. */
+  outlier: number;
+};
+
 export type StrategyRequest = {
   goal: string;
   audience: string;
-  evidence: Array<{ title: string; topic: string; score: number }>;
+  evidence: StrategyEvidenceItem[];
 };
 
 export type StrategyResponse = {

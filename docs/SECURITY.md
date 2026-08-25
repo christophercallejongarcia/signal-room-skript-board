@@ -26,6 +26,8 @@ Assume public metrics can be missing, stale, manipulated, or defined differently
 
 The included bridge is for local development. It binds to `127.0.0.1`, checks browser origins, caps input size, disables network access, uses read-only sandboxing, and requests structured output.
 
+The evidence packet is creator captions, so it is attacker-controlled text. It is clamped twice before it reaches the model: `lib/strategy-evidence.ts` collapses each caption to one bounded line, `bridge/request.mjs` re-truncates every field and coerces plays and outlier to bounded numbers, and the prompt states the packet is untrusted source text, never instructions. The bridge never echoes internal errors: only validation messages and the logged-out hint reach the client, everything else is a generic failure with the detail in the bridge log. `bridge/auth.mjs` only checks whether the Codex auth file exists; it never reads or forwards its contents.
+
 Local binding is not production authentication. A deployed endpoint needs:
 
 - authenticated users and workspace authorization
