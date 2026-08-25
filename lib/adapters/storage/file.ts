@@ -1,20 +1,28 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Creator, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import type { Creator, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
-type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[] };
+type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[]; ideas: Idea[] };
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 /** Runs kept in the file store; Convex keeps everything. */
 const MAX_RUNS = 100;
-const EMPTY: Store = { creators: [], signals: [], runs: [] };
+/** Ideas kept in the file store; Convex keeps everything. */
+const MAX_IDEAS = 500;
+const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [] };
 
 async function load(): Promise<Store> {
   try {
     const raw = await readFile(STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as Partial<Store>;
-    return { creators: parsed.creators ?? [], signals: parsed.signals ?? [], runs: parsed.runs ?? [] };
+    return {
+      creators: parsed.creators ?? [],
+      signals: parsed.signals ?? [],
+      runs: parsed.runs ?? [],
+      ideas: parsed.ideas ?? [],
+    };
   } catch {
     return { ...EMPTY };
   }
@@ -27,6 +35,12 @@ async function save(store: Store) {
   await rename(tmp, STORE_PATH);
 }
 
+/**
+ * Serializes writes inside one process only. Two Next.js workers on the same
+ * data/store.json still race, so the develop-run claim is only as strong as the
+ * single-process dev setup this store is meant for (ADR-0005). Convex is the
+ * real store, and there the claim is transactional.
+ */
 let queue: Promise<unknown> = Promise.resolve();
 function serialized<T>(work: () => Promise<T>): Promise<T> {
   const next = queue.then(work, work);
@@ -72,5 +86,45 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
   async listRuns(limit = 10) {
     const runs = (await load()).runs;
     return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, limit);
+  },
+  async listIdeas(limit = 50) {
+    const ideas = (await load()).ideas;
+    return [...ideas].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+  },
+  async saveIdea(idea) {
+    await serialized(async () => {
+      const store = await load();
+      store.ideas = [idea, ...store.ideas.filter((existing) => existing.id !== idea.id)].slice(0, MAX_IDEAS);
+      await save(store);
+    });
+  },
+  async claimIdeaDevelop(id, runId, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.ideas.findIndex((idea) => idea.id === id);
+      if (index < 0) return null;
+      const claimed = claimDevelop(store.ideas[index], runId, now);
+      store.ideas[index] = claimed;
+      await save(store);
+      return claimed;
+    });
+  },
+  async settleIdeaDevelop(id, runId, result) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.ideas.findIndex((idea) => idea.id === id);
+      if (index < 0) return null;
+      const settled = result.storyboard
+        ? applyStoryboard(store.ideas[index], runId, result.storyboard, {
+            now: result.now,
+            evidenceCount: result.evidenceCount,
+          })
+        : releaseDevelop(store.ideas[index], runId, result.now);
+      // A newer run holds the claim: this result is stale and is dropped.
+      if (!settled) return null;
+      store.ideas[index] = settled;
+      await save(store);
+      return settled;
+    });
   },
 };

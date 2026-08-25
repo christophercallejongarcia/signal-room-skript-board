@@ -26,7 +26,7 @@ import {
   InstagramLogo,
   YoutubeLogo,
 } from "@phosphor-icons/react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import { demoCreators, demoIdeas, demoSignals } from "@/lib/demo-data";
 import { DEMO_SCORING_NOTE, demoScorer } from "@/lib/demo-score";
 import { outlierScorer } from "@/lib/adapters/scoring/outlier";
@@ -44,22 +44,27 @@ import {
 import {
   OUTLIER_THRESHOLD,
   STRATEGY_AUDIENCE,
+  STRATEGY_BRIDGE_URL,
   STRATEGY_EVIDENCE_LIMIT,
   STRATEGY_EVIDENCE_WINDOW_DAYS,
   STRATEGY_GOAL,
 } from "@/lib/config";
+import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
-import type { RefreshResult, Run, SignalRecord } from "@/lib/contracts";
+import type { Idea, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
-
-/** The web app only ever talks to the local bridge, never to a model endpoint (ADR-0004). */
-const bridgeUrl = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL || "http://127.0.0.1:3211";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
 type BridgeHealth = "checking" | "online" | "offline" | "logged-out";
 
-/** An Idea captured from a strategy run, held for this session. Persistence lands with ticket 08. */
-type CapturedIdea = StrategyResponse & { id: string; capturedAt: string; evidenceCount: number };
+/** The ideas repository as the Ideas tab sees it. */
+type IdeasState = {
+  items: Idea[];
+  phase: "loading" | "ready" | "error";
+  /** id of the idea whose develop run is in flight, null when none is. */
+  developing: string | null;
+  error: string;
+};
 
 /** The strategy panel's own state. These four always travel together. */
 type StrategyState = {
@@ -111,7 +116,7 @@ function formatDuration(ms: number) {
   return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
-function formatStarted(iso: string) {
+function formatStamp(iso: string) {
   return new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -206,10 +211,21 @@ export function SignalRoom() {
     }
   }
 
+  async function loadIdeas() {
+    try {
+      const response = await fetch("/api/ideas", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { ideas: Idea[] };
+      setIdeas((current) => ({ ...current, items: data.ideas, phase: "ready" }));
+    } catch {
+      setIdeas((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
   async function checkBridge() {
     setBridge("checking");
     try {
-      const response = await fetch(`${bridgeUrl}/health`, { cache: "no-store" });
+      const response = await fetch(`${STRATEGY_BRIDGE_URL}/health`, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const health = (await response.json()) as { codex?: string };
       setBridge(health.codex === "logged-out" ? "logged-out" : "online");
@@ -221,6 +237,7 @@ export function SignalRoom() {
   useEffect(() => {
     loadStore().catch(() => {});
     loadRuns();
+    loadIdeas();
     checkBridge();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
@@ -228,7 +245,7 @@ export function SignalRoom() {
   const [strategyState, setStrategyState] = useState<"idle" | "loading" | "error">("idle");
   const [strategyError, setStrategyError] = useState("");
   const [bridge, setBridge] = useState<BridgeHealth>("checking");
-  const [captured, setCaptured] = useState<CapturedIdea[]>([]);
+  const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
 
   const rankedSignals = useMemo(
     () => (live ? outlierScorer : demoScorer).rank(signals, creators, live ? new Date() : new Date("2026-08-22T16:00:00.000Z")),
@@ -334,7 +351,7 @@ export function SignalRoom() {
       .join(" ");
 
     try {
-      const response = await fetch(`${bridgeUrl}/v1/strategy`, {
+      const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/strategy`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ goal, audience: STRATEGY_AUDIENCE, evidence }),
@@ -353,17 +370,61 @@ export function SignalRoom() {
     }
   }
 
-  function captureIdea() {
-    if (!strategy) return;
-    setCaptured((current) => [
-      {
-        ...strategy,
-        id: `idea-${current.length + 1}-${strategy.angle.slice(0, 24)}`,
-        capturedAt: new Date().toISOString(),
-        evidenceCount: evidence.length,
-      },
-      ...current,
-    ]);
+  /** Capture from the Ideas form or from a card. Both land in the same ideas table. */
+  async function captureIdea(input: IdeaInput) {
+    const title = input.title.trim();
+    if (!title) return;
+    setIdeas((current) => ({ ...current, error: "" }));
+    try {
+      const response = await fetch("/api/ideas", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...input, title }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || `The ideas table answered with HTTP ${response.status}.`);
+      }
+      const { idea } = (await response.json()) as { idea: Idea };
+      setIdeas((current) => ({ ...current, items: [idea, ...current.items], phase: "ready" }));
+      setActiveTab("ideas");
+    } catch (error) {
+      setIdeas((current) => ({ ...current, error: error instanceof Error ? error.message : "The capture failed." }));
+    }
+  }
+
+  /**
+   * Develop through the server route, which claims the idea for one run. A second
+   * run on the same idea wins, and the slower answer is dropped instead of written.
+   */
+  async function developIdea(ideaId: string) {
+    if (ideas.developing) return;
+    setIdeas((current) => ({ ...current, developing: ideaId, error: "" }));
+    try {
+      const response = await fetch("/api/ideas/develop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ideaId }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { idea?: Idea; stale?: boolean; error?: string };
+      if (!response.ok) throw new Error(payload.error || `The develop run answered with HTTP ${response.status}.`);
+      if (payload.stale) {
+        await loadIdeas();
+        return;
+      }
+      setIdeas((current) => ({
+        ...current,
+        items: current.items.map((item) => (item.id === ideaId ? payload.idea ?? item : item)),
+      }));
+    } catch (error) {
+      setIdeas((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "The develop run failed.",
+      }));
+      checkBridge();
+    } finally {
+      setIdeas((current) => ({ ...current, developing: null }));
+    }
   }
 
   const knownVideos = rankedSignals.length;
@@ -418,9 +479,12 @@ export function SignalRoom() {
             stats={{ knownVideos, newIn48 }}
             threshold={threshold}
             onThreshold={setThreshold}
+            onCreateIdea={captureIdea}
           />
         )}
-        {activeTab === "briefing" && <BriefingView rankedSignals={rankedSignals} creators={creators} />}
+        {activeTab === "briefing" && (
+          <BriefingView rankedSignals={rankedSignals} creators={creators} onCreateIdea={captureIdea} />
+        )}
         {activeTab === "radar" && <RadarView rankedSignals={rankedSignals} />}
         {activeTab === "formats" && <FormatsView rankedSignals={rankedSignals} threshold={threshold} />}
         {activeTab === "channels" && (
@@ -438,10 +502,12 @@ export function SignalRoom() {
             strategy={{ result: strategy, phase: strategyState, error: strategyError, evidence }}
             live={live}
             bridge={bridge}
-            captured={captured}
+            ideas={ideas}
             onGenerate={generateStrategy}
             onRecheckBridge={checkBridge}
             onCapture={captureIdea}
+            onDevelop={developIdea}
+            onReloadIdeas={loadIdeas}
           />
         )}
         {activeTab === "thumbnails" && <ThumbnailsView />}
@@ -476,6 +542,7 @@ function DiscoverView({
   stats,
   threshold,
   onThreshold,
+  onCreateIdea,
 }: {
   rankedSignals: Ranked[];
   creators: Creator[];
@@ -485,6 +552,7 @@ function DiscoverView({
   stats: { knownVideos: number; newIn48: number };
   threshold: OutlierThreshold;
   onThreshold: (threshold: OutlierThreshold) => void;
+  onCreateIdea: (input: IdeaInput) => void;
 }) {
   const [view, setView] = useState<DiscoverViewMode>("all");
   const [published, setPublished] = useState<PublishedWindow>("90");
@@ -636,11 +704,27 @@ function DiscoverView({
                     <span><strong>{formatNumber(signal.comments)}</strong> comments</span>
                     <span><strong className="lime">{(signal.outlier ?? 0).toFixed(1)}x</strong></span>
                   </div>
-                  {signal.url && (
-                    <a className="signal-link" href={signal.url} target="_blank" rel="noreferrer">
-                      Open on {isIg ? "Instagram" : "YouTube"} <ArrowSquareOut size={11} />
-                    </a>
-                  )}
+                  <div className="signal-actions">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() =>
+                        onCreateIdea({
+                          title: signal.title,
+                          sourceSignalId: signal.id,
+                          sourceCreator: creator.handle,
+                          sourceUrl: signal.url,
+                        })
+                      }
+                    >
+                      <Lightbulb size={13} /> Create idea
+                    </button>
+                    {signal.url && (
+                      <a className="signal-link" href={signal.url} target="_blank" rel="noreferrer">
+                        Open on {isIg ? "Instagram" : "YouTube"} <ArrowSquareOut size={11} />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </article>
             );
@@ -656,7 +740,15 @@ function DiscoverView({
   );
 }
 
-function BriefingView({ rankedSignals, creators }: { rankedSignals: Ranked[]; creators: Creator[] }) {
+function BriefingView({
+  rankedSignals,
+  creators,
+  onCreateIdea,
+}: {
+  rankedSignals: Ranked[];
+  creators: Creator[];
+  onCreateIdea: (input: IdeaInput) => void;
+}) {
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
   const top = [...rankedSignals].sort((a, b) => b.score - a.score).slice(0, 10);
   const date = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -694,7 +786,20 @@ function BriefingView({ rankedSignals, creators }: { rankedSignals: Ranked[]; cr
                 <div className="angle"><span>Your angle</span>Find the uncopied tension behind this package, then show a stronger firsthand proof for your audience.</div>
               </div>
               <div className="actions">
-                <button className="ghost-button"><Lightbulb size={13} /> Create idea</button>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() =>
+                    onCreateIdea({
+                      title: signal.title,
+                      sourceSignalId: signal.id,
+                      sourceCreator: creator?.handle,
+                      sourceUrl: signal.url,
+                    })
+                  }
+                >
+                  <Lightbulb size={13} /> Create idea
+                </button>
                 {signal.url && (
                   <a className="ghost-button" href={signal.url} target="_blank" rel="noreferrer" aria-label="Open source"><ArrowSquareOut size={13} /></a>
                 )}
@@ -939,28 +1044,137 @@ const bridgeCopy: Record<BridgeHealth, { label: string; hint: string; tone: "mut
   "logged-out": { label: "Codex not logged in", hint: "Run codex login in a terminal, then check again.", tone: "bad" },
 };
 
+const statusCopy: Record<Idea["status"], string> = {
+  captured: "Captured",
+  developed: "Developed",
+  produced: "Produced",
+  dropped: "Dropped",
+};
+
+function formatDay(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** One stored idea with its storyboard folded away until it is wanted. */
+function IdeaRow({
+  idea,
+  index,
+  developing,
+  blocked,
+  onDevelop,
+}: {
+  idea: Idea;
+  index: number;
+  developing: boolean;
+  blocked: boolean;
+  onDevelop: (id: string) => void;
+}) {
+  const meta = [
+    formatDay(idea.createdAt),
+    idea.sourceCreator && `from ${idea.sourceCreator}`,
+    idea.evidenceCount && `${idea.evidenceCount} reels as evidence`,
+  ].filter(Boolean);
+  const sourceLabel = idea.sourceCreator ? `Source reel ${idea.sourceCreator}` : "Source reel";
+
+  return (
+    <div className="idea-entry">
+      <div className="idea-row">
+        <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+        <div>
+          <small>{meta.join(" · ")}</small>
+          <h3>{idea.title}</h3>
+          {idea.goal && <p className="idea-goal">{idea.goal}</p>}
+          {idea.sourceSignalId &&
+            (idea.sourceUrl ? (
+              <a className="signal-link" href={idea.sourceUrl} target="_blank" rel="noreferrer">
+                {sourceLabel} <ArrowSquareOut size={11} />
+              </a>
+            ) : (
+              <span className="signal-link">{sourceLabel}</span>
+            ))}
+        </div>
+        <div className="idea-actions">
+          <span className={`state status-${idea.status}`}>{statusCopy[idea.status]}</span>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => onDevelop(idea.id)}
+            disabled={blocked || developing || idea.status === "dropped"}
+          >
+            {developing ? (
+              <>
+                <ArrowsClockwise className="spin" size={13} /> Developing
+              </>
+            ) : (
+              <>
+                <Sparkle size={13} /> {idea.storyboard ? "Develop again" : "Develop idea"}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      {idea.storyboard && (
+        <details className="storyboard">
+          <summary>
+            Storyboard <span>{idea.developedAt ? formatStamp(idea.developedAt) : ""}</span>
+          </summary>
+          <dl>
+            <dt>Hook</dt>
+            <dd>{idea.storyboard.hook}</dd>
+            {idea.storyboard.beats.map((beat, position) => (
+              <Fragment key={`${idea.id}-beat-${position}`}>
+                <dt>Beat {position + 1} · {beat.label}</dt>
+                <dd>{beat.detail}</dd>
+              </Fragment>
+            ))}
+            <dt>CTA</dt>
+            <dd>{idea.storyboard.cta}</dd>
+            <dt>Caption</dt>
+            <dd>{idea.storyboard.caption}</dd>
+            <dt>Takeaway</dt>
+            <dd>{idea.storyboard.takeaway}</dd>
+          </dl>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function IdeasView({
   strategy,
   live,
   bridge,
-  captured,
+  ideas,
   onGenerate,
   onRecheckBridge,
   onCapture,
+  onDevelop,
+  onReloadIdeas,
 }: {
   strategy: StrategyState;
   live: boolean;
   bridge: BridgeHealth;
-  captured: CapturedIdea[];
+  ideas: IdeasState;
   onGenerate: (input: { idea: string; goal: string }) => void;
   onRecheckBridge: () => void;
-  onCapture: () => void;
+  onCapture: (input: IdeaInput) => void;
+  onDevelop: (id: string) => void;
+  onReloadIdeas: () => void;
 }) {
   const [idea, setIdea] = useState("");
   const [goal, setGoal] = useState("");
   const status = bridgeCopy[bridge];
   const { result, phase, error, evidence } = strategy;
   const blocked = bridge === "offline" || bridge === "logged-out" || phase === "loading";
+  // The working title is what you typed; the generated angle only fills in for it.
+  const captureTitle = idea.trim() || result?.angle || "";
+  const developed = ideas.items.filter((item) => item.storyboard).length;
+
+  function capture() {
+    onCapture({ title: captureTitle, goal: goal.trim() });
+    setIdea("");
+    setGoal("");
+  }
 
   return (
     <div className="view-stack">
@@ -971,9 +1185,9 @@ function IdeasView({
           <p className="hero-sub">Capture a working idea, test how it reads as short form and long form, then develop it into a storyboard with the local strategy bridge.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{captured.length}</strong><span>captured ideas</span></div>
+          <div><strong>{ideas.items.length}</strong><span>captured ideas</span></div>
           <div><strong>{evidence.length}</strong><span>outlier reels as evidence</span></div>
-          <div className="lime"><strong>{result ? 1 : 0}</strong><span>angles generated</span></div>
+          <div className="lime"><strong>{developed}</strong><span>storyboards</span></div>
         </div>
       </section>
 
@@ -1032,7 +1246,7 @@ function IdeasView({
         <div className="panel-foot">
           <span>Uses the local strategy bridge. Nothing is sent to an API key.</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="secondary-button" type="button" onClick={onCapture} disabled={!result}>Capture idea</button>
+            <button className="secondary-button" type="button" onClick={capture} disabled={!captureTitle}>Capture idea</button>
             <button className="primary-button" type="button" onClick={() => onGenerate({ idea, goal })} disabled={blocked}>Generate angle <ArrowRight size={15} /></button>
           </div>
         </div>
@@ -1055,29 +1269,45 @@ function IdeasView({
               <dt>Proof to show</dt><dd>{result.proofToShow.join(", ")}</dd>
               <dt>Cautions</dt><dd>{result.cautions.join(", ")}</dd>
             </dl>
-            <div><button className="secondary-button" type="button" onClick={onCapture}>Capture idea</button></div>
+            <div><button className="secondary-button" type="button" onClick={capture} disabled={!captureTitle}>Capture idea</button></div>
           </div>
         )}
       </section>
 
-      {captured.length > 0 && (
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="kicker">Captured ideas</p>
-              <h2>This session</h2>
-              <p>Writing them to the ideas table lands with ticket 08.</p>
-            </div>
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p className="kicker">Idea repository</p>
+            <h2>Captured ideas</h2>
+            <p>Stored in the ideas table. Develop sends the idea and the evidence packet to the bridge.</p>
           </div>
-          {captured.map((item, index) => (
-            <div className="idea-row" key={item.id}>
-              <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              <div><small>{item.evidenceCount} reels as evidence</small><h3>{item.angle}</h3></div>
-              <span className="state">Not saved</span>
-            </div>
-          ))}
-        </section>
-      )}
+          <button className="ghost-button" type="button" onClick={onReloadIdeas}>
+            <ArrowsClockwise size={13} /> Reload
+          </button>
+        </div>
+        {ideas.error && (
+          <div className="strategy-error">
+            <WarningCircle size={20} weight="fill" />
+            <h3>The last idea action failed</h3>
+            <p>{ideas.error}</p>
+          </div>
+        )}
+        {ideas.phase === "loading" && <div className="empty-state">Reading the ideas table.</div>}
+        {ideas.phase === "error" && <div className="empty-state">The ideas table is unreachable.</div>}
+        {ideas.phase === "ready" && ideas.items.length === 0 && (
+          <div className="empty-state">No idea captured yet. Capture one above, or from a card in Discover.</div>
+        )}
+        {ideas.items.map((item, index) => (
+          <IdeaRow
+            key={item.id}
+            idea={item}
+            index={index}
+            developing={ideas.developing === item.id}
+            blocked={blocked || (ideas.developing !== null && ideas.developing !== item.id)}
+            onDevelop={onDevelop}
+          />
+        ))}
+      </section>
 
       <div className="idea-columns">
         <section>
@@ -1300,7 +1530,7 @@ function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: C
         <tbody>
           {runs.slice(0, 10).map((run) => (
             <tr key={run.id}>
-              <td><strong>{formatStarted(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
+              <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
               <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
               <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
               <td className="right num">{run.creatorsChecked}</td>

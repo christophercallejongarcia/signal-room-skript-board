@@ -1,7 +1,14 @@
 import http from "node:http";
 import { Codex } from "@openai/codex-sdk";
 import { codexAuthState } from "./auth.mjs";
-import { buildStrategyPrompt, strategyOutputSchema, validateStrategyRequest } from "./request.mjs";
+import {
+  buildStoryboardPrompt,
+  buildStrategyPrompt,
+  storyboardOutputSchema,
+  strategyOutputSchema,
+  validateStoryboardRequest,
+  validateStrategyRequest,
+} from "./request.mjs";
 
 const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.BRIDGE_PORT || "3211", 10);
@@ -52,8 +59,8 @@ function createCodex() {
   return new Codex();
 }
 
-async function runStrategy(input) {
-  const request = validateStrategyRequest(input);
+/** One Codex turn under the read-only sandbox. Both routes differ only in prompt and schema. */
+async function runCodex(prompt, outputSchema) {
   if (codexAuthState() === "logged-out") {
     throw Object.assign(new Error("Codex is not logged in. Run `codex login` in a terminal."), { status: 503 });
   }
@@ -73,16 +80,32 @@ async function runStrategy(input) {
       skipGitRepoCheck: false,
     });
 
-    const turn = await thread.run(buildStrategyPrompt(request), {
-      outputSchema: strategyOutputSchema,
-      signal: controller.signal,
-    });
-
+    const turn = await thread.run(prompt, { outputSchema, signal: controller.signal });
     return JSON.parse(turn.finalResponse);
   } finally {
     clearTimeout(timeout);
   }
 }
+
+/** Both POST routes: validate, run, and report the same way. A Map so no path resolves through Object.prototype. */
+const routes = new Map([
+  [
+    "/v1/strategy",
+    {
+      label: "Strategy",
+      failure: "The local Codex strategy run failed.",
+      run: (input) => runCodex(buildStrategyPrompt(validateStrategyRequest(input)), strategyOutputSchema),
+    },
+  ],
+  [
+    "/v1/storyboard",
+    {
+      label: "Storyboard",
+      failure: "The local Codex storyboard run failed.",
+      run: (input) => runCodex(buildStoryboardPrompt(validateStoryboardRequest(input)), storyboardOutputSchema),
+    },
+  ],
+]);
 
 const server = http.createServer(async (request, response) => {
   const origin = request.headers.origin;
@@ -106,16 +129,16 @@ const server = http.createServer(async (request, response) => {
     );
   }
 
-  if (request.method === "POST" && url.pathname === "/v1/strategy") {
+  const route = request.method === "POST" ? routes.get(url.pathname) : undefined;
+  if (route) {
     try {
       const input = await readJson(request);
-      const result = await runStrategy(input);
-      return sendJson(response, 200, result, origin);
+      return sendJson(response, 200, await route.run(input), origin);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown bridge error.";
       const status = error?.status ?? (/required|must be|too large|Unexpected token|JSON/.test(message) ? 400 : 500);
-      const exposed = status === 500 ? "The local Codex strategy run failed." : message;
-      console.error("Strategy request failed:", message);
+      const exposed = status === 500 ? route.failure : message;
+      console.error(`${route.label} request failed:`, message);
       return sendJson(response, status, { error: exposed, codex: codexAuthState() }, origin);
     }
   }

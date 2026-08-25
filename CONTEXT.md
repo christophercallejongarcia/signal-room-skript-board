@@ -69,8 +69,12 @@ Nicht: "Titel" (Titel ist das YouTube-Pendant), "Opener", "Headline".
 ## Ergänzende Begriffe
 
 **Idea**
-Ein gespeicherter Content-Ansatz (Titel, Ziel, Storyboard) in der Tabelle `ideas`; der Strategy-Provider liefert dafür den Entwurf als `StrategyResponse` (angle, rationale, opening, proofToShow, cautions).
+Ein gespeicherter Content-Ansatz in der Tabelle `ideas`: Arbeitstitel, optionales Ziel, optionales Quell-Signal (`sourceSignalId`, `sourceCreator`), Status und Storyboard. Der Status ist `captured`, `developed`, `produced` oder `dropped`; die erlaubten Übergänge stehen in `lib/ideas.ts`. Capture geht aus dem Ideas-Formular und aus einer Karte in Discover oder Briefing. Der Strategy-Provider liefert daneben den Angle-Entwurf als `StrategyResponse` (angle, rationale, opening, proofToShow, cautions).
 Nicht: "Draft", "Konzept".
+
+**Storyboard**
+Der Short-Form-Plan an einer Idea: `hook` (erste drei Sekunden), genau drei `beats` mit Label und Detail, `cta`, `caption` (Zeilenumbrüche bleiben erhalten) und `takeaway`. Entsteht im Develop-Lauf über `POST /api/ideas/develop`, der Bridge antwortet auf `/v1/storyboard` gegen `storyboardOutputSchema`. Ein Develop-Lauf hält die Idea über `developRunId`; startet ein zweiter Lauf, wird das Ergebnis des ersten verworfen.
+Nicht: "Skript", "Outline", "Shotlist".
 
 **Strategy-Provider**
 Die Komponente, die aus einem Evidenzpaket eine Idea erzeugt; läuft über den lokalen Bridge mit Codex SDK, siehe ADR-0004. Antwortet auf Deutsch.

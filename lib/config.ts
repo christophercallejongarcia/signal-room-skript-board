@@ -19,3 +19,5 @@ export const STRATEGY_GOAL =
   "One reel that turns the strongest evidence in the corpus into something the viewer can act on.";
 export const STRATEGY_AUDIENCE =
   process.env.NEXT_PUBLIC_STRATEGY_AUDIENCE || "The audience you build for. Describe it in .env.local.";
+/** The only AI endpoint the app knows. Browser and server routes both go here (ADR-0004). */
+export const STRATEGY_BRIDGE_URL = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL || "http://127.0.0.1:3211";

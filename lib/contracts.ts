@@ -105,6 +105,54 @@ export type StrategyResponse = {
   cautions: string[];
 };
 
+/** Where an Idea stands. captured = only the working title, developed = a storyboard hangs on it. */
+export type IdeaStatus = "captured" | "developed" | "produced" | "dropped";
+
+/** One of the three middle beats of a short-form storyboard. */
+export type StoryboardBeat = { label: string; detail: string };
+
+/** The short-form plan the Strategy-Provider returns for one Idea. */
+export type Storyboard = {
+  /** The first three seconds, one line. */
+  hook: string;
+  /** Exactly three, in order. */
+  beats: StoryboardBeat[];
+  cta: string;
+  caption: string;
+  /** What the viewer can do after watching. */
+  takeaway: string;
+};
+
+/** A saved content approach. Lives in the ideas table, developed through the Bridge. */
+export type Idea = {
+  id: string;
+  title: string;
+  goal?: string;
+  status: IdeaStatus;
+  /** id of the Signal the Idea was captured from, when it came off a card. */
+  sourceSignalId?: string;
+  /** Handle of that Signal's Creator, kept so the list reads without a join. */
+  sourceCreator?: string;
+  /** https link back to that Signal, kept for the same reason. */
+  sourceUrl?: string;
+  storyboard?: Storyboard;
+  /** Set while a develop run is in flight. Only the run holding it may write back. */
+  developRunId?: string;
+  developedAt?: string;
+  /** Size of the evidence packet the storyboard was built from. */
+  evidenceCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** What the Bridge needs for one develop run: the Idea plus its evidence packet. */
+export type StoryboardRequest = {
+  goal: string;
+  audience: string;
+  idea: { title: string; goal?: string };
+  evidence: StrategyEvidenceItem[];
+};
+
 export interface SourceConnector {
   readonly id: string;
   collect(creators: Creator[]): Promise<SignalRecord[]>;
@@ -122,7 +170,26 @@ export interface StorageAdapter {
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;
+  /** Newest first. */
+  listIdeas(limit?: number): Promise<Idea[]>;
+  /** Replaces the whole row for idea.id, so a retried capture never duplicates an idea. */
+  saveIdea(idea: Idea): Promise<void>;
+  /**
+   * Claims the idea for one develop run and hands back the claimed idea, or null
+   * when the idea is gone or cannot be developed. Only runId may settle the claim.
+   */
+  claimIdeaDevelop(id: string, runId: string, now: string): Promise<Idea | null>;
+  /**
+   * Ends one develop run: a storyboard writes it, null releases the claim.
+   * Returns null when a newer run has taken over, so the stale result is dropped.
+   */
+  settleIdeaDevelop(id: string, runId: string, result: SettleDevelop): Promise<Idea | null>;
 }
+
+/** Outcome handed to settleIdeaDevelop: a storyboard, or nothing when the run failed. */
+export type SettleDevelop =
+  | { storyboard: Storyboard; now: string; evidenceCount: number }
+  | { storyboard: null; now: string };
 
 export interface StrategyProvider {
   generate(request: StrategyRequest): Promise<StrategyResponse>;

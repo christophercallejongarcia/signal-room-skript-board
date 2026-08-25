@@ -15,6 +15,32 @@ export const runFields = {
   errors: v.array(v.object({ creatorId: v.string(), handle: v.string(), message: v.string() })),
 };
 
+/** Short-form plan attached to an idea; shared with convex/ideas.ts. */
+export const storyboardFields = {
+  hook: v.string(),
+  beats: v.array(v.object({ label: v.string(), detail: v.string() })),
+  cta: v.string(),
+  caption: v.string(),
+  takeaway: v.string(),
+};
+
+/** One saved content approach. developRunId is set only while a develop run is in flight. */
+export const ideaFields = {
+  id: v.string(),
+  title: v.string(),
+  goal: v.optional(v.string()),
+  status: v.union(v.literal("captured"), v.literal("developed"), v.literal("produced"), v.literal("dropped")),
+  sourceSignalId: v.optional(v.string()),
+  sourceCreator: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  storyboard: v.optional(v.object(storyboardFields)),
+  developRunId: v.optional(v.string()),
+  developedAt: v.optional(v.string()),
+  evidenceCount: v.optional(v.number()),
+  createdAt: v.string(),
+  updatedAt: v.string(),
+};
+
 export default defineSchema({
   creators: defineTable({
     id: v.string(),
@@ -49,12 +75,9 @@ export default defineSchema({
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])
     .index("by_published", ["publishedAt"]),
-  ideas: defineTable({
-    title: v.string(),
-    goal: v.optional(v.string()),
-    storyboard: v.optional(v.any()),
-    createdAt: v.string(),
-  }),
+  ideas: defineTable(ideaFields)
+    .index("by_external_id", ["id"])
+    .index("by_createdAt", ["createdAt"]),
   runs: defineTable(runFields)
     .index("by_external_id", ["id"])
     .index("by_startedAt", ["startedAt"]),
