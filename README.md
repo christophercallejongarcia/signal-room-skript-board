@@ -2,20 +2,22 @@
 
 # Signal Room Starter
 
-### Build your own creator-intelligence workspace without inheriting someone else's private playbook.
+### A private creator-intelligence workspace for Instagram reels.
 
-**Synthetic demo data · Replaceable adapters · Optional local Codex bridge · Agent-ready documentation**
+**Convex persistence · Apify Instagram connector · Local Codex bridge · Agent-ready documentation**
 
 [Quick start](#quick-start) · [Architecture](#the-system-at-a-glance) · [Make it yours](#make-it-yours) · [Security boundary](#the-public-private-boundary)
+
+**This repository is private and is not published.** See [ADR-0006](docs/adr/0006-repo-ist-privates-produkt.md).
 
 </div>
 
 ![Signal Room Starter interface](docs/assets/signal-room-starter.jpg)
 
-Signal Room Starter is a clean-room foundation for collecting public creator signals, ranking what deserves attention, turning evidence into a briefing, and developing ideas. It gives you the product shell and the seams. Your source choices, scoring theory, private prompts, and audience knowledge stay yours.
+Signal Room collects public creator signals, ranks what deserves attention, turns evidence into a briefing, and develops ideas into storyboards. It grew out of the clean-room starter that still sits at commit `37deeb0` on the public remote; everything since then is identity-specific and stays here. Source choices, scoring theory, prompts, and audience knowledge are part of the product now, not seams left open for someone else.
 
 > [!IMPORTANT]
-> Every creator, signal, score, title, metric, and briefing included here is synthetic. The demo ranker is an educational example, not a recommendation system.
+> The fixtures in `lib/demo-data.ts` are synthetic and only render when the store is empty. With a watchlist connected, every card, score and briefing comes from real collected data. The demo ranker is an educational example, not a recommendation system.
 
 ## What you get
 
@@ -172,15 +174,14 @@ Full recipes are in [docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md).
 
 ![Public and private boundary separating the starter shell from identity-specific intelligence](docs/diagrams/rendered/public-private-boundary.png)
 
-This repository intentionally does **not** include:
+The boundary moved when this repository became private (ADR-0006). The public starter at `37deeb0` still holds the line in the diagram. Here, the watchlist, the outlier thresholds, the strategy prompts and the positioning are the product.
 
-- a real creator watchlist
-- production collection actors or provider IDs
-- private outlier logic, thresholds, weights, or calibration data
-- personal audience profiles or brand strategy
-- historical runtime output, drafts, or research
-- production prompts or evaluation sets
-- secrets, session material, tokens, cookies, or account identifiers
+What stays out of Git even so:
+
+- secrets, session material, tokens, cookies, and account identifiers
+- everything in `.env.local`, including the strategy goal and audience
+- the collected corpus and the cover cache (`data/`, ignored)
+- the local issue tracker and review output (`.scratch/`, `reviews/`, ignored)
 
 Read [docs/SECURITY.md](docs/SECURITY.md) before connecting any real account.
 
@@ -190,7 +191,7 @@ Read [docs/SECURITY.md](docs/SECURITY.md) before connecting any real account.
 app/                    Next.js shell and visual system
 components/             Interactive workspace
 lib/contracts.ts        Stable extension interfaces
-lib/demo-data.ts        Clearly synthetic fixtures
+lib/demo-data.ts        Synthetic fixtures, rendered only when the store is empty
 lib/demo-score.ts       Transparent educational ranker
 bridge/                 Optional localhost Codex process
 tests/                  Contract and safety tests

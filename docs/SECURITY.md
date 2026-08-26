@@ -1,6 +1,6 @@
 # Security Model
 
-This starter is safe only as a synthetic local demo until you connect real services. Every real adapter changes the threat model.
+This workspace is safe only as a synthetic local demo until real services are connected. Every real adapter changes the threat model, and this repository runs with all of them connected.
 
 ## Trust boundaries
 
@@ -57,6 +57,8 @@ Collect the smallest public dataset that supports the stated feature. Do not col
 This starter drafts and explains. It does not publish, message, buy, delete, or modify third-party systems. Add an explicit human approval boundary before any such action.
 
 ## Public release checklist
+
+**Does not apply to this repository.** Signal Room is private and is not published (ADR-0006); the public starter stays at commit `37deeb0` and is not updated from here. The checklist stays on record for the case where a generic part is later cherry-picked out into the public starter.
 
 Before making a derived repository public:
 

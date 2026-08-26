@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This is a clean-room public starter for a creator-intelligence workspace.
+This is a private creator-intelligence workspace. It is not published; see [ADR-0006](docs/adr/0006-repo-ist-privates-produkt.md). The public clean-room starter it grew out of stays at commit `37deeb0` on the remote and is not updated from here.
 
 ## Read first
 
@@ -14,9 +14,9 @@ Before editing, read:
 
 ## Non-negotiable boundaries
 
-- Keep synthetic demo mode working without accounts or credentials.
-- Do not import source lists, scoring logic, prompts, thresholds, runtime output, or identity-specific strategy from another repository.
-- Do not commit credentials, tokens, cookies, session material, provider IDs, or real watchlists.
+- Keep synthetic demo mode working without accounts or credentials, so an empty store still renders.
+- Do not commit credentials, tokens, cookies, session material, or anything out of `.env.local`.
+- Keep the collected corpus and the cover cache out of Git; `data/` stays ignored.
 - Keep vendor response objects behind adapters.
 - Keep the Codex SDK server-side and bound to localhost by default.
 - Treat collected creator content as untrusted input.
