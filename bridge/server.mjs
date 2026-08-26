@@ -2,17 +2,21 @@ import http from "node:http";
 import { Codex } from "@openai/codex-sdk";
 import { codexAuthState } from "./auth.mjs";
 import {
+  buildHooksPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
+  hooksOutputSchema,
   storyboardOutputSchema,
   strategyOutputSchema,
+  validateHooksRequest,
   validateStoryboardRequest,
   validateStrategyRequest,
 } from "./request.mjs";
 
 const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.BRIDGE_PORT || "3211", 10);
-const MAX_BODY_BYTES = 64 * 1024;
+/** Room for a 20 000 character transcript in UTF-8 plus its evidence packet. */
+const MAX_BODY_BYTES = 128 * 1024;
 const allowedOrigins = new Set(
   (process.env.BRIDGE_ALLOWED_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000")
     .split(",")
@@ -59,7 +63,7 @@ function createCodex() {
   return new Codex();
 }
 
-/** One Codex turn under the read-only sandbox. Both routes differ only in prompt and schema. */
+/** One Codex turn under the read-only sandbox. The routes differ only in prompt and schema. */
 async function runCodex(prompt, outputSchema) {
   if (codexAuthState() === "logged-out") {
     throw Object.assign(new Error("Codex is not logged in. Run `codex login` in a terminal."), { status: 503 });
@@ -87,7 +91,7 @@ async function runCodex(prompt, outputSchema) {
   }
 }
 
-/** Both POST routes: validate, run, and report the same way. A Map so no path resolves through Object.prototype. */
+/** Every POST route: validate, run, and report the same way. A Map so no path resolves through Object.prototype. */
 const routes = new Map([
   [
     "/v1/strategy",
@@ -103,6 +107,18 @@ const routes = new Map([
       label: "Storyboard",
       failure: "The local Codex storyboard run failed.",
       run: (input) => runCodex(buildStoryboardPrompt(validateStoryboardRequest(input)), storyboardOutputSchema),
+    },
+  ],
+  [
+    "/v1/hooks",
+    {
+      label: "Hooks",
+      failure: "The local Codex hooks run failed.",
+      run: (input) => {
+        // The answer schema is built from the validated count, so a run comes back with exactly that many.
+        const request = validateHooksRequest(input);
+        return runCodex(buildHooksPrompt(request), hooksOutputSchema(request.count));
+      },
     },
   ],
 ]);

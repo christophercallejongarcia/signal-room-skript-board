@@ -217,6 +217,64 @@ export type FormatReview = {
   risingCreators: RisingCreator[];
 };
 
+/** The five hypotheses a Hook variant tests. The board groups by these. */
+export type HookHypothesis = "curiosity" | "list" | "contrast" | "promise" | "story";
+
+/** One outlier Reel cited under a Hook variant. Resolved from the evidence packet, never invented. */
+export type HookEvidence = {
+  /** That Reel's own Hook: its first caption line, which Instagram carries as the title. */
+  hook: string;
+  /** Creator handle, including the leading @. */
+  creator: string;
+  outlier: number;
+};
+
+/** One proposed first line, with the hypothesis it tests and the Reels that back it. */
+export type HookVariant = {
+  hook: string;
+  hypothesis: HookHypothesis;
+  rationale: string;
+  evidence: HookEvidence[];
+};
+
+/** One hypothesis section of the board. Empty sections are not carried. */
+export type HookGroup = {
+  hypothesis: HookHypothesis;
+  label: string;
+  hint: string;
+  variants: HookVariant[];
+};
+
+/**
+ * One logged Hooks-Board run. Every start writes its own row, so two runs
+ * kicked off in parallel never overwrite each other.
+ */
+export type HookRun = {
+  id: string;
+  createdAt: string;
+  /** Bounded first characters of the input, shown in the history rail. */
+  sourceExcerpt: string;
+  /** Characters of the input as pasted, before the excerpt was cut. */
+  sourceLength: number;
+  direction?: string;
+  /** Hooks asked for: 5, 10 or 15. The answer can hold fewer. */
+  requested: number;
+  kind: "transcript" | "one-liner";
+  groups: HookGroup[];
+  /** Size of the evidence packet the board was written against. */
+  evidenceCount: number;
+};
+
+/** What the Bridge needs for one Hooks-Board run: the source plus its evidence packet. */
+export type HooksRequest = {
+  goal: string;
+  audience: string;
+  source: string;
+  direction?: string;
+  count: number;
+  evidence: StrategyEvidenceItem[];
+};
+
 /** What the Bridge needs for one develop run: the Idea plus its evidence packet. */
 export type StoryboardRequest = {
   goal: string;
@@ -246,6 +304,10 @@ export interface StorageAdapter {
   listFormatReviews(limit?: number): Promise<FormatReview[]>;
   /** Replaces the whole row for review.id, so a rerun inside the same month overwrites it. */
   saveFormatReview(review: FormatReview): Promise<void>;
+  /** Newest first. */
+  listHookRuns(limit?: number): Promise<HookRun[]>;
+  /** Replaces the whole row for run.id, so a retried write never duplicates a run. */
+  saveHookRun(run: HookRun): Promise<void>;
   /** Newest first. */
   listIdeas(limit?: number): Promise<Idea[]>;
   /** Replaces the whole row for idea.id, so a retried capture never duplicates an idea. */

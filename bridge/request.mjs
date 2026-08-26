@@ -12,6 +12,11 @@ const MAX_CREATOR = 120;
 const MAX_CAPTION = 320;
 const MAX_IDEA_TITLE = 300;
 const MAX_IDEA_GOAL = 1_200;
+/** Above the app's HOOK_INPUT_MAX (20 000), for the same reason as every other ceiling here. */
+const MAX_SOURCE = 24_000;
+/** Mirrors HOOK_COUNTS in lib/config.ts. A request is snapped onto one of these. */
+const HOOK_COUNTS = [5, 10, 15];
+const HOOK_COUNT_MAX = 15;
 
 function cleanString(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -147,6 +152,83 @@ export function buildStoryboardPrompt(request) {
       "cta is the single action at the end. caption is the post caption, first line usable as a Hook.",
       "takeaway names what the viewer can do after watching.",
       "Ground the beats in the named Reels; say which Outlier carries which beat inside the detail.",
+    ],
+    request,
+  );
+}
+
+/** The five hypotheses the board groups by. Mirrors HOOK_HYPOTHESES in lib/hooks-board.ts. */
+const HOOK_HYPOTHESES = ["curiosity", "list", "contrast", "promise", "story"];
+
+/** A hooks run: the same packet plus the source material the hooks are written for. */
+export function validateHooksRequest(input) {
+  const { goal, audience, evidence } = validateStrategyRequest(input);
+  const source = cleanString(input.source, MAX_SOURCE);
+  if (!source) throw new Error("source is required.");
+  const direction = cleanString(input.direction, MAX_GOAL);
+  const wanted = Math.round(cleanNumber(input.count, HOOK_COUNT_MAX));
+  // Snapped, not clamped: the answer schema is built from this number, so a value
+  // between the steps would ask Codex for a count no caller can request.
+  const count = HOOK_COUNTS.reduce((best, option) =>
+    Math.abs(option - wanted) < Math.abs(best - wanted) ? option : best,
+  );
+
+  return {
+    goal,
+    audience,
+    source,
+    ...(direction ? { direction } : {}),
+    count,
+    evidence,
+  };
+}
+
+/**
+ * Built per run: exactly the requested number of hooks, so a run that asked for
+ * 15 cannot come back with three and leave the stored count contradicting the board.
+ */
+export function hooksOutputSchema(count) {
+  return {
+  type: "object",
+  properties: {
+    hooks: {
+      type: "array",
+      minItems: count,
+      maxItems: count,
+      items: {
+        type: "object",
+        properties: {
+          hook: { type: "string" },
+          hypothesis: { type: "string", enum: HOOK_HYPOTHESES },
+          rationale: { type: "string" },
+          evidence: { type: "array", items: { type: "string" }, maxItems: 2 },
+        },
+        required: ["hook", "hypothesis", "rationale", "evidence"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["hooks"],
+  additionalProperties: false,
+  };
+}
+
+/** One hooks run: first-three-seconds variants for the source in the packet. */
+export function buildHooksPrompt(request) {
+  return buildPrompt(
+    [
+      `Write exactly ${request.count} Hook variants for the source material in the packet below.`,
+      "A Hook is the first spoken line of the Reel, the first three seconds. One sentence, no meta talk.",
+      "hypothesis names what the Hook tests, and is exactly one of:",
+      "- curiosity: opens a question only the Reel closes.",
+      "- list: names the number up front, the viewer stays for the items.",
+      "- contrast: sets two named options against each other.",
+      "- promise: states the result first and backs it afterwards.",
+      "- story: starts inside a scene whose outcome is still missing.",
+      "Spread the variants over several hypotheses; do not put them all under one.",
+      "rationale is one sentence on why this Hook should carry for this source.",
+      "evidence lists at most two evidence titles, copied exactly as written in the packet.",
+      "Only cite titles that appear in the packet. Invent nothing; leave evidence empty instead.",
     ],
     request,
   );

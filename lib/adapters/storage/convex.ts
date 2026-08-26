@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
+import { HOOK_RUN_HISTORY } from "../../config.ts";
 import { anyApi } from "convex/server";
-import type { Creator, FormatReview, Idea, Run, SaveResult, SignalRecord, StorageAdapter } from "../../contracts";
+import type { Creator, FormatReview, HookRun, Idea, Run, SaveResult, SignalRecord, StorageAdapter } from "../../contracts";
 
 /** Uses anyApi so the adapter compiles before `npx convex dev` generates convex/_generated. */
 export function createConvexStorage(url: string): StorageAdapter & { upsertCreator(creator: Creator): Promise<void> } {
@@ -38,6 +39,12 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     },
     async saveFormatReview(review) {
       await client.mutation(anyApi.formatReviews.upsert, { review });
+    },
+    async listHookRuns(limit = HOOK_RUN_HISTORY) {
+      return (await client.query(anyApi.hookRuns.list, { limit })) as HookRun[];
+    },
+    async saveHookRun(run) {
+      await client.mutation(anyApi.hookRuns.upsert, { run });
     },
     async listIdeas(limit = 50) {
       return (await client.query(anyApi.ideas.list, { limit })) as Idea[];

@@ -46,7 +46,7 @@ Design-Tokens (aus den Frames abgeleitet):
 - Tabelle mit Spalten Creator / Status / Corpus / Latest video / Controls.
 - AK: Wie `cue_0006.jpg` und `cue_0008.jpg`.
 
-### T1.6 Formular-Panels (Ideas, Titles, Thumbnail Lab)
+### T1.6 Formular-Panels (Ideas, Hooks, Thumbnail Lab)
 - Dunkle Panels mit Lime-Border-Glow beim aktiven Panel, Primary-Button Lime mit dunklem Text.
 - AK: Wie `cue_0013.jpg`.
 
@@ -149,9 +149,10 @@ Definition: ADR-0003.
 - Idea speichern (Storage), "Develop idea" erzeugt Short-Form-Storyboard (Hook, 3 Beats, CTA, Caption-Vorschlag).
 - AK: Storyboard wird in `ideas` persistiert und in der Liste angezeigt.
 
-### T5.3 Titles → Hooks-Board
+### T5.3 Titles → Hooks-Board `[done]`
 - Für Instagram: Transkript/Idee rein, N Hook-Varianten (erste 3 Sekunden) gruppiert nach Hypothese, gegen Outlier-Korpus geprüft.
 - AK: 10 Hooks pro Run, History gespeichert.
+- Gebaut wie in Ticket 09: Eingabe bis 20.000 Zeichen, Anzahl wählbar (5, 10, 15), jeder Lauf eine eigene Zeile in `hookRuns`, History-Rail lädt einen Lauf wieder auf.
 
 ### T5.4 Thumbnail Lab → Cover-Lab
 - Cover-Prompt-Template (4:5), Faceless/Face-Toggle, Generierung über Codex (GPT Image) oder Gemini Image. Provider-Switch.

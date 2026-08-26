@@ -27,8 +27,9 @@ function requireTransition(from: IdeaStatus, to: IdeaStatus) {
   if (!canTransition(from, to)) throw new Error(`An idea cannot move from ${from} to ${to}.`);
 }
 
-function bounded(value: string | undefined, max: number) {
-  return (value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+/** One bounded line: whitespace collapsed, trimmed, cut. Shared with lib/hooks-board.ts. */
+export function bounded(value: unknown, max: number) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
 /** Everything one capture carries. The form fills the first two, a card fills all five. */

@@ -51,6 +51,9 @@ import {
   FORMAT_REVIEW_RISING_LIMIT,
   FORMAT_REVIEW_SMALL_AUDIENCE,
   FORMAT_WINDOW_DAYS,
+  HOOK_COUNTS,
+  HOOK_INPUT_MAX,
+  HOOK_RUN_HISTORY,
   OUTLIER_THRESHOLD,
   STRATEGY_AUDIENCE,
   STRATEGY_BRIDGE_URL,
@@ -58,11 +61,12 @@ import {
   STRATEGY_EVIDENCE_WINDOW_DAYS,
   STRATEGY_GOAL,
 } from "@/lib/config";
+import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
 import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { FormatReview, FormatReviewPattern, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
+import type { FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
@@ -75,6 +79,17 @@ type IdeasState = {
   /** id of the idea whose develop run is in flight, null when none is. */
   developing: string | null;
   error: string;
+};
+
+/** The Hooks board as its tab sees it. The runs are the history rail, newest first. */
+type HooksState = {
+  runs: HookRun[];
+  phase: "loading" | "ready" | "error";
+  /** Runs in flight. Two starts are two entries, so this counts instead of holding one id. */
+  running: number;
+  error: string;
+  /** id of the run on the board, null reads the newest one. */
+  selected: string | null;
 };
 
 /** The monthly Format-Review as the Format Signals tab sees it. */
@@ -99,7 +114,7 @@ const navItems = [
   { id: "channels", label: "Tracked Channels", icon: Binoculars },
   { id: "ideas", label: "Ideas", icon: Lightbulb },
   { id: "thumbnails", label: "Thumbnail Lab", icon: ImageSquare },
-  { id: "titles", label: "Titles", icon: TextAa },
+  { id: "hooks", label: "Hooks", icon: TextAa },
   { id: "profile", label: "Profile", icon: UserCircle },
 ] as const;
 
@@ -196,6 +211,17 @@ export function SignalRoom() {
     }
   }
 
+  async function loadHookRuns() {
+    try {
+      const response = await fetch("/api/hooks", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { runs: HookRun[] };
+      setHooks((current) => ({ ...current, runs: data.runs, phase: "ready" }));
+    } catch {
+      setHooks((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
   async function loadFormatReview() {
     try {
       const response = await fetch("/api/format-reviews", { cache: "no-store" });
@@ -242,6 +268,7 @@ export function SignalRoom() {
     loadStore().catch(() => {});
     loadRuns();
     loadIdeas();
+    loadHookRuns();
     loadFormatReview();
     checkBridge();
   }, []);
@@ -252,6 +279,7 @@ export function SignalRoom() {
   const [bridge, setBridge] = useState<BridgeHealth>("checking");
   const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
+  const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
 
   const rankedSignals = useMemo(() => rankCorpus(signals, creators, live), [creators, signals, live]);
 
@@ -455,6 +483,59 @@ export function SignalRoom() {
     }
   }
 
+  /**
+   * One Hooks-Board run. Each start posts on its own and lands as its own entry,
+   * so two runs kicked off in parallel both keep their board.
+   */
+  async function generateHooks(input: { source: string; direction: string; count: number }) {
+    let request: HookRequestInput;
+    try {
+      // The same validation the route runs, so an oversized paste is refused before it travels.
+      request = parseHookRequest(input);
+    } catch (error) {
+      setHooks((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "The input was refused.",
+      }));
+      return;
+    }
+    if (!live) {
+      setHooks((current) => ({
+        ...current,
+        error: "The corpus is empty, the cards show demo fixtures. Add a creator to the watchlist first.",
+      }));
+      return;
+    }
+
+    setHooks((current) => ({ ...current, running: current.running + 1, error: "" }));
+    try {
+      const response = await fetch("/api/hooks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { run?: HookRun; error?: string };
+      if (!response.ok || !payload.run) {
+        throw new Error(payload.error || `The hooks run answered with HTTP ${response.status}.`);
+      }
+      const run = payload.run;
+      setHooks((current) => ({
+        ...current,
+        runs: [run, ...current.runs.filter((item) => item.id !== run.id)].slice(0, HOOK_RUN_HISTORY),
+        selected: run.id,
+        phase: "ready",
+      }));
+    } catch (error) {
+      setHooks((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "The hooks run failed.",
+      }));
+      checkBridge();
+    } finally {
+      setHooks((current) => ({ ...current, running: Math.max(0, current.running - 1) }));
+    }
+  }
+
   // The Discover counters read the same corpus its cards do: own uploads are not in it.
   const research = withoutOwned(rankedSignals, creators);
   const knownVideos = research.length;
@@ -551,7 +632,18 @@ export function SignalRoom() {
           />
         )}
         {activeTab === "thumbnails" && <ThumbnailsView />}
-        {activeTab === "titles" && <TitlesView />}
+        {activeTab === "hooks" && (
+          <HooksView
+            hooks={hooks}
+            live={live}
+            bridge={bridge}
+            evidence={evidence}
+            onGenerate={generateHooks}
+            onRecheckBridge={checkBridge}
+            onSelect={(id) => setHooks((current) => ({ ...current, selected: id }))}
+            onReload={loadHookRuns}
+          />
+        )}
         {activeTab === "profile" && <ProfileView creators={creators} rankedSignals={rankedSignals} runs={runs} runsState={runsState} />}
       </main>
 
@@ -1639,77 +1731,200 @@ function ThumbnailsView() {
   );
 }
 
-function TitlesView() {
+/**
+ * The Hooks board. Paste a transcript, an idea or one line, ask for 5, 10 or 15
+ * first-three-second variants, and read them grouped by the hypothesis each one
+ * tests. Every run is its own entry in the history rail.
+ */
+function HooksView({
+  hooks,
+  live,
+  bridge,
+  evidence,
+  onGenerate,
+  onRecheckBridge,
+  onSelect,
+  onReload,
+}: {
+  hooks: HooksState;
+  live: boolean;
+  bridge: BridgeHealth;
+  evidence: StrategyEvidenceItem[];
+  onGenerate: (input: { source: string; direction: string; count: number }) => void;
+  onRecheckBridge: () => void;
+  onSelect: (id: string) => void;
+  onReload: () => void;
+}) {
   const [source, setSource] = useState("");
   const [direction, setDirection] = useState("");
-  const history = [
-    ["Aug 11", "Transcript", "10 titles", "part 1, free websites. So this entire website, from the beautiful backdrop that you're seeing.", 28053],
-    ["Aug 8", "Transcript", "15 titles", "recording video. A few weeks ago, something became very clear.", 26184],
-    ["Aug 6", "One liner", "15 titles", "how to replace your ai subscription with this one simple trick", 77],
-    ["Aug 6", "One liner", "5 titles", "A video about the one Claude Code habit that separates people who ship from people who keep restarting.", 229],
-  ] as const;
-  const titles = [
-    ["I Let an Agent Run the Workflow", "Curiosity"],
-    ["The Memory Layer You Can Actually Inspect", "Clarity"],
-    ["Stop Hiding the Receipts", "Contrarian"],
-    ["A Small-Team AI System That Survives Monday", "Utility"],
-  ];
+  const [count, setCount] = useState<number>(HOOK_COUNTS[1]);
+  const status = bridgeCopy[bridge];
+  const length = source.trim().length;
+  const tooLong = length > HOOK_INPUT_MAX;
+  // tooLong stays clickable on purpose: the refusal names the count, the disabled button would not.
+  const blocked = bridge === "offline" || bridge === "logged-out" || length === 0;
+  // The newest run is the board until one is picked out of the history rail.
+  const shown = hooks.runs.find((run) => run.id === hooks.selected) ?? hooks.runs[0] ?? null;
+  const variants = shown ? shown.groups.reduce((total, group) => total + group.variants.length, 0) : 0;
+
   return (
     <div className="view-stack">
       <section className="hero">
         <div>
-          <p className="hero-kicker">Title lab / evidence backed</p>
-          <h1>Title board</h1>
-          <p className="hero-sub">Paste the transcript, the idea, or the one line you have. The desk reads it against your published titles and the tracked outlier corpus, then returns candidates grouped by the hypothesis each one is testing.</p>
+          <p className="hero-kicker">Hooks board / evidence backed</p>
+          <h1>Hooks</h1>
+          <p className="hero-sub">Paste the transcript, the idea, or the one line you have. The desk writes the first three seconds against the tracked outlier corpus and groups the variants by the hypothesis each one tests.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{history.length}</strong><span>saved boards</span></div>
-          <div><strong>10</strong><span>titles per run</span></div>
-          <div><strong>45-55</strong><span>target characters</span></div>
+          <div><strong>{hooks.runs.length}</strong><span>saved runs</span></div>
+          <div><strong>{count}</strong><span>hooks per run</span></div>
+          <div className="lime"><strong>{evidence.length}</strong><span>outlier reels as evidence</span></div>
         </div>
       </section>
 
       <div className="two-col">
         <section className="panel glow">
           <div className="panel-head">
-            <div><p className="kicker">Source material</p><h2>What is this video actually about</h2><p>Longer input produces sharper titles. A full transcript gives the desk the real hook, the real proof, and the real payoff to write against.</p></div>
+            <div>
+              <p className="kicker">Source material</p>
+              <h2>What is this reel actually about</h2>
+              <p>Longer input produces sharper hooks. A full transcript gives the desk the real proof and the real payoff to write against. Up to {formatNumber(HOOK_INPUT_MAX)} characters.</p>
+            </div>
             <div className="control-cluster">
               <div><span>Model</span><select defaultValue="strategy"><option value="strategy">Sol · strategy</option></select></div>
-              <div><span>Reasoning</span><select defaultValue="medium"><option>Low</option><option>Medium</option><option>High</option></select></div>
-              <div><span>Titles</span><select defaultValue="10"><option>5</option><option>10</option><option>15</option></select></div>
+              <div>
+                <span>Hooks</span>
+                <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
+                  {HOOK_COUNTS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
+
+          <div className={`bridge-status ${status.tone}`}>
+            <span className="dot" aria-hidden="true" />
+            <div>
+              <strong>{status.label}</strong>
+              <p>{status.hint}</p>
+            </div>
+            <button className="ghost-button" type="button" onClick={onRecheckBridge}>
+              <ArrowsClockwise size={13} /> Check again
+            </button>
+          </div>
+
+          <div className="evidence-note">
+            {live ? (
+              <>
+                <strong>{evidence.length} of at most {STRATEGY_EVIDENCE_LIMIT} outlier reels</strong>
+                <span>
+                  from {OUTLIER_THRESHOLD}x outlier up, last {STRATEGY_EVIDENCE_WINDOW_DAYS} days
+                  {evidence.length > 0 && `: ${[...new Set(evidence.map((item) => item.creator))].join(", ")}`}
+                </span>
+              </>
+            ) : (
+              <>
+                <strong>No corpus</strong>
+                <span>The cards show demo fixtures. The hooks run never sees them.</span>
+              </>
+            )}
+          </div>
+
           <div className="panel-body">
             <div>
-              <label htmlFor="title-source">Transcript, idea, or one liner</label>
-              <textarea id="title-source" style={{ minHeight: 180 }} placeholder="Paste the full transcript here, or write the premise in a sentence." value={source} onChange={(e) => setSource(e.target.value)} />
-              <p className="count">{source.length} characters</p>
+              <label htmlFor="hook-source">Transcript, idea, or one liner</label>
+              <textarea id="hook-source" style={{ minHeight: 180 }} placeholder="Paste the full transcript here, or write the premise in a sentence." value={source} onChange={(event) => setSource(event.target.value)} />
+              {/* Exact here, not abbreviated: this is the number the refusal counts against. */}
+              <p className={tooLong ? "count over" : "count"}>
+                {length} / {HOOK_INPUT_MAX} characters
+                {tooLong && ` · ${length - HOOK_INPUT_MAX} too many`}
+              </p>
             </div>
             <div>
-              <label htmlFor="title-direction">Direction · optional</label>
-              <textarea id="title-direction" placeholder="Angle it at agencies. Keep the Claude Code keyword in front." value={direction} onChange={(e) => setDirection(e.target.value)} />
+              <label htmlFor="hook-direction">Direction · optional</label>
+              <textarea id="hook-direction" placeholder="Angle it at agencies. Keep the tool name in the first three words." value={direction} onChange={(event) => setDirection(event.target.value)} />
             </div>
           </div>
           <div className="panel-foot">
             <span>Uses the local strategy bridge. Nothing is sent to an API key.</span>
-            <button className="primary-button" type="button">Generate titles</button>
+            <button className="primary-button" type="button" onClick={() => onGenerate({ source, direction, count })} disabled={blocked}>
+              Generate hooks <ArrowRight size={15} />
+            </button>
           </div>
-          <div className="panel" style={{ border: 0, borderTop: "1px solid var(--line)", borderRadius: 0 }}>
-            {titles.map(([title, intent], index) => (
-              <div className="idea-row" key={title}>
-                <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-                <div><small>{intent}</small><h3>{title}</h3></div>
-                <button className="icon-button" aria-label={`Open ${title}`}><ArrowRight size={14} /></button>
+
+          {hooks.running > 0 && (
+            <div className="strategy-loading">
+              <span /><span /><span />
+              <p>{hooks.running === 1 ? "Writing hooks against the evidence packet" : `${hooks.running} runs against the evidence packet`}</p>
+            </div>
+          )}
+          {hooks.error && (
+            <div className="strategy-error">
+              <WarningCircle size={20} weight="fill" />
+              <h3>No board</h3>
+              <p>{hooks.error}</p>
+            </div>
+          )}
+
+          {shown && (
+            <div className="hook-board">
+              <div className="hook-board-head">
+                <span>{variants} hooks from {shown.evidenceCount} outlier reels</span>
+                <span className="num">{formatStamp(shown.createdAt)}</span>
               </div>
-            ))}
-          </div>
+              {shown.groups.map((group) => (
+                <section className="hook-group" key={group.hypothesis}>
+                  <header>
+                    <h3>{group.label}</h3>
+                    <p>{group.hint}</p>
+                    <span className="num">{group.variants.length}</span>
+                  </header>
+                  {group.variants.map((variant, index) => (
+                    <article className="hook-row" key={`${group.hypothesis}-${index}`}>
+                      <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+                      <div>
+                        <h4>{variant.hook}</h4>
+                        <p>{variant.rationale}</p>
+                        <ul className="hook-evidence">
+                          {variant.evidence.map((item) => (
+                            <li key={`${item.creator}-${item.hook}`}>
+                              <strong>{formatOutlier(item.outlier)}</strong> {item.creator} · {item.hook}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              ))}
+            </div>
+          )}
+          {!shown && hooks.phase === "ready" && hooks.running === 0 && (
+            <div className="empty-state">No run yet. Paste the source above and generate the first board.</div>
+          )}
+          {hooks.phase === "loading" && <div className="empty-state">Reading the hook runs.</div>}
+          {hooks.phase === "error" && <div className="empty-state">The hookRuns table is unreachable.</div>}
         </section>
+
         <aside className="history-rail">
-          <div className="rail-head"><span>History</span><span>{history.length} saved</span></div>
-          {history.map(([when, kind, count, excerpt, chars]) => (
-            <article key={`${when}-${excerpt}`}>
-              <div><div className="when">{when} · {kind}<strong>{count}</strong></div><p>{excerpt}</p></div>
-              <span className="num">{formatNumber(chars)}</span>
+          <div className="rail-head">
+            <span>History</span>
+            <button className="ghost-button" type="button" onClick={onReload}>
+              <ArrowsClockwise size={12} /> {hooks.runs.length} saved
+            </button>
+          </div>
+          {hooks.runs.length === 0 && <div className="empty-state">Every run lands here.</div>}
+          {hooks.runs.map((run) => (
+            <article key={run.id} className={shown?.id === run.id ? "active" : undefined}>
+              <button type="button" onClick={() => onSelect(run.id)}>
+                <div className="when">
+                  {formatStamp(run.createdAt)} · {run.kind === "transcript" ? "Transcript" : "One liner"}
+                  <strong>{run.requested} hooks</strong>
+                </div>
+                <p>{run.sourceExcerpt}</p>
+              </button>
+              <span className="num">{formatNumber(run.sourceLength)}</span>
             </article>
           ))}
         </aside>

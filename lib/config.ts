@@ -29,3 +29,19 @@ export const FORMAT_EXAMPLE_LIMIT = 3;
 export const FORMAT_REVIEW_SMALL_AUDIENCE = 50_000;
 /** Small creators listed per Format-Review. */
 export const FORMAT_REVIEW_RISING_LIMIT = 5;
+/** Longest input the Hooks board accepts, in characters as pasted. */
+export const HOOK_INPUT_MAX = 20_000;
+/** How many hooks one run may ask for. */
+export const HOOK_COUNTS = [5, 10, 15] as const;
+/** From this many characters an input reads as a transcript rather than a one liner. */
+export const HOOK_TRANSCRIPT_MIN = 500;
+/** Outlier reels cited under one hook variant. */
+export const HOOK_EVIDENCE_PER_VARIANT = 2;
+/** Hook runs kept in the history rail. */
+export const HOOK_RUN_HISTORY = 20;
+/** Bounds for one line the Bridge returns on a hooks run. The Bridge is the untrusted side. */
+export const HOOK_LINE_MAX = 200;
+export const HOOK_RATIONALE_MAX = 400;
+export const HOOK_DIRECTION_MAX = 500;
+/** Characters of the input the history rail keeps. The board itself is the run's payload. */
+export const HOOK_SOURCE_EXCERPT = 240;

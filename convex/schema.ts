@@ -90,6 +90,44 @@ export const formatReviewFields = {
   risingCreators: v.array(v.object(risingCreatorFields)),
 };
 
+/**
+ * One Hook variant with the outlier reels cited under it; part of hookRunFields.
+ * The five hypotheses are declared once in HOOK_HYPOTHESES (lib/hooks-board.ts);
+ * they are restated as literals here so the stored document validates strictly.
+ */
+const hookVariantFields = {
+  hook: v.string(),
+  hypothesis: v.union(
+    v.literal("curiosity"),
+    v.literal("list"),
+    v.literal("contrast"),
+    v.literal("promise"),
+    v.literal("story"),
+  ),
+  rationale: v.string(),
+  evidence: v.array(v.object({ hook: v.string(), creator: v.string(), outlier: v.number() })),
+};
+
+/** One logged Hooks-Board run; shared with convex/hookRuns.ts. Every start writes its own row. */
+export const hookRunFields = {
+  id: v.string(),
+  createdAt: v.string(),
+  sourceExcerpt: v.string(),
+  sourceLength: v.number(),
+  direction: v.optional(v.string()),
+  requested: v.number(),
+  kind: v.union(v.literal("transcript"), v.literal("one-liner")),
+  groups: v.array(
+    v.object({
+      hypothesis: hookVariantFields.hypothesis,
+      label: v.string(),
+      hint: v.string(),
+      variants: v.array(v.object(hookVariantFields)),
+    }),
+  ),
+  evidenceCount: v.number(),
+};
+
 export default defineSchema({
   creators: defineTable({
     id: v.string(),
@@ -126,6 +164,9 @@ export default defineSchema({
     .index("by_creator", ["creatorId"])
     .index("by_published", ["publishedAt"]),
   ideas: defineTable(ideaFields)
+    .index("by_external_id", ["id"])
+    .index("by_createdAt", ["createdAt"]),
+  hookRuns: defineTable(hookRunFields)
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),
   formatReviews: defineTable(formatReviewFields)

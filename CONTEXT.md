@@ -78,6 +78,22 @@ Nicht: "Fremdnische", "External", "Competitor".
 Die erste Zeile der Caption bzw. die ersten drei Sekunden eines Reels; Hooks werden im Hooks-Board variiert und gegen den Outlier-Korpus geprüft.
 Nicht: "Titel" (Titel ist das YouTube-Pendant), "Opener", "Headline".
 
+**Hooks-Board**
+Der Tab, der aus Quellmaterial Hook-Varianten schreibt (ersetzt den früheren Titles-Tab). Eingabe ist ein Transkript, eine Idee oder ein Einzeiler bis `HOOK_INPUT_MAX` (20.000 Zeichen), dazu eine optionale Richtung und die Anzahl aus `HOOK_COUNTS` (5, 10, 15); längere Eingaben lehnt `parseHookRequest` (`lib/hooks-board.ts`) mit der gezählten Zeichenzahl ab. Der Lauf geht über `POST /api/hooks` an den Bridge-Endpunkt `/v1/hooks` gegen `hooksOutputSchema`, mit demselben Evidenzpaket wie ein Develop-Lauf.
+Nicht: "Titles", "Title board", "Headline-Generator".
+
+**Hypothese**
+Wogegen eine Hook-Variante testet: `curiosity` (Neugier-Lücke), `list` (Liste), `contrast` (Kontrast), `promise` (Versprechen) oder `story` (Story). Die Liste steht als `HOOK_HYPOTHESES` in `lib/hooks-board.ts` und ist die Gruppierung des Boards; `groupHooks` hält die Reihenfolge und lässt leere Gruppen weg.
+Nicht: "Kategorie", "Bucket", "Winkel" (Angle meint den Strategy-Entwurf).
+
+**Hook-Lauf**
+Ein protokollierter Lauf des Hooks-Boards in der Tabelle `hookRuns`: Zeitpunkt, Zeichenzahl und Auszug der Eingabe, angeforderte Anzahl, Art (`transcript` ab `HOOK_TRANSCRIPT_MIN`, sonst `one-liner`), das gruppierte Board und die Größe des Evidenzpakets. Jeder Start schreibt eine eigene Zeile mit eigener id, parallel gestartete Läufe überschreiben sich also nie; die History-Rail zeigt die letzten `HOOK_RUN_HISTORY` (20) und lädt einen Lauf wieder auf.
+Nicht: "Run" (Run meint den Sammel-Durchlauf), "Session", "Board-Historie".
+
+**Beleg**
+Das Outlier-Reel, das unter einer Hook-Variante steht: dessen eigener Hook, Creator-Handle und Outlier-Faktor. Bei Instagram ist der Titel eines Signals bereits die erste Caption-Zeile, also der Hook des Reels. Belege kommen ausschließlich aus dem Evidenzpaket; nennt die Antwort einen Titel, den das Paket nicht führt, fällt er weg, und eine Variante ohne brauchbare Nennung bekommt über `similarEvidence` die wortähnlichsten Outlier-Hooks.
+Nicht: "Quelle", "Referenz", "Zitat".
+
 ## Ergänzende Begriffe
 
 **Idea**

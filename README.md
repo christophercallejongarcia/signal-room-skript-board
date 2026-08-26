@@ -30,7 +30,7 @@ Signal Room collects public creator signals, ranks what deserves attention, turn
 | Tracked Channels | Add-channel flow and daily-watch model | Validation, scheduling, collection, persistence |
 | Ideas | Idea workspace and local strategy request | Your strategy prompt, model policy, approval flow |
 | Thumbnail Lab | Visual direction and constraint checklist | Image generation, testing data, brand system |
-| Titles | Title workbench and intent labels | Your title corpus and scoring rules |
+| Hooks | Hooks board: source material in, first-three-second variants grouped by hypothesis, run history | Your hook corpus, hypothesis set, and scoring rules |
 | Profile | Adapter status and private-boundary reminder | Authentication, accounts, billing, team settings |
 
 ## The system at a glance

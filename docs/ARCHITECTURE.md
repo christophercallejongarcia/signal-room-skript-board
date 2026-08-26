@@ -75,6 +75,12 @@ The generated draft is shown as an Idea draft. `Capture idea` writes it to the `
 
 `Develop idea` runs server-side through `POST /api/ideas/develop`, so the run claim and the bridge call sit in one place. The route selects the evidence packet from the stored corpus, claims the idea with a fresh run id, asks the bridge on `/v1/storyboard` for a Storyboard against `storyboardOutputSchema`, and writes it back only while that claim still holds. A second develop run on the same idea overwrites the claim, so the slower answer is dropped instead of overwriting the newer one; the route answers `{ stale: true }` and the tab reloads the list. A failed run releases the claim and leaves the idea where it was.
 
+### Hooks board
+
+The Hooks tab writes the first three seconds. `lib/hooks-board.ts` is the pure half: `parseHookRequest` refuses an input above `HOOK_INPUT_MAX` (20 000 characters) by name and accepts only 5, 10 or 15 hooks per run; `parseHookBoard` validates what the bridge returned, resolves each variant's cited titles against the evidence packet, and drops a title the packet does not carry, so the board only ever shows reels the app itself selected. A variant that cites nothing usable gets `similarEvidence` instead, the outlier reels whose own hook overlaps its wording most, with the strongest outlier breaking the tie. `groupHooks` sorts the variants under the five hypotheses of `HOOK_HYPOTHESES` (Neugier-Lücke, Liste, Kontrast, Versprechen, Story) and drops the empty sections.
+
+`POST /api/hooks` runs the same evidence packet as a develop run, asks the bridge on `/v1/hooks` against a `hooksOutputSchema` built from the requested count, so a run that asked for 15 cannot come back with three, and writes one `hookRuns` row per run with a fresh id. There is no claim here and none is needed: two runs started in parallel carry two ids and land as two entries, both readable. The row keeps the character count, a bounded excerpt of the source and the grouped board, so the history rail reads without the transcript and re-opens a run from what was stored. `GET /api/hooks` serves the newest `HOOK_RUN_HISTORY` (20) runs.
+
 Provider expectations that stay true whichever provider sits behind the bridge:
 
 - accept bounded evidence, a goal, and an audience description

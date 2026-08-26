@@ -1,19 +1,29 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Creator, FormatReview, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import type { Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import { HOOK_RUN_HISTORY } from "../../config.ts";
 import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
-type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[]; ideas: Idea[]; formatReviews: FormatReview[] };
+type Store = {
+  creators: Creator[];
+  signals: SignalRecord[];
+  runs: Run[];
+  ideas: Idea[];
+  formatReviews: FormatReview[];
+  hookRuns: HookRun[];
+};
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 /** Runs kept in the file store; Convex keeps everything. */
 const MAX_RUNS = 100;
 /** Ideas kept in the file store; Convex keeps everything. */
 const MAX_IDEAS = 500;
+/** Hook runs kept in the file store; Convex keeps everything. */
+const MAX_HOOK_RUNS = 100;
 /** Format reviews kept in the file store. One per run date, monthly plus any manual run. */
 const MAX_FORMAT_REVIEWS = 24;
-const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [] };
+const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [] };
 
 async function load(): Promise<Store> {
   try {
@@ -25,6 +35,7 @@ async function load(): Promise<Store> {
       runs: parsed.runs ?? [],
       ideas: parsed.ideas ?? [],
       formatReviews: parsed.formatReviews ?? [],
+      hookRuns: parsed.hookRuns ?? [],
     };
   } catch {
     return { ...EMPTY };
@@ -100,6 +111,17 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.formatReviews = [review, ...store.formatReviews.filter((r) => r.id !== review.id)]
         .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))
         .slice(0, MAX_FORMAT_REVIEWS);
+      await save(store);
+    });
+  },
+  async listHookRuns(limit = HOOK_RUN_HISTORY) {
+    const hookRuns = (await load()).hookRuns;
+    return [...hookRuns].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+  },
+  async saveHookRun(run) {
+    await serialized(async () => {
+      const store = await load();
+      store.hookRuns = [run, ...store.hookRuns.filter((existing) => existing.id !== run.id)].slice(0, MAX_HOOK_RUNS);
       await save(store);
     });
   },
