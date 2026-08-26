@@ -130,9 +130,11 @@ Definition: ADR-0003.
 - Klick auf Creator öffnet Seite mit Stat-Leiste (Views in corpus, Average outlier, Strongest outlier, Videos retained) und Tabelle aller Reels.
 - AK: Wie `cue_0008.jpg`.
 
-### T4.4 Format Signals aus Captions
-- Hook-Muster der Outlier-Reels (erste Zeile der Caption, Wortmuster wie "Every X", "[Entity]: [Proposition]"). Erst regelbasiert, später Modell.
-- AK: Mindestens 5 Muster mit Beispiel-Reels und Durchschnitts-Outlier.
+### T4.4 Format Signals aus Captions — erledigt
+- Hook-Muster der Outlier-Reels (erste Zeile der Caption). Regelbasiert über `FORMAT_PATTERNS` in `lib/format-signals.ts`, erweiterbar durch einen Listeneintrag; Modell später.
+- Je Muster: Anzahl Reels, Durchschnitts-Outlier, Anteil an allen Outliern, drei Beispiel-Reels mit Cover, Wochenlinie. Sortiert nach Durchschnitts-Outlier, "Unclassified" mit Anteil am Ende.
+- Nische-fremde Creators (`foreign: true`, umschaltbar in Tracked Channels über `PATCH /api/creators`) bilden einen eigenen Block.
+- AK: Mindestens 8 Muster mit Beispiel-Reels und Durchschnitts-Outlier, je Muster ein positives und ein negatives Caption-Beispiel im Test (`tests/format-signals.test.mjs`).
 
 ---
 

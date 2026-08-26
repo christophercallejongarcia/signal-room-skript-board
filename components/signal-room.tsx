@@ -5,6 +5,7 @@ import {
   ArrowsClockwise,
   Binoculars,
   ChartLineUp,
+  Globe,
   CheckCircle,
   Clock,
   House,
@@ -42,6 +43,7 @@ import {
   type PublishedWindow,
 } from "@/lib/discover-filter";
 import {
+  FORMAT_WINDOW_DAYS,
   OUTLIER_THRESHOLD,
   STRATEGY_AUDIENCE,
   STRATEGY_BRIDGE_URL,
@@ -51,6 +53,7 @@ import {
 } from "@/lib/config";
 import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
+import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 import type { Idea, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
@@ -326,6 +329,22 @@ export function SignalRoom() {
     setShowAddCreator(false);
   }
 
+  /** Foreign-niche flag. Optimistic, and rolled back when the route says no. */
+  async function toggleForeign(creator: Creator) {
+    const foreign = !creator.foreign;
+    setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, foreign } : item)));
+    try {
+      const response = await fetch("/api/creators", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: creator.id, foreign }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch {
+      setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, foreign: creator.foreign } : item)));
+    }
+  }
+
   async function generateStrategy(input: { idea: string; goal: string }) {
     if (!live) {
       setStrategyState("error");
@@ -486,7 +505,7 @@ export function SignalRoom() {
           <BriefingView rankedSignals={rankedSignals} creators={creators} onCreateIdea={captureIdea} />
         )}
         {activeTab === "radar" && <RadarView rankedSignals={rankedSignals} />}
-        {activeTab === "formats" && <FormatsView rankedSignals={rankedSignals} threshold={threshold} />}
+        {activeTab === "formats" && <FormatsView rankedSignals={rankedSignals} creators={creators} threshold={threshold} />}
         {activeTab === "channels" && (
           <ChannelsView
             creators={creators}
@@ -494,6 +513,7 @@ export function SignalRoom() {
             network={network}
             onNetwork={setNetwork}
             onAdd={() => setShowAddCreator(true)}
+            onToggleForeign={toggleForeign}
             issues={runs[0]?.errors.length ?? 0}
           />
         )}
@@ -866,53 +886,89 @@ function Sparkline({ values, lime }: { values: number[]; lime?: boolean }) {
   );
 }
 
-function FormatsView({ rankedSignals, threshold }: { rankedSignals: Ranked[]; threshold: number }) {
-  const formats = [
-    ["[Entity]: [Specific Proposition]", "Clarity through specificity"],
-    ["Every [X], ranked", "Curiosity gap plus time saved"],
-    ["Contrarian explainer", "Name the assumption, test it, replace it"],
-    ["Build in public", "Decisions, constraints, one surprising failure"],
-  ];
+function FormatSection({ signal, threshold }: { signal: FormatSignal; threshold: number }) {
+  return (
+    <section className={signal.id === UNCLASSIFIED ? "format-section rest" : "format-section"}>
+      <div className="format-head">
+        <div><h2>{signal.label}</h2><p>{signal.hint}</p></div>
+        <div className="facts">
+          <span><strong>{signal.count}</strong> reels</span>
+          <span><strong>{signal.averageOutlier.toFixed(1)}x</strong> avg outlier</span>
+          <span><strong>{Math.round(signal.share * 100)}%</strong> of outliers</span>
+        </div>
+      </div>
+      <div className="format-strip">
+        {signal.examples.map((example, index) => (
+          <article key={example.id}>
+            <SignalMedia signal={example} index={index} threshold={threshold} />
+            <h3>{example.title}</h3>
+            <small>{formatNumber(example.plays ?? example.views)} plays · {example.outlier.toFixed(1)}x</small>
+          </article>
+        ))}
+      </div>
+      <div className="spark-row">
+        <div className="spark"><span>Reels per week</span><Sparkline values={signal.weeks} lime /></div>
+        <div className="spark"><span>Example outliers</span><Sparkline values={signal.examples.map((example) => example.outlier)} /></div>
+      </div>
+    </section>
+  );
+}
+
+function FormatsView({
+  rankedSignals,
+  creators,
+  threshold,
+}: {
+  rankedSignals: Ranked[];
+  creators: Creator[];
+  threshold: number;
+}) {
+  const { own, foreign } = useMemo(
+    () => buildFormatSignals(rankedSignals, creators, { now: Date.now(), threshold }),
+    [rankedSignals, creators, threshold],
+  );
+  const named = own.signals.filter((signal) => signal.id !== UNCLASSIFIED);
+  const rest = own.signals.find((signal) => signal.id === UNCLASSIFIED);
+
   return (
     <div className="view-stack">
       <section className="hero">
         <div>
-          <p className="hero-kicker">Pattern desk / trailing 90 days</p>
+          <p className="hero-kicker">Pattern desk / trailing {FORMAT_WINDOW_DAYS} days</p>
           <h1>Format Signals</h1>
-          <p className="hero-sub">Repeatable structures pulled from the outlier corpus. A format is only listed once several channels used it and at least one small channel broke out with it.</p>
+          <p className="hero-sub">
+            Recurring hook shapes read off the first caption line of every reel above {formatThreshold(threshold)} outlier.
+            The list of shapes lives in lib/format-signals.ts; anything the rules miss is counted, not hidden.
+          </p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{formats.length}</strong><span>formats tracked</span></div>
-          <div><strong>{rankedSignals.length}</strong><span>videos read</span></div>
-          <div className="lime"><strong>{rankedSignals.filter((s) => isOutlier(s, threshold)).length}</strong><span>{formatThreshold(threshold)}+ outliers</span></div>
+          <div><strong>{named.length}</strong><span>patterns found</span></div>
+          <div><strong>{own.total}</strong><span>{formatThreshold(threshold)}+ outlier reels</span></div>
+          <div className="lime"><strong>{rest ? Math.round(rest.share * 100) : 0}%</strong><span>unclassified</span></div>
         </div>
       </section>
 
-      {formats.map(([title, sub], fi) => {
-        const examples = [...rankedSignals].sort((a, b) => (b.outlier ?? 0) - (a.outlier ?? 0)).slice(fi, fi + 5);
-        const avg = examples.length ? examples.reduce((s, x) => s + (x.outlier ?? 0), 0) / examples.length : 0;
-        return (
-          <section className="format-section" key={title}>
-            <div className="format-head">
-              <div><h2>{title}</h2><p>{sub}</p></div>
-              <div className="facts"><span className="tag" style={{ border: "1px solid var(--line)", padding: "3px 8px", borderRadius: 4 }}>{examples.length} recent</span><span><strong>{avg.toFixed(1)}x</strong> avg</span><span><strong>{examples.length}</strong> videos</span></div>
-            </div>
-            <div className="format-strip">
-              {examples.map((signal, index) => (
-                <article key={signal.id}>
-                  <SignalMedia signal={signal} index={index} threshold={threshold} />
-                  <h3>{signal.title}</h3>
-                  <small>{formatNumber(signal.plays ?? signal.views)} views</small>
-                </article>
-              ))}
-            </div>
-            <div className="spark-row">
-              <div className="spark"><span>Weekly views</span><Sparkline values={examples.map((s) => s.plays ?? s.views)} /></div>
-              <div className="spark"><span>Average outlier</span><Sparkline values={examples.map((s) => s.outlier ?? 0)} lime /></div>
-            </div>
-          </section>
-        );
-      })}
+      {own.total === 0 && (
+        <div className="empty-state">
+          No reel above {formatThreshold(threshold)} outlier in the last {FORMAT_WINDOW_DAYS} days. Lower the threshold in Discover or refresh the watchlist.
+        </div>
+      )}
+
+      {own.signals.map((signal) => (
+        <FormatSection key={signal.id} signal={signal} threshold={threshold} />
+      ))}
+
+      {foreign.total > 0 && (
+        <>
+          <div className="format-group-head">
+            <h2>Foreign niche</h2>
+            <p>{foreign.total} outlier reels from creators marked as foreign niche. Kept apart so imported shapes never move the numbers above.</p>
+          </div>
+          {foreign.signals.map((signal) => (
+            <FormatSection key={`foreign-${signal.id}`} signal={signal} threshold={threshold} />
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -923,6 +979,7 @@ function ChannelsView({
   network,
   onNetwork,
   onAdd,
+  onToggleForeign,
   issues,
 }: {
   creators: Creator[];
@@ -930,6 +987,8 @@ function ChannelsView({
   network: Network;
   onNetwork: (network: Network) => void;
   onAdd: () => void;
+  /** Flips the foreign-niche mark that splits the Format Signals tab. */
+  onToggleForeign: (creator: Creator) => void;
   /** Creators that failed in the most recent run. */
   issues: number;
 }) {
@@ -1014,11 +1073,23 @@ function ChannelsView({
                     <div><strong>{creator.name}</strong><small>{creator.handle} · {creator.audience ? `${formatNumber(creator.audience)} ${network === "instagram" ? "followers" : "subs"}` : "Pending"}</small></div>
                   </div>
                 </td>
-                <td><span className="status-chip"><CheckCircle size={14} weight="fill" /> Watching · {creator.lastCheckedAt ? `checked ${timeAgo(creator.lastCheckedAt, nowMs)}` : "checked 8h ago"}</span></td>
+                <td>
+                  <span className="status-chip"><CheckCircle size={14} weight="fill" /> Watching · {creator.lastCheckedAt ? `checked ${timeAgo(creator.lastCheckedAt, nowMs)}` : "checked 8h ago"}</span>
+                  {creator.foreign && <span className="niche-chip">Foreign niche</span>}
+                </td>
                 <td className="hide-sm"><span className="num">{own.length}</span> <span className="muted">videos · {formatNumber(median)} median</span></td>
                 <td className="hide-sm"><span className="muted">{own[0]?.title ?? "No uploads retained yet"}</span></td>
                 <td>
                   <div className="controls">
+                    <button
+                      className={creator.foreign ? "icon-button active" : "icon-button"}
+                      onClick={() => onToggleForeign(creator)}
+                      aria-pressed={Boolean(creator.foreign)}
+                      title={creator.foreign ? "Foreign niche: their patterns stay in their own group" : "Mark as foreign niche"}
+                      aria-label="Toggle foreign niche"
+                    >
+                      <Globe size={14} />
+                    </button>
                     <button className="icon-button" aria-label="Refresh creator"><ArrowsClockwise size={14} /></button>
                     <button className="icon-button" aria-label="Remove creator"><Trash size={14} /></button>
                     {creator.url && <a className="icon-button" href={creator.url} target="_blank" rel="noreferrer" aria-label="Open channel"><ArrowSquareOut size={14} /></a>}

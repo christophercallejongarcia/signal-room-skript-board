@@ -21,3 +21,7 @@ export const STRATEGY_AUDIENCE =
   process.env.NEXT_PUBLIC_STRATEGY_AUDIENCE || "The audience you build for. Describe it in .env.local.";
 /** The only AI endpoint the app knows. Browser and server routes both go here (ADR-0004). */
 export const STRATEGY_BRIDGE_URL = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL || "http://127.0.0.1:3211";
+/** Days of history the Format Signals tab reads. Matches the backfill horizon. */
+export const FORMAT_WINDOW_DAYS = 90;
+/** Example reels shown per Format Signal. */
+export const FORMAT_EXAMPLE_LIMIT = 3;

@@ -59,8 +59,12 @@ Nicht: "Cutoff", "Limit", "Grenzwert".
 ## Formate und Inhalte
 
 **Format Signal**
-Ein wiederkehrendes Muster über mehrere Outlier-Reels (z.B. "Every X", "[Entity]: [Proposition]"), mit Beispielen und Durchschnitts-Outlier.
+Ein wiederkehrendes Hook-Muster über mehrere Outlier-Reels (z.B. "Die besten X", "Nie wieder X"), erkannt regelbasiert aus der ersten Caption-Zeile. Die Musterliste steht in `lib/format-signals.ts` als `FORMAT_PATTERNS` und ist durch einen weiteren Eintrag erweiterbar; `buildFormatSignals` liefert je Muster Anzahl, Durchschnitts-Outlier, Anteil an allen Outliern, bis zu `FORMAT_EXAMPLE_LIMIT` (3) Beispiel-Reels und die Wochenlinie über `FORMAT_WINDOW_DAYS` (90). Reels ohne erkanntes Muster stehen als "Unclassified" am Ende, mit ihrem Anteil.
 Nicht: "Pattern", "Trend", "Template".
+
+**Nische-fremder Creator**
+Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beobachtet, aber seine Format Signals erscheinen im eigenen Block "Foreign niche", damit importierte Muster die eigenen Kennzahlen nicht verwässern. Umgeschaltet über den Globus-Knopf in Tracked Channels, gespeichert über `PATCH /api/creators`.
+Nicht: "Fremdnische", "External", "Competitor".
 
 **Hook**
 Die erste Zeile der Caption bzw. die ersten drei Sekunden eines Reels; Hooks werden im Hooks-Board variiert und gegen den Outlier-Korpus geprüft.

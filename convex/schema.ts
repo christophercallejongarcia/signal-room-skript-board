@@ -52,6 +52,7 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     url: v.optional(v.string()),
     owned: v.optional(v.boolean()),
+    foreign: v.optional(v.boolean()),
     lastCheckedAt: v.optional(v.string()),
   }).index("by_external_id", ["id"]),
   signals: defineTable({

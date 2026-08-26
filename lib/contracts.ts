@@ -10,6 +10,8 @@ export type Creator = {
   avatarUrl?: string;
   url?: string;
   owned?: boolean;
+  /** Creator from another niche. Their Format Signals stay in a separate group. */
+  foreign?: boolean;
   lastCheckedAt?: string;
 };
 
