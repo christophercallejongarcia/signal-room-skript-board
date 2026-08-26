@@ -37,7 +37,9 @@ import {
   countOutliers,
   filterDiscover,
   isOutlier,
+  isOwned,
   storeOrDemo,
+  withoutOwned,
   type DiscoverView as DiscoverViewMode,
   type OutlierThreshold,
   type PublishedWindow,
@@ -327,6 +329,7 @@ export function SignalRoom() {
     const form = new FormData(event.currentTarget);
     const handle = String(form.get("handle") || "").trim().replace(/^@/, "");
     const network = String(form.get("network") || "youtube") as Network;
+    const owned = form.get("owned") === "on";
     if (!handle) return;
 
     if (network === "instagram") {
@@ -335,7 +338,7 @@ export function SignalRoom() {
         const response = await fetch("/api/creators", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ handle, network }),
+          body: JSON.stringify({ handle, network, owned }),
         });
         if (!response.ok) throw new Error(await response.text());
         await loadStore();
@@ -359,26 +362,34 @@ export function SignalRoom() {
         network,
         audience: 0,
         accent: "#ff6546",
+        ...(owned ? { owned: true } : {}),
       },
     ]);
     setShowAddCreator(false);
   }
 
-  /** Foreign-niche flag. Optimistic, and rolled back when the route says no. */
-  async function toggleForeign(creator: Creator) {
-    const foreign = !creator.foreign;
-    setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, foreign } : item)));
+  /** One creator mark. Optimistic, and rolled back to the creator we started from when the route says no. */
+  async function markCreator(creator: Creator, mark: { owned?: boolean; foreign?: boolean }) {
+    setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, ...mark } : item)));
     try {
       const response = await fetch("/api/creators", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: creator.id, foreign }),
+        body: JSON.stringify({ id: creator.id, ...mark }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch {
-      setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, foreign: creator.foreign } : item)));
+      // Only the marks we sent roll back; anything else that moved meanwhile stays.
+      const before = Object.fromEntries(Object.keys(mark).map((key) => [key, creator[key as keyof Creator]]));
+      setCreators((current) => current.map((item) => (item.id === creator.id ? { ...item, ...before } : item)));
     }
   }
+
+  /** Flips the foreign-niche mark that splits the Format Signals tab. */
+  const toggleForeign = (creator: Creator) => markCreator(creator, { foreign: !creator.foreign });
+
+  /** Flips the owned mark: an owned creator leaves the research views and reads in Profile. */
+  const toggleOwned = (creator: Creator) => markCreator(creator, { owned: !isOwned(creator) });
 
   async function generateStrategy(input: { idea: string; goal: string }) {
     if (!live) {
@@ -481,9 +492,11 @@ export function SignalRoom() {
     }
   }
 
-  const knownVideos = rankedSignals.length;
+  // The Discover counters read the same corpus its cards do: own uploads are not in it.
+  const research = withoutOwned(rankedSignals, creators);
+  const knownVideos = research.length;
   const nowMs = Date.now();
-  const newIn48 = rankedSignals.filter((signal) => isNew(signal.publishedAt, nowMs)).length;
+  const newIn48 = research.filter((signal) => isNew(signal.publishedAt, nowMs)).length;
 
   return (
     <div className="app-shell">
@@ -539,7 +552,7 @@ export function SignalRoom() {
         {activeTab === "briefing" && (
           <BriefingView rankedSignals={rankedSignals} creators={creators} onCreateIdea={captureIdea} />
         )}
-        {activeTab === "radar" && <RadarView rankedSignals={rankedSignals} />}
+        {activeTab === "radar" && <RadarView rankedSignals={research} />}
         {activeTab === "formats" && (
           <FormatsView
             rankedSignals={rankedSignals}
@@ -557,6 +570,7 @@ export function SignalRoom() {
             onNetwork={setNetwork}
             onAdd={() => setShowAddCreator(true)}
             onToggleForeign={toggleForeign}
+            onToggleOwned={toggleOwned}
             issues={runs[0]?.errors.length ?? 0}
           />
         )}
@@ -625,7 +639,10 @@ function DiscoverView({
   const [cols, setCols] = useState(4);
 
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
-  const networkCreators = creators.filter((creator) => creator.network === network);
+  // Every count and picker on this tab reads the same corpus the cards do: no owned creator in it.
+  const researchCreators = creators.filter((creator) => !isOwned(creator));
+  const researchSignals = withoutOwned(rankedSignals, creators);
+  const networkCreators = researchCreators.filter((creator) => creator.network === network);
   const nowMs = Date.now();
 
   const filters = { network, creatorId: channel, published, now: nowMs, threshold };
@@ -647,8 +664,8 @@ function DiscoverView({
         <NetworkToggle network={network} onNetwork={onNetwork} />
         <div className="toolbar-facts">
           <span><strong>{stats.knownVideos}</strong> videos</span>
-          <span><strong>{creators.length}</strong> channels</span>
-          <span><strong>{rankedSignals.filter((s) => s.coverUrl).length}</strong> visual reads</span>
+          <span><strong>{researchCreators.length}</strong> channels</span>
+          <span><strong>{researchSignals.filter((s) => s.coverUrl).length}</strong> visual reads</span>
           <span>{lastRefresh}</span>
         </div>
       </div>
@@ -813,7 +830,8 @@ function BriefingView({
   onCreateIdea: (input: IdeaInput) => void;
 }) {
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
-  const top = [...rankedSignals].sort((a, b) => b.score - a.score).slice(0, 10);
+  // The briefing reads the niche. Own uploads live in Profile.
+  const top = withoutOwned(rankedSignals, creators).sort((a, b) => b.score - a.score).slice(0, 10);
   const date = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   return (
     <div className="view-stack">
@@ -1158,6 +1176,7 @@ function ChannelsView({
   onNetwork,
   onAdd,
   onToggleForeign,
+  onToggleOwned,
   issues,
 }: {
   creators: Creator[];
@@ -1167,6 +1186,8 @@ function ChannelsView({
   onAdd: () => void;
   /** Flips the foreign-niche mark that splits the Format Signals tab. */
   onToggleForeign: (creator: Creator) => void;
+  /** Flips the owned mark that moves a creator out of the research views into Profile. */
+  onToggleOwned: (creator: Creator) => void;
   /** Creators that failed in the most recent run. */
   issues: number;
 }) {
@@ -1253,12 +1274,22 @@ function ChannelsView({
                 </td>
                 <td>
                   <span className="status-chip"><CheckCircle size={14} weight="fill" /> Watching · {creator.lastCheckedAt ? `checked ${timeAgo(creator.lastCheckedAt, nowMs)}` : "checked 8h ago"}</span>
+                  {isOwned(creator) && <span className="niche-chip owned">Own account</span>}
                   {creator.foreign && <span className="niche-chip">Foreign niche</span>}
                 </td>
                 <td className="hide-sm"><span className="num">{own.length}</span> <span className="muted">videos · {formatNumber(median)} median</span></td>
                 <td className="hide-sm"><span className="muted">{own[0]?.title ?? "No uploads retained yet"}</span></td>
                 <td>
                   <div className="controls">
+                    <button
+                      className={isOwned(creator) ? "icon-button active" : "icon-button"}
+                      onClick={() => onToggleOwned(creator)}
+                      aria-pressed={isOwned(creator)}
+                      title={isOwned(creator) ? "Own account: read in Profile, kept out of Discover, Briefing and Format Signals" : "Mark as my own account"}
+                      aria-label="Toggle own account"
+                    >
+                      <UserCircle size={14} />
+                    </button>
                     <button
                       className={creator.foreign ? "icon-button active" : "icon-button"}
                       onClick={() => onToggleForeign(creator)}
@@ -1724,11 +1755,33 @@ function TitlesView() {
   );
 }
 
+/** Reach of one owned lane. Zero reels report no numbers rather than a confident 0.00x. */
+function laneStats(reels: Ranked[]) {
+  const plays = reels.map((signal) => signal.plays ?? signal.views);
+  return {
+    count: reels.length,
+    averagePlays: reels.length ? Math.round(plays.reduce((sum, value) => sum + value, 0) / reels.length) : 0,
+    bestOutlier: reels.length ? Math.max(...reels.map((signal) => signal.outlier ?? 0)) : null,
+  };
+}
+
+/** An owned lane without a single retained reel has no strongest outlier to show. */
+function formatOutlier(outlier: number | null) {
+  return outlier === null ? "—" : `${outlier.toFixed(2)}x`;
+}
+
 function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: Creator[]; rankedSignals: Ranked[]; runs: Run[]; runsState: "loading" | "ready" | "error" }) {
-  const owned = creators.filter((c) => c.owned);
+  const owned = creators.filter(isOwned);
   const ownedIds = new Set(owned.map((c) => c.id));
   const nowMs = Date.now();
-  const mine = rankedSignals.filter((s) => ownedIds.has(s.creatorId)).sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  // Outlier first: the question this tab answers is which own format last caught fire.
+  const mine = rankedSignals
+    .filter((s) => ownedIds.has(s.creatorId))
+    .sort((a, b) => (b.outlier ?? 0) - (a.outlier ?? 0) || new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  const followers = owned.reduce((sum, creator) => sum + creator.audience, 0);
+  const all = laneStats(mine);
+  /** Per lane, so two own accounts never read as one average. */
+  const lanes = owned.map((creator) => ({ creator, ...laneStats(mine.filter((s) => s.creatorId === creator.id)) }));
   return (
     <div className="view-stack">
       <section className="hero">
@@ -1738,9 +1791,10 @@ function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: C
           <p className="hero-sub">Your own lanes, tracked with the same outlier math as the competitor corpus. Find the last banger, then work out what made it one.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{owned.length}</strong><span>owned lanes</span></div>
-          <div><strong>{mine.length}</strong><span>videos tracked</span></div>
-          <div className="lime"><strong>{(Math.max(0, ...mine.map((s) => s.outlier ?? 0))).toFixed(2)}x</strong><span>strongest outlier</span></div>
+          <div><strong>{formatNumber(followers)}</strong><span>followers</span></div>
+          <div><strong>{all.count}</strong><span>videos tracked</span></div>
+          <div><strong>{all.count ? formatNumber(all.averagePlays) : "—"}</strong><span>average plays</span></div>
+          <div className="lime"><strong>{formatOutlier(all.bestOutlier)}</strong><span>strongest outlier</span></div>
         </div>
       </section>
 
@@ -1757,9 +1811,33 @@ function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: C
         <div><span>Strategy bridge</span><strong>Local and optional</strong></div>
       </div>
 
-      <div className="section-head"><div><p className="kicker">Recent performance</p><h2>Every owned upload</h2></div><p className="note">Add your own handle under Tracked Channels with the owned flag to populate this table.</p></div>
+      <div className="section-head"><div><p className="kicker">Own accounts</p><h2>Owned lanes</h2></div><p className="note">Followers, average plays and the strongest outlier per own account. Mark a handle as your own under Tracked Channels to add a lane.</p></div>
       <table className="desk-table">
-        <thead><tr><th>Video</th><th className="hide-sm">Published</th><th className="right">Views</th><th className="right">Outlier</th></tr></thead>
+        <thead><tr><th>Account</th><th className="right">Followers</th><th className="right">Reels</th><th className="right">Ø plays</th><th className="right">Best outlier</th></tr></thead>
+        <tbody>
+          {lanes.map(({ creator, count, averagePlays, bestOutlier }) => (
+            <tr key={creator.id}>
+              <td>
+                <div className="creator-cell">
+                  <span className="creator-avatar" style={{ background: creator.accent }}>
+                    {creator.avatarUrl ? <img src={creator.avatarUrl} alt="" referrerPolicy="no-referrer" /> : creator.name.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div><strong>{creator.name}</strong><small>{creator.handle}</small></div>
+                </div>
+              </td>
+              <td className="right num">{formatNumber(creator.audience)}</td>
+              <td className="right num">{count}</td>
+              <td className="right num">{count ? formatNumber(averagePlays) : "—"}</td>
+              <td className="right lime">{formatOutlier(bestOutlier)}</td>
+            </tr>
+          ))}
+          {lanes.length === 0 && <tr><td colSpan={5}><div className="empty-state">No own account marked yet.</div></td></tr>}
+        </tbody>
+      </table>
+
+      <div className="section-head"><div><p className="kicker">Own performance</p><h2>Every owned upload, strongest first</h2></div><p className="note">The same follower-relative outlier the competitor corpus is read with, so the last own banger is the top row.</p></div>
+      <table className="desk-table">
+        <thead><tr><th>Video</th><th className="hide-sm">Published</th><th className="right">Plays</th><th className="right">Outlier</th></tr></thead>
         <tbody>
           {mine.map((signal) => (
             <tr key={signal.id}>
@@ -1807,6 +1885,7 @@ function AddCreatorDialog({ onClose, onSubmit, state }: { onClose: () => void; o
         <form onSubmit={onSubmit}>
           <label><span>Channel handle</span><input name="handle" placeholder="@usefulcreator" autoFocus required /><small>The connector resolves the handle and pulls the last 90 days.</small></label>
           <label><span>Network</span><select name="network" defaultValue="instagram"><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option></select></label>
+          <label className="check-label"><input type="checkbox" name="owned" /><span>This is my own account<small>Owned accounts are read in Profile and stay out of Discover, Briefing and Format Signals.</small></span></label>
           <div className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={state === "loading"}>{state === "loading" ? "Backfilling 90 days via Apify…" : state === "error" ? "Failed, retry" : "Add to daily watch"}<ArrowRight size={15} /></button></div>
         </form>
       </div>

@@ -184,9 +184,11 @@ Definition: ADR-0003.
 
 ## Epic 7. Profile: eigener Account
 
-### T7.1 Eigene Reels tracken
-- Eigener Handle als Creator mit Flag `owned: true`, Outlier-Faktor pro eigenem Reel.
-- AK: Profile-Tab zeigt eigene Reels sortiert nach Outlier.
+### T7.1 Eigene Reels tracken — erledigt
+- Eigener Handle als Creator mit Flag `owned: true`, Outlier-Faktor pro eigenem Reel. Setzbar beim Hinzufügen (Checkbox im Add-Dialog, `POST /api/creators`) und in Tracked Channels (Personen-Knopf, `PATCH /api/creators`).
+- Owned Creators sind aus Discover, Briefing, Trend Radar, Format Signals, Format-Review und dem Evidenzpaket ausgeschlossen; das Prädikat steht als `isOwned`/`withoutOwned` in `lib/discover-filter.ts`.
+- AK: Profile-Tab zeigt eigene Reels sortiert nach Outlier, dazu je Lane Follower, Ø Plays und bester Outlier.
+- AK: Ausschluss getestet (`tests/owned-creators.test.mjs`).
 
 ---
 

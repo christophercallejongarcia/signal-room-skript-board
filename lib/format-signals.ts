@@ -1,6 +1,6 @@
 import { FORMAT_WINDOW_DAYS, FORMAT_EXAMPLE_LIMIT, OUTLIER_THRESHOLD } from "./config.ts";
 import type { Creator, RankedSignal } from "./contracts";
-import { isOutlier } from "./discover-filter.ts";
+import { isOutlier, isOwned } from "./discover-filter.ts";
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -223,6 +223,8 @@ export function buildFormatSignals(
     if (signal.format !== "reel") continue;
     const creator = creatorMap.get(signal.creatorId);
     if (!creator) continue;
+    // Own uploads are read in Profile, never against the niche.
+    if (isOwned(creator)) continue;
     if (now - new Date(signal.publishedAt).getTime() > windowDays * DAY) continue;
     if (!isOutlier(signal, threshold)) continue;
     (creator.foreign ? foreign : own).push(signal);
@@ -233,19 +235,4 @@ export function buildFormatSignals(
     own: groupByPattern("own", own, settings),
     foreign: groupByPattern("foreign", foreign, settings),
   };
-}
-
-/** One PATCH body for the foreign-niche mark, as the route receives it. */
-export type ForeignMark = { id: string; foreign: boolean };
-
-/**
- * Bounds and rejects the body of `PATCH /api/creators`. The only place that
- * decides what a foreign-niche mark is; the route just maps the throw to a 400.
- */
-export function parseForeignMark(body: unknown): ForeignMark {
-  const input = (body ?? {}) as { id?: unknown; foreign?: unknown };
-  const id = typeof input.id === "string" ? input.id.trim() : "";
-  if (!id) throw new Error("id required");
-  if (typeof input.foreign !== "boolean") throw new Error("foreign must be true or false");
-  return { id, foreign: input.foreign };
 }

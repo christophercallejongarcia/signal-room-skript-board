@@ -1,6 +1,6 @@
 import { OUTLIER_THRESHOLD, STRATEGY_EVIDENCE_LIMIT, STRATEGY_EVIDENCE_WINDOW_DAYS } from "./config.ts";
 import type { Creator, RankedSignal, StrategyEvidenceItem } from "./contracts";
-import { isOutlier } from "./discover-filter.ts";
+import { isOutlier, withoutOwned } from "./discover-filter.ts";
 
 const DAY = 86_400_000;
 
@@ -37,7 +37,8 @@ export function selectEvidence(
   const limit = options.limit ?? STRATEGY_EVIDENCE_LIMIT;
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
 
-  return signals
+  // Own uploads are research about Chris, not about the niche: Profile reads them.
+  return withoutOwned(signals, creators)
     .filter((signal) => signal.format === "reel")
     .filter((signal) => creatorMap.has(signal.creatorId))
     .filter((signal) => now - new Date(signal.publishedAt).getTime() <= windowDays * DAY)

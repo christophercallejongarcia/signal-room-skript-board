@@ -28,6 +28,22 @@ export function isOutlier(signal: { outlier?: number }, threshold: number) {
   return (signal.outlier ?? 0) >= threshold;
 }
 
+/** Chris' own accounts. Collected like every other creator, shown only in Profile. */
+export function isOwned(creator: Pick<Creator, "owned"> | undefined | null) {
+  return Boolean(creator?.owned);
+}
+
+/**
+ * The research corpus: everything except the reels of an owned creator. Discover,
+ * Briefing, Format Signals and the evidence packet share this one predicate, so
+ * an own upload never lands in the competitor numbers. A signal whose creator is
+ * gone stays in; only a known owned creator excludes it.
+ */
+export function withoutOwned<T extends { creatorId: string }>(signals: T[], creators: Creator[]): T[] {
+  const owned = new Set(creators.filter(isOwned).map((creator) => creator.id));
+  return signals.filter((signal) => !owned.has(signal.creatorId));
+}
+
 function inWindow(signal: Pick<SignalRecord, "publishedAt">, published: PublishedWindow, now: number) {
   if (published === "all") return true;
   return now - new Date(signal.publishedAt).getTime() <= Number(published) * DAY;
@@ -36,7 +52,7 @@ function inWindow(signal: Pick<SignalRecord, "publishedAt">, published: Publishe
 /** Network, channel and time window: the filters every Discover view shares. */
 export function filterScope<T extends RankedSignal>(signals: T[], creators: Creator[], filters: DiscoverFilters): T[] {
   const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
-  return signals
+  return withoutOwned(signals, creators)
     .filter((signal) => creatorMap.get(signal.creatorId)?.network === filters.network)
     .filter((signal) => filters.creatorId === "all" || signal.creatorId === filters.creatorId)
     .filter((signal) => inWindow(signal, filters.published, filters.now));

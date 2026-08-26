@@ -15,7 +15,7 @@ import type {
   RisingCreator,
   SignalRecord,
 } from "./contracts";
-import { isOutlier } from "./discover-filter.ts";
+import { isOutlier, isOwned } from "./discover-filter.ts";
 import { UNCLASSIFIED, buildFormatSignals, classifyCaption, patternLabel } from "./format-signals.ts";
 
 const DAY = 86_400_000;
@@ -144,6 +144,8 @@ export function findRisingCreators(
     if (signal.format !== "reel") continue;
     const creator = creatorMap.get(signal.creatorId);
     if (!creator) continue;
+    // Chris' own account is never a rising creator of his own niche.
+    if (isOwned(creator)) continue;
     if (creator.audience <= 0 || creator.audience >= smallAudience) continue;
     if (now - new Date(signal.publishedAt).getTime() > windowDays * DAY) continue;
     if (!isOutlier(signal, threshold)) continue;

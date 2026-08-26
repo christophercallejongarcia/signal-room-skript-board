@@ -821,6 +821,10 @@ main {
 .dialog label small { color: var(--muted); font-size: 10.5px; }
 .dialog input, .dialog select { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-soft); color: var(--ink); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* The owned mark: a checkbox reads as a row, not as a labelled field. */
+.dialog label.check-label { grid-template-columns: auto 1fr; align-items: start; gap: 10px; }
+.dialog label.check-label input { width: 15px; height: 15px; margin-top: 2px; padding: 0; accent-color: var(--accent); }
+.dialog label.check-label > span { display: grid; gap: 4px; }
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -875,6 +879,7 @@ main {
 .format-group-head p { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; max-width: 62ch; }
 .format-section.rest .format-head h2 { color: var(--muted); }
 .niche-chip { display: inline-block; margin-top: 4px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; }
+.niche-chip.owned { border-color: var(--accent); color: var(--accent); }
 .icon-button.active { border-color: var(--accent); color: var(--accent); }
 
 .review-panel { padding-bottom: 8px; }

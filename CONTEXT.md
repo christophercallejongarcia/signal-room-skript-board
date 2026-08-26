@@ -21,7 +21,7 @@ Die Menge aller Creators, die der tägliche Refresh abfragt; "Add to daily watch
 Nicht: "Tracked Channels" (nur als UI-Label), "Abo", "Feed".
 
 **Owned Creator**
-Ein Creator mit `owned: true`, also Chris' eigener Account; wird wie jeder andere gescort, aber im Profile-Tab separat gezeigt.
+Ein Creator mit `owned: true`, also Chris' eigener Account; wird wie jeder andere gesammelt und gescort, erscheint aber nur im Profile-Tab. Das Prädikat dafür steht in `lib/discover-filter.ts`: `isOwned` liest die Markierung, `withoutOwned` siebt eine Signalliste damit. Discover, Briefing, Trend Radar und das Evidenzpaket filtern über `withoutOwned`, Format Signals und Format-Review prüfen `isOwned` je Reel in ihrer eigenen Schleife. Gesetzt beim Hinzufügen über die Checkbox im Add-Dialog oder später über den Personen-Knopf in Tracked Channels (`PATCH /api/creators`, Body geparst von `parseCreatorMark` in `lib/creator-mark.ts`).
 Nicht: "Eigenes Profil", "Self", "Me".
 
 ## Datenfluss
@@ -67,7 +67,7 @@ Der monatliche Diff der Format Signals: `buildFormatReview` (`lib/format-review.
 Nicht: "Report", "Monatsbericht", "Audit".
 
 **Nische-fremder Creator**
-Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beobachtet, aber seine Format Signals erscheinen im eigenen Block "Foreign niche", damit importierte Muster die eigenen Kennzahlen nicht verwässern. Umgeschaltet über den Globus-Knopf in Tracked Channels, gespeichert über `PATCH /api/creators`.
+Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beobachtet, aber seine Format Signals erscheinen im eigenen Block "Foreign niche", damit importierte Muster die eigenen Kennzahlen nicht verwässern. Umgeschaltet über den Globus-Knopf in Tracked Channels, gespeichert über `PATCH /api/creators` (Body geparst von `parseCreatorMark` in `lib/creator-mark.ts`).
 Nicht: "Fremdnische", "External", "Competitor".
 
 **Hook**

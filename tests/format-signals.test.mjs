@@ -6,7 +6,6 @@ import {
   buildFormatSignals,
   classifyCaption,
   hookLine,
-  parseForeignMark,
 } from "../lib/format-signals.ts";
 
 const NOW = Date.parse("2026-08-24T12:00:00.000Z");
@@ -234,15 +233,4 @@ test("the title stands in when a signal carries no caption", () => {
     options,
   );
   assert.deepEqual(own.signals.map((signal) => signal.id), ["die-besten"]);
-});
-
-test("the foreign mark rejects a body without an id or without a boolean", () => {
-  assert.deepEqual(parseForeignMark({ id: "instagram-x", foreign: true }), { id: "instagram-x", foreign: true });
-  assert.deepEqual(parseForeignMark({ id: "  instagram-x  ", foreign: false }), { id: "instagram-x", foreign: false });
-  assert.throws(() => parseForeignMark({}), /id required/);
-  assert.throws(() => parseForeignMark(undefined), /id required/);
-  assert.throws(() => parseForeignMark({ id: "   ", foreign: true }), /id required/);
-  assert.throws(() => parseForeignMark({ id: 7, foreign: true }), /id required/);
-  assert.throws(() => parseForeignMark({ id: "instagram-x" }), /foreign must be true or false/);
-  assert.throws(() => parseForeignMark({ id: "instagram-x", foreign: "yes" }), /foreign must be true or false/);
 });
