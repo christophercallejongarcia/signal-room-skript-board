@@ -2,12 +2,15 @@ import http from "node:http";
 import { Codex } from "@openai/codex-sdk";
 import { codexAuthState } from "./auth.mjs";
 import {
+  briefingOutputSchema,
+  buildBriefingPrompt,
   buildHooksPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
   hooksOutputSchema,
   storyboardOutputSchema,
   strategyOutputSchema,
+  validateBriefingRequest,
   validateHooksRequest,
   validateStoryboardRequest,
   validateStrategyRequest,
@@ -107,6 +110,18 @@ const routes = new Map([
       label: "Storyboard",
       failure: "The local Codex storyboard run failed.",
       run: (input) => runCodex(buildStoryboardPrompt(validateStoryboardRequest(input)), storyboardOutputSchema),
+    },
+  ],
+  [
+    "/v1/briefing",
+    {
+      label: "Briefing",
+      failure: "The local Codex briefing run failed.",
+      run: (input) => {
+        // One angle per Reel: the schema is built from the packet the caller sent.
+        const request = validateBriefingRequest(input);
+        return runCodex(buildBriefingPrompt(request), briefingOutputSchema(request.evidence.length));
+      },
     },
   ],
   [

@@ -157,6 +157,43 @@ export function buildStoryboardPrompt(request) {
   );
 }
 
+/**
+ * A briefing run carries nothing beyond the strategy packet: the evidence entries
+ * are the ranked Reels of the day, and the answer is one angle per entry.
+ */
+export function validateBriefingRequest(input) {
+  return validateStrategyRequest(input);
+}
+
+/**
+ * Built per run: exactly one angle per Reel in the packet, so the answer lines up
+ * with the briefing positionally and nothing has to be matched back by title.
+ */
+export function briefingOutputSchema(count) {
+  return {
+    type: "object",
+    properties: {
+      angles: { type: "array", minItems: count, maxItems: count, items: { type: "string" } },
+    },
+    required: ["angles"],
+    additionalProperties: false,
+  };
+}
+
+/** One briefing run: the "Chris angle" under each Reel of the day. */
+export function buildBriefingPrompt(request) {
+  return buildPrompt(
+    [
+      `Write exactly ${request.evidence.length} angles, one for each Reel in the packet below, in the same order as the packet.`,
+      "An angle is one sentence on how this Reel's subject would be turned for the goal and audience above.",
+      "Name what the person would show or claim, not that they should make a video about it.",
+      "Do not repeat the Reel's own title back; say what the own take on it is.",
+      "No meta talk, no numbering, no reference to the packet position.",
+    ],
+    request,
+  );
+}
+
 /** The five hypotheses the board groups by. Mirrors HOOK_HYPOTHESES in lib/hooks-board.ts. */
 const HOOK_HYPOTHESES = ["curiosity", "list", "contrast", "promise", "story"];
 

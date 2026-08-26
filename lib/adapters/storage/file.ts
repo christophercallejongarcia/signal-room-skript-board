@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
-import { HOOK_RUN_HISTORY } from "../../config.ts";
+import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
 import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
@@ -12,6 +12,7 @@ type Store = {
   ideas: Idea[];
   formatReviews: FormatReview[];
   hookRuns: HookRun[];
+  briefings: Briefing[];
 };
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
@@ -23,7 +24,9 @@ const MAX_IDEAS = 500;
 const MAX_HOOK_RUNS = 100;
 /** Format reviews kept in the file store. One per run date, monthly plus any manual run. */
 const MAX_FORMAT_REVIEWS = 24;
-const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [] };
+/** Briefings kept in the file store. One per day, so this is a quarter of mornings. */
+const MAX_BRIEFINGS = 90;
+const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [] };
 
 async function load(): Promise<Store> {
   try {
@@ -36,6 +39,7 @@ async function load(): Promise<Store> {
       ideas: parsed.ideas ?? [],
       formatReviews: parsed.formatReviews ?? [],
       hookRuns: parsed.hookRuns ?? [],
+      briefings: parsed.briefings ?? [],
     };
   } catch {
     return { ...EMPTY };
@@ -100,6 +104,19 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
   async listRuns(limit = 10) {
     const runs = (await load()).runs;
     return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, limit);
+  },
+  async listBriefings(limit = BRIEFING_HISTORY) {
+    const briefings = (await load()).briefings;
+    return [...briefings].sort((a, b) => b.day.localeCompare(a.day)).slice(0, limit);
+  },
+  async saveBriefing(briefing) {
+    await serialized(async () => {
+      const store = await load();
+      store.briefings = [briefing, ...store.briefings.filter((existing) => existing.id !== briefing.id)]
+        .sort((a, b) => b.day.localeCompare(a.day))
+        .slice(0, MAX_BRIEFINGS);
+      await save(store);
+    });
   },
   async listFormatReviews(limit = 6) {
     const reviews = (await load()).formatReviews;

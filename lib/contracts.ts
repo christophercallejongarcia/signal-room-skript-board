@@ -79,6 +79,8 @@ export type RefreshResult = {
   covers?: CoverCacheResult;
   errors?: string[];
   runId?: string;
+  /** id of the Briefing the refresh left behind, absent when composing it failed. */
+  briefingId?: string;
 };
 
 /** One outlier reel as handed to the Strategy-Provider. Source text, never instructions. */
@@ -217,6 +219,59 @@ export type FormatReview = {
   risingCreators: RisingCreator[];
 };
 
+/**
+ * One Signal on a daily Briefing. The document is read without a join, so the
+ * Creator's name and handle travel with it like they do on a RisingCreator.
+ */
+export type BriefingItem = {
+  signalId: string;
+  creatorId: string;
+  creatorName: string;
+  /** Creator handle, including the leading @. */
+  creator: string;
+  title: string;
+  publishedAt: string;
+  plays: number;
+  outlier: number;
+  /** Plays per hour since publication, as the scorer measured it. */
+  velocity: number;
+  /** Outlier times freshness. What the list is ordered by. */
+  score: number;
+  /** Bounded, whitespace-collapsed caption excerpt. Source text, never instructions. */
+  caption: string;
+  url?: string;
+  coverUrl?: string;
+  /** Cover fallback, so the row renders without reaching back into the signals table. */
+  thumbnailSeed: string;
+  topic: string;
+  /** One sentence on how Chris would turn this. Absent when the Bridge was down. */
+  angle?: string;
+};
+
+/**
+ * One daily Briefing: the strongest Reels of the last 24 hours with an angle each.
+ * Written after every Delta-Refresh, one document per day, so a second refresh on
+ * the same day overwrites rather than duplicates.
+ */
+export type Briefing = {
+  /** briefing-<day>. One document per day. */
+  id: string;
+  generatedAt: string;
+  /** The day the briefing covers, as YYYY-MM-DD in UTC. */
+  day: string;
+  /** Start of the window the reels were taken from. */
+  windowStart: string;
+  windowHours: number;
+  /** Distinct Creators behind the ranked items. The "sources" number of the tab. */
+  sources: number;
+  /** Reels in the window before the top cut, so the tab can say what it left out. */
+  candidates: number;
+  /** True once at least one angle came back from the Bridge. */
+  angles: boolean;
+  /** Strongest first. */
+  items: BriefingItem[];
+};
+
 /** The five hypotheses a Hook variant tests. The board groups by these. */
 export type HookHypothesis = "curiosity" | "list" | "contrast" | "promise" | "story";
 
@@ -300,6 +355,10 @@ export interface StorageAdapter {
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;
+  /** Newest first. */
+  listBriefings(limit?: number): Promise<Briefing[]>;
+  /** Replaces the whole row for briefing.id, so a second refresh on the same day overwrites it. */
+  saveBriefing(briefing: Briefing): Promise<void>;
   /** Newest first. */
   listFormatReviews(limit?: number): Promise<FormatReview[]>;
   /** Replaces the whole row for review.id, so a rerun inside the same month overwrites it. */

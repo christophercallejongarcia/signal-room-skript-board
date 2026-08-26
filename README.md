@@ -24,7 +24,7 @@ Signal Room collects public creator signals, ranks what deserves attention, turn
 | Surface | What works in the starter | What you replace |
 |---|---|---|
 | Discover | Synthetic feed, relative-reach context, ranked signal cards | Source connector and ranking method |
-| Briefing | Evidence-linked editorial summary | Briefing composer and editorial rubric |
+| Briefing | Daily document after every refresh: the ten strongest reels of the last 24 hours, one angle each, older days pickable | Your ranking weights, angle prompt, and editorial rubric |
 | Trend Radar | Topic grouping and momentum view | Trend detection and time-window logic |
 | Format Signals | Reusable content-format library | Your format taxonomy and performance evidence |
 | Tracked Channels | Add-channel flow and daily-watch model | Validation, scheduling, collection, persistence |

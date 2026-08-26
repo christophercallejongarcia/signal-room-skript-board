@@ -166,9 +166,13 @@ Definition: ADR-0003.
 - launchd (lokal) oder Vercel Cron ruft `/api/refresh` täglich 10:00. Ergebnis in `runs`.
 - AK: Profile-Tab zeigt "Next refresh" und letzten Lauf.
 
-### T6.2 Briefing-Generierung
-- Täglich nach Refresh: Top-10-Signale der letzten 24h, je mit "Chris angle" (Claude). Persistiert als Briefing-Dokument.
-- AK: Briefing-Tab zeigt Datum, Anzahl Quellen, gerankte Liste.
+### T6.2 Briefing-Generierung — erledigt
+- Jeder `POST /api/refresh` schreibt danach ein Briefing: die zehn stärksten Reels der letzten `BRIEFING_WINDOW_HOURS` (24), sortiert nach Outlier × Frische (`briefingScore` in `lib/briefing.ts`, Frische fällt linear von 1 auf `BRIEFING_FRESHNESS_FLOOR` 0.5 am Fensterrand).
+- Ticket 11 nennt in der Prosa "Outlier und Velocity", in der Checkbox "Outlier × Frische". Umgesetzt ist die Checkbox: `RankedSignal.velocity` sind Plays pro Stunde und skalieren mit der Reichweite des Creators, würden also große Accounts nach oben ziehen — genau das, wogegen der Outlier gebaut ist. Die rohe Velocity steht trotzdem in jedem Briefing-Item.
+- Je Signal ein "Chris angle" vom Codex-Bridge über `/v1/briefing`; die Antwort ist eine Liste in der Reihenfolge der Items, das Schema wird aus der Paketgröße gebaut. Fällt der Bridge aus, entsteht das Briefing ohne Angle (`angles: false`), nie gar keins.
+- Tabelle `briefings` (Convex) bzw. `briefings` in `data/store.json`, ein Dokument je Tag (`briefing-<YYYY-MM-DD>`), also idempotent bei mehrfachem Refresh. `GET /api/briefings` liefert die letzten `BRIEFING_HISTORY` (14), `POST` rechnet sofort neu (einziger Weg im Datei-Store, ADR-0005).
+- Briefing-Tab zeigt Datum, Anzahl Quellen, was der Schnitt weggelassen hat, die gerankte Liste mit Cover, Kennzahlen und Angle; ältere Tage über den Day-Picker. "Create idea" legt eine Idee mit Quell-Reel an, der Angle wird zum Ziel.
+- AK: Ranking und Angle-Zuordnung getestet (`tests/briefing.test.mjs`, `tests/bridge-briefing.test.mjs`).
 
 ### T6.3 Trend Radar (später)
 - Quellen: Instagram-Hashtag-Suche via Apify, optional GitHub Trending. Opportunity-Score = Momentum × Coverage-Gap.

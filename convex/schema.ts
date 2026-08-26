@@ -41,6 +41,39 @@ export const ideaFields = {
   updatedAt: v.string(),
 };
 
+/** One Signal on a daily Briefing; part of briefingFields. */
+const briefingItemFields = {
+  signalId: v.string(),
+  creatorId: v.string(),
+  creatorName: v.string(),
+  creator: v.string(),
+  title: v.string(),
+  publishedAt: v.string(),
+  plays: v.number(),
+  outlier: v.number(),
+  velocity: v.number(),
+  score: v.number(),
+  caption: v.string(),
+  url: v.optional(v.string()),
+  coverUrl: v.optional(v.string()),
+  thumbnailSeed: v.string(),
+  topic: v.string(),
+  angle: v.optional(v.string()),
+};
+
+/** One daily Briefing; shared with convex/briefings.ts. One document per day. */
+export const briefingFields = {
+  id: v.string(),
+  generatedAt: v.string(),
+  day: v.string(),
+  windowStart: v.string(),
+  windowHours: v.number(),
+  sources: v.number(),
+  candidates: v.number(),
+  angles: v.boolean(),
+  items: v.array(v.object(briefingItemFields)),
+};
+
 /** One pattern's month over month move; part of formatReviewFields. */
 const reviewPatternFields = {
   id: v.string(),
@@ -169,6 +202,9 @@ export default defineSchema({
   hookRuns: defineTable(hookRunFields)
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),
+  briefings: defineTable(briefingFields)
+    .index("by_external_id", ["id"])
+    .index("by_day", ["day"]),
   formatReviews: defineTable(formatReviewFields)
     .index("by_external_id", ["id"])
     .index("by_periodEnd", ["periodEnd"]),

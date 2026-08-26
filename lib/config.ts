@@ -29,6 +29,16 @@ export const FORMAT_EXAMPLE_LIMIT = 3;
 export const FORMAT_REVIEW_SMALL_AUDIENCE = 50_000;
 /** Small creators listed per Format-Review. */
 export const FORMAT_REVIEW_RISING_LIMIT = 5;
+/** Hours of history one daily Briefing covers. */
+export const BRIEFING_WINDOW_HOURS = 24;
+/** Reels one Briefing carries. */
+export const BRIEFING_LIMIT = 10;
+/** Bound for one "Chris angle" the Bridge returns. The Bridge is the untrusted side. */
+export const BRIEFING_ANGLE_MAX = 300;
+/** Caption characters a Briefing item keeps. Shorter than the evidence excerpt: the list reads at a glance. */
+export const BRIEFING_CAPTION_EXCERPT = 200;
+/** Briefings kept in the picker. Two weeks of mornings. */
+export const BRIEFING_HISTORY = 14;
 /** Longest input the Hooks board accepts, in characters as pasted. */
 export const HOOK_INPUT_MAX = 20_000;
 /** How many hooks one run may ask for. */

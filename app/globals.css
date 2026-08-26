@@ -639,6 +639,12 @@ main {
 .brief-row .angle { margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--accent); font-size: 11px; color: var(--ink); }
 .brief-row .angle span { color: var(--accent); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; margin-right: 8px; }
 .brief-row .actions { display: flex; gap: 6px; }
+.brief-row .meta strong { white-space: nowrap; }
+.brief-controls { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.empty-note {
+  margin: 0; padding: 18px 14px; border: 1px dashed var(--line);
+  border-radius: var(--radius-card); color: var(--muted); font-size: 11.5px;
+}
 
 /* ---------- Radar ---------- */
 

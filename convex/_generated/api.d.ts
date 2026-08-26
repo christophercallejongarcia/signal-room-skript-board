@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as briefings from "../briefings.js";
 import type * as creators from "../creators.js";
 import type * as crons from "../crons.js";
 import type * as formatReviews from "../formatReviews.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  briefings: typeof briefings;
   creators: typeof creators;
   crons: typeof crons;
   formatReviews: typeof formatReviews;

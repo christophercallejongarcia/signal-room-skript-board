@@ -31,7 +31,7 @@ import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
 import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
-import { rankCorpus, type Ranked } from "@/lib/rank-corpus";
+import { rankCorpus, DEMO_NOW, type Ranked } from "@/lib/rank-corpus";
 import { demoCreators, demoIdeas, demoSignals } from "@/lib/demo-data";
 import { DEMO_SCORING_NOTE } from "@/lib/demo-score";
 import {
@@ -47,7 +47,10 @@ import {
   type OutlierThreshold,
   type PublishedWindow,
 } from "@/lib/discover-filter";
+import { buildBriefing } from "@/lib/briefing";
 import {
+  BRIEFING_LIMIT,
+  BRIEFING_WINDOW_HOURS,
   FORMAT_REVIEW_RISING_LIMIT,
   FORMAT_REVIEW_SMALL_AUDIENCE,
   FORMAT_WINDOW_DAYS,
@@ -66,7 +69,7 @@ import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
+import type { Briefing, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
@@ -90,6 +93,15 @@ type HooksState = {
   error: string;
   /** id of the run on the board, null reads the newest one. */
   selected: string | null;
+};
+
+/** The stored briefings as the Briefing tab sees them, newest first. */
+type BriefingState = {
+  briefings: Briefing[];
+  phase: "loading" | "ready" | "running" | "error";
+  /** id of the briefing on screen, null reads the newest one. */
+  selected: string | null;
+  error: string;
 };
 
 /** The monthly Format-Review as the Format Signals tab sees it. */
@@ -138,6 +150,16 @@ function formatDuration(ms: number) {
   if (ms < 1000) return `${ms} ms`;
   const seconds = Math.round(ms / 1000);
   return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+}
+
+/**
+ * Age inside a briefing window, measured against the moment the briefing was
+ * composed rather than the reader's clock, so an old document keeps reading right.
+ */
+function ageInWindow(publishedAt: string, generatedAt: string) {
+  const hours = Math.max(0, (new Date(generatedAt).getTime() - new Date(publishedAt).getTime()) / 3_600_000);
+  if (hours < 1) return "just now";
+  return `${Math.round(hours)}h old`;
 }
 
 function formatStamp(iso: string) {
@@ -222,6 +244,42 @@ export function SignalRoom() {
     }
   }
 
+  async function loadBriefings() {
+    try {
+      const response = await fetch("/api/briefings", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { briefings: Briefing[] };
+      setBriefings((current) => ({ ...current, briefings: data.briefings, phase: "ready" }));
+    } catch {
+      setBriefings((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
+  /** The manual pass. Every Delta-Refresh runs the same composition on its own. */
+  async function composeBriefingNow() {
+    setBriefings((current) => ({ ...current, phase: "running", error: "" }));
+    try {
+      const response = await fetch("/api/briefings", { method: "POST" });
+      const payload = (await response.json().catch(() => ({}))) as { briefing?: Briefing; error?: string };
+      if (!response.ok || !payload.briefing) {
+        throw new Error(payload.error || `The briefing answered with HTTP ${response.status}.`);
+      }
+      const briefing = payload.briefing;
+      setBriefings((current) => ({
+        briefings: [briefing, ...current.briefings.filter((item) => item.id !== briefing.id)],
+        phase: "ready",
+        selected: briefing.id,
+        error: "",
+      }));
+    } catch (error) {
+      setBriefings((current) => ({
+        ...current,
+        phase: "ready",
+        error: error instanceof Error ? error.message : "The briefing could not be composed.",
+      }));
+    }
+  }
+
   async function loadFormatReview() {
     try {
       const response = await fetch("/api/format-reviews", { cache: "no-store" });
@@ -269,6 +327,7 @@ export function SignalRoom() {
     loadRuns();
     loadIdeas();
     loadHookRuns();
+    loadBriefings();
     loadFormatReview();
     checkBridge();
   }, []);
@@ -278,6 +337,12 @@ export function SignalRoom() {
   const [strategyError, setStrategyError] = useState("");
   const [bridge, setBridge] = useState<BridgeHealth>("checking");
   const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
+  const [briefings, setBriefings] = useState<BriefingState>({
+    briefings: [],
+    phase: "loading",
+    selected: null,
+    error: "",
+  });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
   const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
 
@@ -299,7 +364,7 @@ export function SignalRoom() {
       const response = await fetch("/api/refresh", { method: "POST" });
       if (response.ok) {
         const result = (await response.json()) as RefreshResult;
-        await Promise.all([loadStore(), loadRuns()]);
+        await Promise.all([loadStore(), loadRuns(), loadBriefings()]);
         const failed = result.errors?.length ?? 0;
         if (failed === 0) setLastRefresh("Refreshed just now");
         else if (failed >= result.creatorsChecked) setLastRefresh("Refresh failed");
@@ -594,7 +659,15 @@ export function SignalRoom() {
           />
         )}
         {activeTab === "briefing" && (
-          <BriefingView rankedSignals={rankedSignals} creators={creators} onCreateIdea={captureIdea} />
+          <BriefingView
+            state={briefings}
+            signals={signals}
+            creators={creators}
+            live={live}
+            onCompose={composeBriefingNow}
+            onSelect={(id) => setBriefings((current) => ({ ...current, selected: id }))}
+            onCreateIdea={captureIdea}
+          />
         )}
         {activeTab === "radar" && <RadarView rankedSignals={research} />}
         {activeTab === "formats" && (
@@ -875,51 +948,123 @@ function DiscoverView({
   );
 }
 
+/**
+ * The Briefing tab: the daily document a Delta-Refresh leaves behind. Older days
+ * are pickable; the angle under each reel comes from the Bridge and is simply
+ * absent when it was down. Without a stored corpus the same pure composition
+ * runs over the demo fixtures, so the tab reads before the first refresh.
+ */
 function BriefingView({
-  rankedSignals,
+  state,
+  signals,
   creators,
+  live,
+  onCompose,
+  onSelect,
   onCreateIdea,
 }: {
-  rankedSignals: Ranked[];
+  state: BriefingState;
+  signals: SignalRecord[];
   creators: Creator[];
+  live: boolean;
+  onCompose: () => void;
+  onSelect: (id: string) => void;
   onCreateIdea: (input: IdeaInput) => void;
 }) {
-  const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
-  // The briefing reads the niche. Own uploads live in Profile.
-  const top = withoutOwned(rankedSignals, creators).sort((a, b) => b.score - a.score).slice(0, 10);
-  const date = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  const stored = state.selected
+    ? state.briefings.find((item) => item.id === state.selected) ?? state.briefings[0]
+    : state.briefings[0];
+  // Demo mode never writes a document. The fixtures run through the same ranking.
+  const demo = useMemo(
+    () => (stored || live ? null : buildBriefing(signals, creators, { now: DEMO_NOW.getTime() })),
+    [stored, live, signals, creators],
+  );
+  const briefing = stored ?? demo;
+  const running = state.phase === "running";
+  const items = briefing?.items ?? [];
+  const day = briefing ? new Date(`${briefing.day}T12:00:00.000Z`) : new Date();
+
   return (
     <div className="view-stack">
       <section className="hero">
         <div>
-          <p className="hero-kicker">Editorial desk / last 24 hours</p>
-          <h1>Morning briefing</h1>
+          <p className="hero-kicker">Editorial desk / last {briefing?.windowHours ?? BRIEFING_WINDOW_HOURS} hours</p>
+          <h1>{stored ? "Morning briefing" : "Morning briefing (demo)"}</h1>
           <p className="hero-sub">
-            {date}. A ranked reading list across competitor uploads, GitHub momentum, and X conversations, with one angle per package.
+            {day.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}. The{" "}
+            {BRIEFING_LIMIT} strongest reels of the window, ranked by outlier times freshness, with one angle each.
+            {briefing && briefing.candidates > items.length
+              ? ` ${briefing.candidates - items.length} more reels landed in the window and did not make the cut.`
+              : ""}
           </p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{top.length}</strong><span>ranked signals</span></div>
-          <div><strong>{new Set(top.map((s) => creatorMap.get(s.creatorId)?.network)).size}</strong><span>sources</span></div>
-          <div className="lime"><strong>{top[0]?.score ?? 0}</strong><span>top score</span></div>
+          <div><strong>{items.length}</strong><span>ranked reels</span></div>
+          <div><strong>{briefing?.sources ?? 0}</strong><span>sources</span></div>
+          <div className="lime"><strong>{items[0]?.score.toFixed(2) ?? "0.00"}</strong><span>top score</span></div>
         </div>
       </section>
 
-      <div className="briefing-list">
-        {top.map((signal, index) => {
-          const creator = creatorMap.get(signal.creatorId);
-          return (
-            <article className={index === 0 ? "brief-row top" : "brief-row"} key={signal.id}>
+      <div className="review-actions">
+        <span>
+          {state.phase === "loading" && "Loading the briefings…"}
+          {state.phase === "error" && "The briefings could not be read."}
+          {state.error}
+          {!state.error && stored && state.phase !== "loading" && (
+            <>
+              Composed {formatStamp(stored.generatedAt)}
+              {stored.items.length > 0 && !stored.angles && " · no angles: the bridge was unreachable"}
+            </>
+          )}
+          {!state.error && !stored && state.phase === "ready" && (live
+            ? "No briefing yet. Every refresh writes one, or compose today's now."
+            : "Demo fixtures. Add a creator to the watchlist, then refresh.")}
+        </span>
+        <div className="brief-controls">
+          {state.briefings.length > 1 && (
+            <label className="sort-select">
+              Day
+              <select value={stored?.id ?? ""} onChange={(event) => onSelect(event.target.value)}>
+                {state.briefings.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.day} ({item.items.length})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button className="ghost-button" onClick={onCompose} disabled={running}>
+            {running ? "Composing…" : "Compose briefing"}
+          </button>
+        </div>
+      </div>
+
+      {briefing && items.length === 0 && (
+        <p className="empty-note">
+          Nothing was published in the last {briefing.windowHours} hours. The next refresh writes the next briefing.
+        </p>
+      )}
+
+      {items.length > 0 && (
+        <div className="briefing-list">
+          {items.map((item, index) => (
+            <article className={index === 0 ? "brief-row top" : "brief-row"} key={item.signalId}>
               <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              <CoverImage signal={signal} index={index} className="mini" />
+              <CoverImage signal={item} index={index} className="mini" lazy />
               <div>
                 <div className="meta">
-                  <span>{creator?.network ?? "source"}</span>
-                  <strong>{signal.score}</strong>
+                  <span>{item.creator}</span>
+                  <strong>{item.score.toFixed(2)} score</strong>
+                  <span>{formatOutlier(item.outlier)} outlier</span>
+                  <span>{formatNumber(item.plays)} plays</span>
+                  <span>{ageInWindow(item.publishedAt, briefing?.generatedAt ?? item.publishedAt)}</span>
                 </div>
-                <h3>{signal.title}</h3>
-                <p>{creator?.name}: {signal.caption ?? signal.reason}</p>
-                <div className="angle"><span>Your angle</span>Find the uncopied tension behind this package, then show a stronger firsthand proof for your audience.</div>
+                <h3>{item.title}</h3>
+                <p>{item.creatorName}: {item.caption || "No caption on this reel."}</p>
+                <div className="angle">
+                  <span>Your angle</span>
+                  {item.angle ?? "No angle yet. Compose the briefing again once the bridge is up."}
+                </div>
               </div>
               <div className="actions">
                 <button
@@ -927,23 +1072,24 @@ function BriefingView({
                   type="button"
                   onClick={() =>
                     onCreateIdea({
-                      title: signal.title,
-                      sourceSignalId: signal.id,
-                      sourceCreator: creator?.handle,
-                      sourceUrl: signal.url,
+                      title: item.title,
+                      ...(item.angle ? { goal: item.angle } : {}),
+                      sourceSignalId: item.signalId,
+                      sourceCreator: item.creator,
+                      ...(item.url ? { sourceUrl: item.url } : {}),
                     })
                   }
                 >
                   <Lightbulb size={13} /> Create idea
                 </button>
-                {signal.url && (
-                  <a className="ghost-button" href={signal.url} target="_blank" rel="noreferrer" aria-label="Open source"><ArrowSquareOut size={13} /></a>
+                {item.url && (
+                  <a className="ghost-button" href={item.url} target="_blank" rel="noreferrer" aria-label="Open source"><ArrowSquareOut size={13} /></a>
                 )}
               </div>
             </article>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -94,6 +94,18 @@ Nicht: "Run" (Run meint den Sammel-Durchlauf), "Session", "Board-Historie".
 Das Outlier-Reel, das unter einer Hook-Variante steht: dessen eigener Hook, Creator-Handle und Outlier-Faktor. Bei Instagram ist der Titel eines Signals bereits die erste Caption-Zeile, also der Hook des Reels. Belege kommen ausschließlich aus dem Evidenzpaket; nennt die Antwort einen Titel, den das Paket nicht führt, fällt er weg, und eine Variante ohne brauchbare Nennung bekommt über `similarEvidence` die wortähnlichsten Outlier-Hooks.
 Nicht: "Quelle", "Referenz", "Zitat".
 
+**Briefing**
+Das Tagesdokument, das jeder Delta-Refresh hinterlässt: die zehn stärksten Reels der letzten `BRIEFING_WINDOW_HOURS` (24) aus der Nische, je mit Creator, Cover, Kennzahlen und einem "Chris angle". Gespeichert in der Tabelle `briefings`, ein Dokument je Tag unter `briefing-<YYYY-MM-DD>`, ein zweiter Refresh überschreibt es. `buildBriefing` (`lib/briefing.ts`) baut es rein über dem Korpus, `runBriefing` (`lib/briefing-run.ts`) ist der Lauf mit Bridge und Speichern. Der Briefing-Tab liest das neueste, ältere Tage über den Day-Picker; ohne gespeichertes Dokument rechnet er dasselbe über den Demo-Fixtures.
+Nicht: "Digest", "Daily", "Report", "Newsletter".
+
+**Briefing-Score**
+Wonach ein Briefing sortiert: Outlier × Frische (`briefingScore`). Die Frische fällt linear von 1 zum Erscheinungszeitpunkt auf `BRIEFING_FRESHNESS_FLOOR` (0.5) am Fensterrand, damit der Outlier die Entscheidung trägt und die Frische nur nahe Gleichstände auflöst. Ein Reel am Fensterrand braucht genau den doppelten Outlier, um gegen ein eben erschienenes zu gewinnen.
+Nicht: "Momentum", "Velocity" (Velocity ist Plays pro Stunde beim Scorer), "Ranking".
+
+**Chris angle**
+Der eine Satz unter einem Briefing-Reel: wie Chris dieses Thema für sein Publikum drehen würde. Kommt vom Bridge über `/v1/briefing`, eine Liste in der Reihenfolge der Items, und wird von `applyAngles` positionsweise angehängt. Der Angle ist Beiwerk: fällt der Bridge aus, steht das Briefing ohne ihn (`angles: false`). Beim "Create idea" wird er das Ziel der Idee.
+Nicht: "Take", "Spin", "Kommentar"; "Angle" allein meint den Strategy-Entwurf (`StrategyResponse.angle`).
+
 ## Ergänzende Begriffe
 
 **Idea**

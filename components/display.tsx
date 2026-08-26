@@ -27,12 +27,15 @@ export function formatOutlier(outlier: number | null) {
   return outlier === null ? "—" : `${outlier.toFixed(2)}x`;
 }
 
+/** Only the four cover fields, so a Briefing item renders through the same component as a card. */
+type Coverable = Pick<SignalRecord, "coverUrl" | "thumbnailUrl" | "thumbnailSeed" | "topic">;
+
 /**
  * Renders the cached cover. Until the cache has the file, the CDN link is tried
  * once (fresh records still resolve); an expired link or a missing file falls
  * back to the generative artwork instead of a broken image.
  */
-export function CoverImage({ signal, index, className, lazy }: { signal: SignalRecord; index: number; className?: string; lazy?: boolean }) {
+export function CoverImage({ signal, index, className, lazy }: { signal: Coverable; index: number; className?: string; lazy?: boolean }) {
   const [broken, setBroken] = useState(false);
   const src = signal.coverUrl ?? signal.thumbnailUrl;
   if (src && !broken) {
