@@ -43,6 +43,8 @@ import {
   type PublishedWindow,
 } from "@/lib/discover-filter";
 import {
+  FORMAT_REVIEW_RISING_LIMIT,
+  FORMAT_REVIEW_SMALL_AUDIENCE,
   FORMAT_WINDOW_DAYS,
   OUTLIER_THRESHOLD,
   STRATEGY_AUDIENCE,
@@ -54,7 +56,8 @@ import {
 import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
-import type { Idea, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
+
+import type { FormatReview, FormatReviewPattern, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
@@ -67,6 +70,12 @@ type IdeasState = {
   /** id of the idea whose develop run is in flight, null when none is. */
   developing: string | null;
   error: string;
+};
+
+/** The monthly Format-Review as the Format Signals tab sees it. */
+type ReviewState = {
+  review: FormatReview | null;
+  phase: "loading" | "ready" | "running" | "error";
 };
 
 /** The strategy panel's own state. These four always travel together. */
@@ -225,6 +234,30 @@ export function SignalRoom() {
     }
   }
 
+  async function loadFormatReview() {
+    try {
+      const response = await fetch("/api/format-reviews", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { review: FormatReview | null };
+      setReview({ review: data.review, phase: "ready" });
+    } catch {
+      setReview((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
+  /** The manual pass. The Convex cron runs the same computation on the first of the month. */
+  async function runFormatReview() {
+    setReview((current) => ({ ...current, phase: "running" }));
+    try {
+      const response = await fetch("/api/format-reviews", { method: "POST" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { review: FormatReview };
+      setReview({ review: data.review, phase: "ready" });
+    } catch {
+      setReview((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
   async function checkBridge() {
     setBridge("checking");
     try {
@@ -241,6 +274,7 @@ export function SignalRoom() {
     loadStore().catch(() => {});
     loadRuns();
     loadIdeas();
+    loadFormatReview();
     checkBridge();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
@@ -249,6 +283,7 @@ export function SignalRoom() {
   const [strategyError, setStrategyError] = useState("");
   const [bridge, setBridge] = useState<BridgeHealth>("checking");
   const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
+  const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
 
   const rankedSignals = useMemo(
     () => (live ? outlierScorer : demoScorer).rank(signals, creators, live ? new Date() : new Date("2026-08-22T16:00:00.000Z")),
@@ -505,7 +540,15 @@ export function SignalRoom() {
           <BriefingView rankedSignals={rankedSignals} creators={creators} onCreateIdea={captureIdea} />
         )}
         {activeTab === "radar" && <RadarView rankedSignals={rankedSignals} />}
-        {activeTab === "formats" && <FormatsView rankedSignals={rankedSignals} creators={creators} threshold={threshold} />}
+        {activeTab === "formats" && (
+          <FormatsView
+            rankedSignals={rankedSignals}
+            creators={creators}
+            threshold={threshold}
+            review={review}
+            onRunReview={runFormatReview}
+          />
+        )}
         {activeTab === "channels" && (
           <ChannelsView
             creators={creators}
@@ -914,14 +957,147 @@ function FormatSection({ signal, threshold }: { signal: FormatSignal; threshold:
   );
 }
 
+const monthLabel = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
+
+function formatMonth(iso: string) {
+  return monthLabel.format(new Date(iso));
+}
+
+/** A delta reads as a delta: the sign is always there, zero included. */
+function signed(value: number, digits = 0) {
+  return `${value > 0 ? "+" : value < 0 ? "\u2212" : "\u00b1"}${Math.abs(value).toFixed(digits)}`;
+}
+
+/** Share deltas are points of the corpus, not percent of a percent. */
+function signedPoints(value: number) {
+  return `${signed(Math.round(value * 100))} pt`;
+}
+
+/** What each badge means, spelled out under the header so the move never lives in a tooltip alone. */
+const MOVE_TITLE: Record<PatternMove, string> = {
+  new: "Not in the previous review",
+  up: "A larger slice of the outliers than last time",
+  down: "A smaller slice of the outliers than last time",
+  flat: "The share held inside one point",
+  gone: "No outlier reel carried this shape in this window",
+};
+
+const MOVE_ORDER: PatternMove[] = ["new", "up", "down", "flat", "gone"];
+
+function FormatReviewRow({ pattern }: { pattern: FormatReviewPattern }) {
+  return (
+    <li className={`review-row ${pattern.move}`}>
+      <span className="review-move" title={MOVE_TITLE[pattern.move]}>{pattern.move}</span>
+      <span className="review-label">{pattern.label}</span>
+      <span className="review-fact">
+        <strong>{Math.round(pattern.share * 100)}%</strong> of outliers <em>{signedPoints(pattern.shareDelta)}</em>
+      </span>
+      <span className="review-fact">
+        <strong>{pattern.count}</strong> reels <em>{signed(pattern.countDelta)}</em>
+      </span>
+      <span className="review-fact">
+        <strong>{pattern.averageOutlier.toFixed(1)}x</strong> avg <em>{signed(pattern.outlierDelta, 1)}</em>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * "What changed": the monthly review the Convex cron writes on the first of the
+ * month. The button runs the same computation now, which is how the file store
+ * gets a review at all (ADR-0005).
+ */
+function FormatReviewPanel({ state, onRun }: { state: ReviewState; onRun: () => void }) {
+  const { review, phase } = state;
+  const running = phase === "running";
+
+  return (
+    <section className="review-panel">
+      <div className="format-group-head">
+        <h2>What changed</h2>
+        <p>
+          {review
+            ? review.previousReviewId
+              ? `Patterns of the trailing ${review.windowDays} days against the review of ${review.previousPeriodEnd?.slice(0, 10) ?? formatMonth(review.periodEnd)}. ${review.total} outlier reels, ${signed(review.total - review.previousTotal)} against last time.`
+              : `The first review, ${formatMonth(review.periodEnd)}. ${review.total} outlier reels, nothing to compare against yet.`
+            : "Recomputed on the first of every month over the trailing window, then diffed against the month before."}
+        </p>
+      </div>
+
+      <div className="review-actions">
+        <span>
+          {phase === "loading" && "Loading the last review\u2026"}
+          {phase === "error" && "The review could not be read."}
+          {review && phase !== "loading" && `Last run ${review.generatedAt.slice(0, 10)}`}
+          {!review && phase === "ready" && "No review yet."}
+        </span>
+        <button className="ghost-button" onClick={onRun} disabled={running}>
+          {running ? "Running\u2026" : "Run review now"}
+        </button>
+      </div>
+
+      {review && review.patterns.length > 0 && (
+        <dl className="review-legend">
+          {MOVE_ORDER.map((move) => (
+            <Fragment key={move}>
+              <dt className={`review-move ${move}`}>{move}</dt>
+              <dd>{MOVE_TITLE[move]}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+
+      {review && review.patterns.length > 0 && (
+        <ol className="review-rows">
+          {review.patterns.map((pattern) => (
+            <FormatReviewRow key={pattern.id} pattern={pattern} />
+          ))}
+        </ol>
+      )}
+
+      {review && review.risingCreators.length > 0 && (
+        <div className="review-rising">
+          <h3>Small accounts to watch</h3>
+          <p>
+            The {FORMAT_REVIEW_RISING_LIMIT} strongest accounts under {formatNumber(FORMAT_REVIEW_SMALL_AUDIENCE)} followers whose outlier reel
+            carries a named shape, one reel each. A shape that is new this month sorts first.
+          </p>
+          <ul>
+            {review.risingCreators.map((entry) => (
+              <li key={entry.creatorId}>
+                <span className="handle">{entry.handle}</span>
+                <span className="audience">{formatNumber(entry.audience)} followers</span>
+                <span className={entry.patternMove === "new" ? "pattern new" : "pattern"}>{entry.patternLabel}</span>
+                <span className="outlier">{entry.outlier.toFixed(1)}x</span>
+                {entry.url ? (
+                  <a className="signal-link" href={entry.url} target="_blank" rel="noreferrer">
+                    {entry.title} <ArrowSquareOut size={12} />
+                  </a>
+                ) : (
+                  <span className="title">{entry.title}</span>
+                )}
+                {entry.foreign && <span className="foreign">foreign niche</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function FormatsView({
   rankedSignals,
   creators,
   threshold,
+  review,
+  onRunReview,
 }: {
   rankedSignals: Ranked[];
   creators: Creator[];
   threshold: number;
+  review: ReviewState;
+  onRunReview: () => void;
 }) {
   const { own, foreign } = useMemo(
     () => buildFormatSignals(rankedSignals, creators, { now: Date.now(), threshold }),
@@ -947,6 +1123,8 @@ function FormatsView({
           <div className="lime"><strong>{rest ? Math.round(rest.share * 100) : 0}%</strong><span>unclassified</span></div>
         </div>
       </section>
+
+      <FormatReviewPanel state={review} onRun={onRunReview} />
 
       {own.total === 0 && (
         <div className="empty-state">

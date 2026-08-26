@@ -41,6 +41,55 @@ export const ideaFields = {
   updatedAt: v.string(),
 };
 
+/** One pattern's month over month move; part of formatReviewFields. */
+const reviewPatternFields = {
+  id: v.string(),
+  label: v.string(),
+  count: v.number(),
+  share: v.number(),
+  averageOutlier: v.number(),
+  previousCount: v.number(),
+  previousShare: v.number(),
+  previousAverageOutlier: v.number(),
+  countDelta: v.number(),
+  shareDelta: v.number(),
+  outlierDelta: v.number(),
+  move: v.union(v.literal("new"), v.literal("gone"), v.literal("up"), v.literal("down"), v.literal("flat")),
+};
+
+/** A small account whose outlier reel carries a named pattern; part of formatReviewFields. */
+const risingCreatorFields = {
+  creatorId: v.string(),
+  name: v.string(),
+  handle: v.string(),
+  audience: v.number(),
+  foreign: v.boolean(),
+  patternId: v.string(),
+  patternLabel: v.string(),
+  patternMove: reviewPatternFields.move,
+  signalId: v.string(),
+  title: v.string(),
+  outlier: v.number(),
+  publishedAt: v.string(),
+  url: v.optional(v.string()),
+};
+
+/** One monthly Format-Review; shared with convex/formatReviews.ts. */
+export const formatReviewFields = {
+  id: v.string(),
+  generatedAt: v.string(),
+  periodStart: v.string(),
+  periodEnd: v.string(),
+  windowDays: v.number(),
+  threshold: v.number(),
+  previousReviewId: v.optional(v.string()),
+  previousPeriodEnd: v.optional(v.string()),
+  total: v.number(),
+  previousTotal: v.number(),
+  patterns: v.array(v.object(reviewPatternFields)),
+  risingCreators: v.array(v.object(risingCreatorFields)),
+};
+
 export default defineSchema({
   creators: defineTable({
     id: v.string(),
@@ -79,6 +128,9 @@ export default defineSchema({
   ideas: defineTable(ideaFields)
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),
+  formatReviews: defineTable(formatReviewFields)
+    .index("by_external_id", ["id"])
+    .index("by_periodEnd", ["periodEnd"]),
   runs: defineTable(runFields)
     .index("by_external_id", ["id"])
     .index("by_startedAt", ["startedAt"]),

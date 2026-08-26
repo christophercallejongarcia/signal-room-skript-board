@@ -25,3 +25,7 @@ export const STRATEGY_BRIDGE_URL = process.env.NEXT_PUBLIC_STRATEGY_BRIDGE_URL |
 export const FORMAT_WINDOW_DAYS = 90;
 /** Example reels shown per Format Signal. */
 export const FORMAT_EXAMPLE_LIMIT = 3;
+/** A creator below this follower count counts as small in the monthly Format-Review. */
+export const FORMAT_REVIEW_SMALL_AUDIENCE = 50_000;
+/** Small creators listed per Format-Review. */
+export const FORMAT_REVIEW_RISING_LIMIT = 5;

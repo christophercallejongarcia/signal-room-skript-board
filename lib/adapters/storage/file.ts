@@ -1,17 +1,19 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Creator, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
+import type { Creator, FormatReview, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
 import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
-type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[]; ideas: Idea[] };
+type Store = { creators: Creator[]; signals: SignalRecord[]; runs: Run[]; ideas: Idea[]; formatReviews: FormatReview[] };
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 /** Runs kept in the file store; Convex keeps everything. */
 const MAX_RUNS = 100;
 /** Ideas kept in the file store; Convex keeps everything. */
 const MAX_IDEAS = 500;
-const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [] };
+/** Format reviews kept in the file store. One per run date, monthly plus any manual run. */
+const MAX_FORMAT_REVIEWS = 24;
+const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [] };
 
 async function load(): Promise<Store> {
   try {
@@ -22,6 +24,7 @@ async function load(): Promise<Store> {
       signals: parsed.signals ?? [],
       runs: parsed.runs ?? [],
       ideas: parsed.ideas ?? [],
+      formatReviews: parsed.formatReviews ?? [],
     };
   } catch {
     return { ...EMPTY };
@@ -86,6 +89,19 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
   async listRuns(limit = 10) {
     const runs = (await load()).runs;
     return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, limit);
+  },
+  async listFormatReviews(limit = 6) {
+    const reviews = (await load()).formatReviews;
+    return [...reviews].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd)).slice(0, limit);
+  },
+  async saveFormatReview(review) {
+    await serialized(async () => {
+      const store = await load();
+      store.formatReviews = [review, ...store.formatReviews.filter((r) => r.id !== review.id)]
+        .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))
+        .slice(0, MAX_FORMAT_REVIEWS);
+      await save(store);
+    });
   },
   async listIdeas(limit = 50) {
     const ideas = (await load()).ideas;

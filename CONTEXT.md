@@ -62,6 +62,10 @@ Nicht: "Cutoff", "Limit", "Grenzwert".
 Ein wiederkehrendes Hook-Muster über mehrere Outlier-Reels (z.B. "Die besten X", "Nie wieder X"), erkannt regelbasiert aus der ersten Caption-Zeile. Die Musterliste steht in `lib/format-signals.ts` als `FORMAT_PATTERNS` und ist durch einen weiteren Eintrag erweiterbar; `buildFormatSignals` liefert je Muster Anzahl, Durchschnitts-Outlier, Anteil an allen Outliern, bis zu `FORMAT_EXAMPLE_LIMIT` (3) Beispiel-Reels und die Wochenlinie über `FORMAT_WINDOW_DAYS` (90). Reels ohne erkanntes Muster stehen als "Unclassified" am Ende, mit ihrem Anteil.
 Nicht: "Pattern", "Trend", "Template".
 
+**Format-Review**
+Der monatliche Diff der Format Signals: `buildFormatReview` (`lib/format-review.ts`) rechnet die Muster der letzten `FORMAT_WINDOW_DAYS` (90) neu und stellt sie dem Review des Vormonats gegenüber. Je Muster Bewegung (`new`, `up`, `down`, `flat`, `gone`), Anteil, Anzahl und Durchschnitts-Outlier, jeweils mit Delta; dazu die kleinen Creators unter `FORMAT_REVIEW_SMALL_AUDIENCE` (50k), deren Outlier-Reel ein benanntes Muster trägt. Geschrieben vom Convex-Cron am 1. jedes Monats (`convex/crons.ts`) in die Tabelle `formatReviews`, gelesen über `GET /api/format-reviews`, angezeigt im Format-Signals-Tab als "What changed".
+Nicht: "Report", "Monatsbericht", "Audit".
+
 **Nische-fremder Creator**
 Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beobachtet, aber seine Format Signals erscheinen im eigenen Block "Foreign niche", damit importierte Muster die eigenen Kennzahlen nicht verwässern. Umgeschaltet über den Globus-Knopf in Tracked Channels, gespeichert über `PATCH /api/creators`.
 Nicht: "Fremdnische", "External", "Competitor".

@@ -9,6 +9,8 @@
  */
 
 import type * as creators from "../creators.js";
+import type * as crons from "../crons.js";
+import type * as formatReviews from "../formatReviews.js";
 import type * as ideas from "../ideas.js";
 import type * as runs from "../runs.js";
 import type * as signals from "../signals.js";
@@ -21,6 +23,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   creators: typeof creators;
+  crons: typeof crons;
+  formatReviews: typeof formatReviews;
   ideas: typeof ideas;
   runs: typeof runs;
   signals: typeof signals;

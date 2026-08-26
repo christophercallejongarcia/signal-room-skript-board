@@ -1,5 +1,6 @@
-import type { Creator, RankedSignal, SignalRecord, SignalScorer } from "@/lib/contracts";
-import { isOutlier } from "@/lib/discover-filter";
+// Relative imports so both `node --test` and the Convex bundler can load this file without the "@/" alias.
+import type { Creator, RankedSignal, SignalRecord, SignalScorer } from "../../contracts";
+import { isOutlier } from "../../discover-filter.ts";
 
 export { isOutlier };
 

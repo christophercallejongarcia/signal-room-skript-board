@@ -147,6 +147,76 @@ export type Idea = {
   updatedAt: string;
 };
 
+/** One pattern as a Format-Review stores it. The previous review hands these back for the diff. */
+export type PatternSnapshot = {
+  id: string;
+  label: string;
+  /** Outlier reels carrying the pattern. */
+  count: number;
+  /** count over every outlier reel of the niche, 0 to 1. */
+  share: number;
+  averageOutlier: number;
+};
+
+/** new = absent last review, gone = absent this one, flat = the share barely moved. */
+export type PatternMove = "new" | "gone" | "up" | "down" | "flat";
+
+/** One pattern's move from one Format-Review to the next. Every number is rounded for reading. */
+export type FormatReviewPattern = PatternSnapshot & {
+  previousCount: number;
+  previousShare: number;
+  previousAverageOutlier: number;
+  countDelta: number;
+  shareDelta: number;
+  outlierDelta: number;
+  move: PatternMove;
+};
+
+/** A small account whose outlier reel carries a named pattern. */
+export type RisingCreator = {
+  creatorId: string;
+  name: string;
+  handle: string;
+  audience: number;
+  /** Creator from another niche; their reel never moved the numbers of the diff. */
+  foreign: boolean;
+  patternId: string;
+  patternLabel: string;
+  /**
+   * How that pattern moved in this review. A shape that carries no own-niche
+   * outlier at all reads new, which is the only way a foreign entry can land here.
+   */
+  patternMove: PatternMove;
+  signalId: string;
+  title: string;
+  outlier: number;
+  publishedAt: string;
+  url?: string;
+};
+
+/**
+ * One monthly Format-Review. Written by the Convex cron on the first of the month
+ * (convex/crons.ts), read as the "What changed" block of the Format Signals tab.
+ */
+export type FormatReview = {
+  /** format-review-<periodEnd as YYYY-MM-DD>. One document per run date, so a rerun overwrites. */
+  id: string;
+  generatedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  windowDays: number;
+  threshold: number;
+  previousReviewId?: string;
+  /** periodEnd of the review this one was diffed against. */
+  previousPeriodEnd?: string;
+  /** Outlier reels of the niche in this window. The share denominator. */
+  total: number;
+  previousTotal: number;
+  /** Winners first, unclassified last. */
+  patterns: FormatReviewPattern[];
+  risingCreators: RisingCreator[];
+};
+
 /** What the Bridge needs for one develop run: the Idea plus its evidence packet. */
 export type StoryboardRequest = {
   goal: string;
@@ -172,6 +242,10 @@ export interface StorageAdapter {
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;
+  /** Newest first. */
+  listFormatReviews(limit?: number): Promise<FormatReview[]>;
+  /** Replaces the whole row for review.id, so a rerun inside the same month overwrites it. */
+  saveFormatReview(review: FormatReview): Promise<void>;
   /** Newest first. */
   listIdeas(limit?: number): Promise<Idea[]>;
   /** Replaces the whole row for idea.id, so a retried capture never duplicates an idea. */

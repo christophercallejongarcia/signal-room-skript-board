@@ -173,8 +173,12 @@ Definition: ADR-0003.
 - Quellen: Instagram-Hashtag-Suche via Apify, optional GitHub Trending. Opportunity-Score = Momentum × Coverage-Gap.
 - AK: Mindestens eine Quelle liefert täglich Topics.
 
-### T6.4 Monatlicher Self-Review
-- Cron 1x/Monat: Format-Muster der letzten 90 Tage neu berechnen, Änderungen als Diff loggen.
+### T6.4 Monatlicher Self-Review — erledigt
+- Convex-Cron am 1. jedes Monats 03:00 UTC (`convex/crons.ts` → `internal.formatReviews.generate`): Format-Muster der letzten 90 Tage neu berechnen und gegen das Review davor diffen. Ein Dokument je Lauftag in der Tabelle `formatReviews`.
+- Je Muster Bewegung (`new`/`up`/`down`/`flat`/`gone`) über den Anteil am Outlier-Korpus, dazu Deltas für Anzahl und Durchschnitts-Outlier. Verschwundene Muster bleiben mit 0 in der Liste.
+- Dazu die kleinen Creators (< 50k Follower) mit Outlier-Reel auf einem benannten Muster, neue Muster zuerst.
+- Format-Signals-Tab zeigt den letzten Review als "What changed" (`GET /api/format-reviews`); `POST` auf dieselbe Route rechnet ihn sofort neu, der einzige Weg im Datei-Store (ADR-0005).
+- AK: Diff-Berechnung gegen zwei Fixture-Zustände getestet (`tests/format-review.test.mjs`).
 
 ---
 

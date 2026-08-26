@@ -98,11 +98,18 @@ export function hookLine(caption: string | undefined) {
   return line.replace(/^[^\p{L}\p{Nd}]+/u, "").replace(/\s+/g, " ").trim();
 }
 
+const patternById = new Map(FORMAT_PATTERNS.map((pattern) => [pattern.id, pattern]));
+
 /** Pure over one caption: the id of the first matching pattern, or UNCLASSIFIED. */
 export function classifyCaption(caption: string | undefined): string {
   const hook = hookLine(caption);
   if (!hook) return UNCLASSIFIED;
   return FORMAT_PATTERNS.find((pattern) => pattern.match.test(hook))?.id ?? UNCLASSIFIED;
+}
+
+/** The heading a pattern id reads under. Unknown ids fall back to the id itself. */
+export function patternLabel(id: string) {
+  return patternById.get(id)?.label ?? id;
 }
 
 /** One pattern with its numbers over the read window. */
@@ -140,8 +147,6 @@ export type FormatSignalOptions = {
   threshold?: number;
   exampleLimit?: number;
 };
-
-const patternById = new Map(FORMAT_PATTERNS.map((pattern) => [pattern.id, pattern]));
 
 /**
  * Instagram derives the title from the first caption line, so the title is the
