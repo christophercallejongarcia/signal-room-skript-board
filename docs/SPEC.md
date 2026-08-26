@@ -126,7 +126,7 @@ Definition: ADR-0003.
 - View-Toggle filtert auf `outlier >= threshold`, Stat-Block zählt "2x+ outliers".
 - AK: Zahl im Stat-Block == Anzahl Karten im Outlier-View.
 
-### T4.3 Creator-Detail
+### T4.3 Creator-Detail `[done]`
 - Klick auf Creator öffnet Seite mit Stat-Leiste (Views in corpus, Average outlier, Strongest outlier, Videos retained) und Tabelle aller Reels.
 - AK: Wie `cue_0008.jpg`.
 

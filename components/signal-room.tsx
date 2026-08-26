@@ -28,9 +28,12 @@ import {
   YoutubeLogo,
 } from "@phosphor-icons/react";
 import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
+import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
+import { rankCorpus, type Ranked } from "@/lib/rank-corpus";
 import { demoCreators, demoIdeas, demoSignals } from "@/lib/demo-data";
-import { DEMO_SCORING_NOTE, demoScorer } from "@/lib/demo-score";
-import { outlierScorer } from "@/lib/adapters/scoring/outlier";
+import { DEMO_SCORING_NOTE } from "@/lib/demo-score";
 import {
   DEFAULT_OUTLIER_THRESHOLD,
   OUTLIER_THRESHOLDS,
@@ -102,17 +105,9 @@ const navItems = [
 
 type TabId = (typeof navItems)[number]["id"];
 
-const compactNumber = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-
-function formatNumber(value: number) {
-  return compactNumber.format(value);
-}
-
 function NetworkLabel({ network }: { network: Network }) {
-  return <span className="network-label">{network === "instagram" ? "Instagram" : network === "youtube" ? "YouTube" : "TikTok"}</span>;
+  return <span className="network-label">{networkName(network)}</span>;
 }
-
-type Ranked = ReturnType<typeof demoScorer.rank>[number];
 
 const HOURS_48 = 48 * 60 * 60 * 1000;
 
@@ -134,14 +129,6 @@ function formatStamp(iso: string) {
   return new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function timeAgo(iso: string, now: number) {
-  const days = Math.max(0, Math.round((now - new Date(iso).getTime()) / 86_400_000));
-  if (days === 0) return "today";
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  return `${months}mo ago`;
-}
-
 function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: number; threshold: number }) {
   const now = Date.now();
   const reel = signal.format === "reel";
@@ -156,33 +143,6 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
       {(reel || signal.format === "short") && (
         <div className="badge-bottom"><span className="badge format">Short form</span></div>
       )}
-    </div>
-  );
-}
-
-/**
- * Renders the cached cover. Until the cache has the file, the CDN link is tried
- * once (fresh records still resolve); an expired link or a missing file falls
- * back to the generative artwork instead of a broken image.
- */
-function CoverImage({ signal, index, className, lazy }: { signal: SignalRecord; index: number; className?: string; lazy?: boolean }) {
-  const [broken, setBroken] = useState(false);
-  const src = signal.coverUrl ?? signal.thumbnailUrl;
-  if (src && !broken) {
-    return <img className={className} src={src} alt="" loading={lazy ? "lazy" : undefined} referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
-  }
-  const art = <SignalArtwork seed={signal.thumbnailSeed} topic={signal.topic} index={index} />;
-  return className ? <div className={className}>{art}</div> : art;
-}
-
-function SignalArtwork({ seed, topic, index = 0 }: { seed: string; topic: string; index?: number }) {
-  const motif = seed.split("-").slice(0, 2).join(" ");
-  return (
-    <div className={`signal-art art-${index % 4}`} role="img" aria-label={`Sample artwork for ${topic}`}>
-      <span className="art-grid" />
-      <span className="art-orbit" />
-      <span className="art-copy">{motif}</span>
-      <span className="art-topic">{topic}</span>
     </div>
   );
 }
@@ -272,6 +232,12 @@ export function SignalRoom() {
     }
   }
 
+  // The detail page links back with ?tab=channels, so the return lands on the list it came from.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get(TAB_PARAM);
+    if (navItems.some((item) => item.id === wanted)) setActiveTab(wanted as TabId);
+  }, []);
+
   useEffect(() => {
     loadStore().catch(() => {});
     loadRuns();
@@ -287,10 +253,7 @@ export function SignalRoom() {
   const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
 
-  const rankedSignals = useMemo(
-    () => (live ? outlierScorer : demoScorer).rank(signals, creators, live ? new Date() : new Date("2026-08-22T16:00:00.000Z")),
-    [creators, signals, live],
-  );
+  const rankedSignals = useMemo(() => rankCorpus(signals, creators, live), [creators, signals, live]);
 
   /** Evidence is the stored corpus only. Demo fixtures never reach the Strategy-Provider. */
   const evidence = useMemo(
@@ -772,7 +735,7 @@ function DiscoverView({
                 <SignalMedia signal={signal} index={index} threshold={threshold} />
                 <div className="signal-content">
                   <div className="signal-meta">
-                    <span>{creator.handle}</span>
+                    <Link className="creator-link" href={creatorPath(creator.id, { from: "discover", threshold })}>{creator.handle}</Link>
                     <span>{timeAgo(signal.publishedAt, nowMs)}</span>
                     <span>{signal.topic}</span>
                   </div>
@@ -1269,7 +1232,7 @@ function ChannelsView({
                     <span className="creator-avatar" style={{ background: creator.accent }}>
                       {creator.avatarUrl ? <img src={creator.avatarUrl} alt="" referrerPolicy="no-referrer" /> : creator.name.slice(0, 2).toUpperCase()}
                     </span>
-                    <div><strong>{creator.name}</strong><small>{creator.handle} · {creator.audience ? `${formatNumber(creator.audience)} ${network === "instagram" ? "followers" : "subs"}` : "Pending"}</small></div>
+                    <div><Link className="creator-link strong" href={creatorPath(creator.id, { from: "channels" })}>{creator.name}</Link><small>{creator.handle} · {creator.audience ? `${formatNumber(creator.audience)} ${network === "instagram" ? "followers" : "subs"}` : "Pending"}</small></div>
                   </div>
                 </td>
                 <td>
@@ -1755,19 +1718,14 @@ function TitlesView() {
   );
 }
 
-/** Reach of one owned lane. Zero reels report no numbers rather than a confident 0.00x. */
+/** Reach of one owned lane, off the same corpus math the creator detail reads. */
 function laneStats(reels: Ranked[]) {
-  const plays = reels.map((signal) => signal.plays ?? signal.views);
+  const { retained, views, strongestOutlier } = creatorStats(reels);
   return {
-    count: reels.length,
-    averagePlays: reels.length ? Math.round(plays.reduce((sum, value) => sum + value, 0) / reels.length) : 0,
-    bestOutlier: reels.length ? Math.max(...reels.map((signal) => signal.outlier ?? 0)) : null,
+    count: retained,
+    averagePlays: retained ? Math.round(views / retained) : 0,
+    bestOutlier: strongestOutlier,
   };
-}
-
-/** An owned lane without a single retained reel has no strongest outlier to show. */
-function formatOutlier(outlier: number | null) {
-  return outlier === null ? "—" : `${outlier.toFixed(2)}x`;
 }
 
 function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: Creator[]; rankedSignals: Ranked[]; runs: Run[]; runsState: "loading" | "ready" | "error" }) {

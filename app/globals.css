@@ -938,3 +938,59 @@ main {
   .review-row { grid-template-columns: 62px 1fr; }
   .review-fact { justify-self: start; }
 }
+
+/* ---------- Creator detail ---------- */
+
+.creator-link { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+.creator-link:hover { color: var(--accent); border-bottom-color: var(--accent-soft); }
+.creator-link.strong { display: inline-block; font-weight: 600; font-size: 12.5px; }
+
+.detail-topbar { justify-content: space-between; }
+.back-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11.5px;
+  text-decoration: none;
+}
+.back-link:hover { color: var(--accent); border-color: var(--accent-deep); }
+
+.creator-hero { align-items: center; }
+.creator-identity { display: flex; align-items: flex-start; gap: 18px; }
+.creator-avatar.large { width: 64px; height: 64px; border-radius: var(--radius-card); font-size: 20px; margin-top: 6px; }
+.creator-marks { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; flex-wrap: wrap; }
+.creator-marks .niche-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 0; }
+.creator-marks .signal-link { margin-top: 0; }
+
+/* A reel is shot 4:5, so its cover is cropped upright instead of into a landscape strip. */
+.thumb-cell .mini.portrait { width: 36px; height: 45px; }
+
+.desk-table.sortable th { padding: 0; }
+.desk-table.sortable th .sort-head { padding: 10px 12px; }
+.desk-table.sortable th.right .sort-head { margin-left: auto; }
+.sort-head {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.sort-head svg { opacity: 0; transition: transform .12s ease; }
+.sort-head:hover { color: var(--ink); }
+.sort-head:hover svg { opacity: .4; }
+.sort-head.active { color: var(--accent); }
+.sort-head.active svg { opacity: 1; }
+.sort-head svg.flip { transform: rotate(180deg); }
+
+@media (max-width: 900px) {
+  .creator-hero { display: grid; gap: 22px; }
+  .creator-identity { gap: 14px; }
+  /* Four numbers, so the shared three-column rule would strand the last one on its own row. */
+  .creator-hero .stat-blocks { grid-template-columns: 1fr 1fr; }
+}

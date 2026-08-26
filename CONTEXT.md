@@ -20,6 +20,10 @@ Nicht: "Clip", "Short" (Short ist reserviert für YouTube).
 Die Menge aller Creators, die der tägliche Refresh abfragt; "Add to daily watch" nimmt einen Creator auf, die UI zeigt sie im Tab "Tracked Channels".
 Nicht: "Tracked Channels" (nur als UI-Label), "Abo", "Feed".
 
+**Creator-Detailseite**
+Die eigene Route `/creator/<creator.id>` (`app/creator/[id]/page.tsx`, gerendert von `components/creator-detail.tsx`), erreichbar über den Creator-Namen in Tracked Channels und den Handle auf einer Discover-Karte; den Link baut `creatorPath` in `lib/creator-detail.ts`. Zeigt die Stat-Leiste (Views im Korpus, Durchschnitts-Outlier, stärkster Outlier, behaltene Reels aus `creatorStats`) und die nach Datum, Plays oder Outlier sortierbare Tabelle aller behaltenen Reels (`sortCreatorReels`). Der Zurück-Link führt auf `/?tab=channels`; die Shell liest den `tab`-Parameter beim Mount.
+Nicht: "Creator-Profil" (Profil meint den Profile-Tab), "Channel-Seite".
+
 **Owned Creator**
 Ein Creator mit `owned: true`, also Chris' eigener Account; wird wie jeder andere gesammelt und gescort, erscheint aber nur im Profile-Tab. Das Prädikat dafür steht in `lib/discover-filter.ts`: `isOwned` liest die Markierung, `withoutOwned` siebt eine Signalliste damit. Discover, Briefing, Trend Radar und das Evidenzpaket filtern über `withoutOwned`, Format Signals und Format-Review prüfen `isOwned` je Reel in ihrer eigenen Schleife. Gesetzt beim Hinzufügen über die Checkbox im Add-Dialog oder später über den Personen-Knopf in Tracked Channels (`PATCH /api/creators`, Body geparst von `parseCreatorMark` in `lib/creator-mark.ts`).
 Nicht: "Eigenes Profil", "Self", "Me".
