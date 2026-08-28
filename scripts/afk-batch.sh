@@ -7,7 +7,7 @@
 # gets its own claude process, which is how /implement wants it: fresh context
 # per ticket, nothing carried over from the last one.
 #
-#   scripts/afk-batch.sh                 # the default batch: 10 15 12 04 09 11
+#   scripts/afk-batch.sh                 # the default batch: 18 19 21 22 06 20 23 13 14
 #   scripts/afk-batch.sh 10 12           # only these
 #   scripts/afk-batch.sh --dry-run       # print the plan, change nothing
 #
@@ -20,8 +20,9 @@ ISSUES=".scratch/signal-room-instagram/issues"
 STAMP="$(date +%Y%m%d-%H%M)"
 BRANCH="afk/batch-$STAMP"
 LOGDIR=".scratch/afk-logs/$STAMP"
-# 10 unblocks 15, so it goes first. The rest is cheapest-first.
-DEFAULT_BATCH=(10 15 12 04 09 11)
+# 18 unblocks 20, and 21+22 unblock 24 (which stays out: ready-for-human).
+# The rest follows the README order, cheapest-first.
+DEFAULT_BATCH=(18 19 21 22 06 20 23 13 14)
 DRY_RUN=0
 
 args=()
@@ -78,10 +79,10 @@ done
 
 npm run check >/dev/null 2>&1 || die "npm run check already fails. Fix that before starting."
 
-# 09 and 11 talk to the Codex bridge. Without it they can only fail.
-if printf '%s\n' "${BATCH[@]}" | grep -qE '^0?(9|11)$'; then
+# 09, 11, 13, 21 and 23 talk to the Codex bridge. Without it they can only fail.
+if printf '%s\n' "${BATCH[@]}" | grep -qE '^(09|9|11|13|21|23)$'; then
   curl -sf --max-time 3 http://127.0.0.1:3211/health >/dev/null \
-    || die "Tickets 09/11 need the bridge. Run 'npm run bridge' in another terminal."
+    || die "Tickets 09/11/13/21/23 need the bridge. Run 'npm run bridge' in another terminal."
 fi
 
 say "Batch: ${BATCH[*]}"
