@@ -10,6 +10,7 @@
 #   scripts/afk-batch.sh                 # the default batch: 18 19 21 22 06 20 23 13 14
 #   scripts/afk-batch.sh 10 12           # only these
 #   scripts/afk-batch.sh --dry-run       # print the plan, change nothing
+#   scripts/afk-batch.sh --yes           # skip the confirmation (for agents)
 #
 set -uo pipefail
 
@@ -24,11 +25,13 @@ LOGDIR=".scratch/afk-logs/$STAMP"
 # The rest follows the README order, cheapest-first.
 DEFAULT_BATCH=(18 19 21 22 06 20 23 13 14)
 DRY_RUN=0
+ASSUME_YES=0
 
 args=()
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
+    --yes) ASSUME_YES=1 ;;
     *) args+=("$arg") ;;
   esac
 done
@@ -92,9 +95,13 @@ for f in "${FILES[@]}"; do echo "    - $(head -1 "$f" | sed 's/^# //')"; done
 
 if [ "$DRY_RUN" = 1 ]; then say "Dry run. Nothing changed."; exit 0; fi
 
-printf '\nStart? Every ticket runs with permission checks off. [y/N] '
-read -r reply
-[ "$reply" = "y" ] || die "Cancelled."
+if [ "$ASSUME_YES" = 1 ]; then
+  say "Confirmation skipped (--yes). Every ticket runs with permission checks off."
+else
+  printf '\nStart? Every ticket runs with permission checks off. [y/N] '
+  read -r reply
+  [ "$reply" = "y" ] || die "Cancelled."
+fi
 
 mkdir -p "$LOGDIR"
 git switch -c "$BRANCH" || die "Could not create $BRANCH."
