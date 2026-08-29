@@ -2,7 +2,15 @@ import { STRATEGY_AUDIENCE, STRATEGY_BRIDGE_URL, STRATEGY_GOAL } from "./config.
 import { getStorage } from "./adapters/storage/index.ts";
 import { withCoverUrls } from "./adapters/storage/cover-cache.ts";
 import { applyAngles, buildBriefing } from "./briefing.ts";
-import type { Briefing, BriefingItem, StrategyEvidenceItem } from "./contracts";
+import type { Briefing, BriefingItem, StorageAdapter, StrategyEvidenceItem } from "./contracts";
+
+export type BriefingDeps = {
+  storage: Pick<StorageAdapter, "listCreators" | "listSignals" | "saveBriefing">;
+  /** Decorates the corpus with cover routes; the cron has no disk and passes the corpus through. */
+  withCovers: typeof withCoverUrls;
+  /** False skips the Bridge: the cron runs where no Bridge is reachable and writes the list without angles. */
+  angles: boolean;
+};
 
 /** The bridge gives up on a Codex turn after 120 s; this is the same ceiling from the caller's side. */
 const BRIDGE_TIMEOUT_MS = 120_000;
@@ -43,16 +51,18 @@ async function askBridge(items: BriefingItem[]) {
  * hanging them on afterwards. The route after a refresh and POST /api/briefings
  * are the two callers, so the automatic pass and the manual one cannot drift.
  */
-export async function runBriefing(): Promise<Briefing> {
-  const storage = getStorage();
+export async function runBriefing(overrides: Partial<BriefingDeps> = {}): Promise<Briefing> {
+  const storage = overrides.storage ?? getStorage();
+  const withCovers = overrides.withCovers ?? withCoverUrls;
+  const angles = overrides.angles ?? true;
   const [creators, signals] = await Promise.all([storage.listCreators(), storage.listSignals()]);
   // Covers live on disk, not in the corpus. Decorated here, so a stored briefing
   // carries the cover route for every reel whose file was already cached; a cover
   // that arrives later shows up on the next day's briefing, not on this document.
-  const briefing = buildBriefing(await withCoverUrls(signals), creators, { now: Date.now() });
+  const briefing = buildBriefing(await withCovers(signals), creators, { now: Date.now() });
 
   let angled = briefing;
-  if (briefing.items.length > 0) {
+  if (angles && briefing.items.length > 0) {
     try {
       angled = applyAngles(briefing, await askBridge(briefing.items));
     } catch (error) {

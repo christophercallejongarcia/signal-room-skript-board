@@ -6,8 +6,11 @@ import { cacheCovers } from "./adapters/storage/cover-cache.ts";
 import { REFRESH_CREATOR_LIMIT } from "./config.ts";
 import { addUsage, pickRefreshBatch } from "./run-cost.ts";
 
+/** The slice of Storage a collection pass touches; the cron hands in one built over a Convex action context. */
+export type CollectStorage = Pick<Storage, "listCreators" | "upsertCreator" | "listSignals" | "saveSignals" | "saveRun">;
+
 export type CollectDeps = {
-  storage: Storage;
+  storage: CollectStorage;
   collect: (creator: Creator) => Promise<CollectResult>;
   cacheCovers: (records: SignalRecord[]) => Promise<CoverCacheResult>;
   now: () => Date;
@@ -16,7 +19,15 @@ export type CollectDeps = {
 };
 
 function defaultDeps(overrides: Partial<CollectDeps>): CollectDeps {
-  return { storage: getStorage(), collect: collectForCreator, cacheCovers, now: () => new Date(), creatorLimit: REFRESH_CREATOR_LIMIT, ...overrides };
+  // Storage is resolved lazily: a caller that brings its own (the Convex cron) never opens the server's.
+  return {
+    storage: overrides.storage ?? getStorage(),
+    collect: collectForCreator,
+    cacheCovers,
+    now: () => new Date(),
+    creatorLimit: REFRESH_CREATOR_LIMIT,
+    ...overrides,
+  };
 }
 
 export type CollectStep = { recordsAdded: number; recordsUpdated: number; covers: CoverCacheResult; usage: RunUsage };

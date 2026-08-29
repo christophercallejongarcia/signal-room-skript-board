@@ -70,6 +70,7 @@ import {
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
 import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
+import { nextRefreshAt, REFRESH_TIME_ZONE } from "@/lib/refresh-schedule";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
@@ -765,6 +766,7 @@ export function SignalRoom() {
             onToggleForeign={toggleForeign}
             onToggleOwned={toggleOwned}
             issues={runs[0]?.errors.length ?? 0}
+            lastRun={runs[0] ?? null}
           />
         )}
         {activeTab === "ideas" && (
@@ -1464,6 +1466,11 @@ function FormatsView({
   );
 }
 
+/** Wall clock in the sweep's zone, so the box reads the same wherever the browser sits. */
+function formatRefreshInstant(at: Date) {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: REFRESH_TIME_ZONE, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(at) + " Berlin";
+}
+
 function ChannelsView({
   creators,
   rankedSignals,
@@ -1473,6 +1480,7 @@ function ChannelsView({
   onToggleForeign,
   onToggleOwned,
   issues,
+  lastRun,
 }: {
   creators: Creator[];
   rankedSignals: Ranked[];
@@ -1485,10 +1493,13 @@ function ChannelsView({
   onToggleOwned: (creator: Creator) => void;
   /** Creators that failed in the most recent run. */
   issues: number;
+  /** The most recent logged run, cron or manual; null before the first one or while the log is loading. */
+  lastRun: Run | null;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("name");
   const nowMs = Date.now();
+  const nextRefresh = nextRefreshAt(new Date(nowMs));
   const list = creators
     .filter((creator) => creator.network === network)
     .filter((creator) => creator.name.toLowerCase().includes(query.toLowerCase()) || creator.handle.toLowerCase().includes(query.toLowerCase()))
@@ -1507,7 +1518,9 @@ function ChannelsView({
         </div>
         <div className="next-refresh">
           <span>Next refresh</span>
-          <strong>Automatic daily collection at 10:17 UTC</strong>
+          <strong>{formatRefreshInstant(nextRefresh)}</strong>
+          <span className="next-refresh-last">Last run</span>
+          <strong>{lastRun ? `${formatRefreshInstant(new Date(lastRun.startedAt))} · ${lastRun.kind} ${lastRun.status}` : "No run logged yet"}</strong>
         </div>
       </section>
 

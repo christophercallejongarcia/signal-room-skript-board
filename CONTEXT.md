@@ -38,6 +38,9 @@ Nicht: "Eigenes Profil", "Self", "Me".
 Der erste Import beim Aufnehmen in die Watchlist: Beiträge der letzten `BACKFILL_DAYS` (90), je Actor-Lauf (Reels, Posts) höchstens `MAX_RESULTS_PER_CREATOR`.
 Nicht: "Initial-Sync", "Full-Scrape", "Import".
 
+**Daily Sweep**
+Der Delta-Refresh ohne Knopfdruck: Convex-Cron in `convex/crons.ts`, täglich 10:00 Europe/Berlin. Weil Convex-Crons nur UTC kennen, sind zwei Jobs registriert (08:00 und 09:00 UTC, `refreshCronSpecs` in `lib/refresh-schedule.ts`); die Action `internal.refresh.run` (`convex/refresh.ts`) prüft mit `isRefreshHour`, ob gerade 10:00 Berlin ist, und nur der passende Slot arbeitet. Sie fährt denselben `runRefresh` wie `POST /api/refresh` über einen Storage aus `ctx.runQuery`/`ctx.runMutation` und schreibt denselben Run in `runs`, dazu das Briefing des Tages ohne Angles. Apify-Token liegt als Convex-Env (`APIFY_TOKEN`), ebenso wirken `REFRESH_CREATOR_LIMIT` und `APIFY_USD_PER_COMPUTE_UNIT` dort. In der Cloud werden keine Cover gecacht (kein Datenträger); der nächste lokale Refresh holt sie nach. Tracked Channels zeigt in "Next refresh" den nächsten Zeitpunkt (`nextRefreshAt`) und den letzten geloggten Run. Testlauf: `npx convex run refresh:run '{"force":true,"creatorLimit":1}'`.
+
 **Delta-Refresh**
 Der Folgelauf über `/api/refresh`, der pro Creator das Fenster seit `lastCheckedAt` minus `OVERLAP_DAYS` (1) holt (`lib/refresh-window.ts`); bekannte Signale bekommen frische Plays/Likes/Kommentare, Felder ohne neuen Wert (z. B. `coverUrl`) bleiben. `lastCheckedAt` rückt nur vor, wenn beide Actor-Streams erfolgreich waren und das Speichern durch ist.
 Nicht: "Delta-Sync", "Update", "Incremental Scrape".

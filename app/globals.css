@@ -260,7 +260,8 @@ main {
   font-size: 11px;
 }
 .next-refresh span { display: block; color: var(--muted); margin-bottom: 6px; }
-.next-refresh strong { font-weight: 600; }
+.next-refresh strong { display: block; font-weight: 600; }
+.next-refresh .next-refresh-last { margin-top: 10px; }
 
 /* ---------- Filter bar ---------- */
 

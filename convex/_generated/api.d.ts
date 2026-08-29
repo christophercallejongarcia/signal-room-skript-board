@@ -14,6 +14,7 @@ import type * as crons from "../crons.js";
 import type * as formatReviews from "../formatReviews.js";
 import type * as hookRuns from "../hookRuns.js";
 import type * as ideas from "../ideas.js";
+import type * as refresh from "../refresh.js";
 import type * as runs from "../runs.js";
 import type * as signals from "../signals.js";
 
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   formatReviews: typeof formatReviews;
   hookRuns: typeof hookRuns;
   ideas: typeof ideas;
+  refresh: typeof refresh;
   runs: typeof runs;
   signals: typeof signals;
 }>;
