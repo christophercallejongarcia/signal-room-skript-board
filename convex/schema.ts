@@ -46,7 +46,16 @@ export const ideaFields = {
   id: v.string(),
   title: v.string(),
   goal: v.optional(v.string()),
-  status: v.union(v.literal("captured"), v.literal("developed"), v.literal("produced"), v.literal("dropped")),
+  /** Six production stages in order plus dropped; the moves live in lib/ideas.ts. */
+  status: v.union(
+    v.literal("captured"),
+    v.literal("developing"),
+    v.literal("packaging"),
+    v.literal("scripting"),
+    v.literal("producing"),
+    v.literal("published"),
+    v.literal("dropped"),
+  ),
   sourceSignalId: v.optional(v.string()),
   sourceCreator: v.optional(v.string()),
   sourceUrl: v.optional(v.string()),

@@ -1,7 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { forecastFields, ideaFields, storyboardFields } from "./schema";
-import { applyStoryboard, claimDevelop, releaseDevelop } from "../lib/ideas";
+import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../lib/ideas";
 
 /** Newest first, capped so the Ideas tab never pulls the whole repository. */
 export const list = query({
@@ -74,5 +74,45 @@ export const settle = mutation({
     if (!settled) return null;
     await ctx.db.replace(_id, settled);
     return settled;
+  },
+});
+
+/**
+ * Moves the idea by hand. A forbidden move throws out of moveIdea and reaches
+ * the caller as an error, so the UI can say why instead of ignoring the click.
+ */
+export const move = mutation({
+  args: { id: v.string(), status: ideaFields.status, now: v.string() },
+  handler: async (ctx, { id, status, now }) => {
+    const existing = await ctx.db
+      .query("ideas")
+      .withIndex("by_external_id", (q) => q.eq("id", id))
+      .unique();
+    if (!existing) return null;
+    const { _id, _creationTime, ...idea } = existing;
+    const moved = moveIdea(idea, status, now);
+    await ctx.db.replace(_id, moved);
+    return moved;
+  },
+});
+
+/**
+ * Ran once on 2026-08-29 with the status union temporarily widened by the old
+ * literals (developed -> developing, produced -> producing; 4 rows moved).
+ * Idempotent, kept so a store restored from an older export can be mapped
+ * again: widen the union, `npx convex run ideas:migrateStages`, tighten it.
+ */
+export const migrateStages = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("ideas").take(1000);
+    let moved = 0;
+    for (const row of rows) {
+      const stage = legacyStage(String(row.status));
+      if (!stage || stage === row.status) continue;
+      await ctx.db.patch(row._id, { status: stage });
+      moved += 1;
+    }
+    return { seen: rows.length, moved };
   },
 });

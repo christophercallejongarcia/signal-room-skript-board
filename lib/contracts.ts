@@ -134,7 +134,12 @@ export type StrategyResponse = {
 };
 
 /** Where an Idea stands. captured = only the working title, developed = a storyboard hangs on it. */
-export type IdeaStatus = "captured" | "developed" | "produced" | "dropped";
+/**
+ * The six production stages of an Idea in order, plus dropped as the exit
+ * beside them. The order and the allowed moves live in lib/ideas.ts.
+ */
+export type IdeaStage = "captured" | "developing" | "packaging" | "scripting" | "producing" | "published";
+export type IdeaStatus = IdeaStage | "dropped";
 
 /** One of the three middle beats of a short-form storyboard. */
 export type StoryboardBeat = { label: string; detail: string };
@@ -431,6 +436,11 @@ export interface StorageAdapter {
    * Returns null when a newer run has taken over, so the stale result is dropped.
    */
   settleIdeaDevelop(id: string, runId: string, result: SettleDevelop): Promise<Idea | null>;
+  /**
+   * Moves the idea by hand to the given stage. Throws on a forbidden move,
+   * returns null when the idea is gone.
+   */
+  moveIdea(id: string, status: IdeaStatus, now: string): Promise<Idea | null>;
 }
 
 /** Outcome handed to settleIdeaDevelop: a storyboard, or nothing when the run failed. */

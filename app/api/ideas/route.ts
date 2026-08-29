@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStorage } from "@/lib/adapters/storage";
-import { newIdea, type IdeaInput } from "@/lib/ideas";
+import { newIdea, parseIdeaMove, type IdeaInput, type IdeaMove } from "@/lib/ideas";
 
 export const runtime = "nodejs";
 
@@ -23,5 +23,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ idea }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}
+
+/**
+ * Moves an idea by hand to a stage. A forbidden move is refused with 409 and
+ * the reason, so the click is never silently ignored.
+ */
+export async function PATCH(request: Request) {
+  // parseIdeaMove bounds and rejects the body; it is the only place that decides what a move is.
+  let move: IdeaMove;
+  try {
+    move = parseIdeaMove(await request.json().catch(() => ({})));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+
+  try {
+    const idea = await getStorage().moveIdea(move.id, move.status, new Date().toISOString());
+    if (!idea) return NextResponse.json({ error: `unknown idea ${move.id}` }, { status: 404 });
+    return NextResponse.json({ idea });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
   }
 }

@@ -73,5 +73,8 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
         ...(result.storyboard ? { evidenceCount: result.evidenceCount, forecast: result.forecast ?? null } : {}),
       })) as Idea | null;
     },
+    async moveIdea(id, status, now) {
+      return (await client.mutation(anyApi.ideas.move, { id, status, now })) as Idea | null;
+    },
   };
 }

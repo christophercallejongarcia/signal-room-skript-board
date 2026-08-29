@@ -1,4 +1,4 @@
-import type { Forecast, Idea, IdeaStatus, Storyboard, StoryboardBeat } from "./contracts";
+import type { Forecast, Idea, IdeaStage, IdeaStatus, Storyboard, StoryboardBeat } from "./contracts";
 
 export const IDEA_TITLE_MAX = 200;
 export const IDEA_GOAL_MAX = 800;
@@ -6,25 +6,78 @@ export const IDEA_GOAL_MAX = 800;
 export const STORYBOARD_LINE_MAX = 400;
 export const STORYBOARD_BEATS = 3;
 
-/**
- * Allowed moves. An Idea never returns to captured, a produced Idea is not
- * re-developed, and dropped is final. developed -> developed is a second
- * develop run replacing the storyboard.
- */
-const TRANSITIONS: Record<IdeaStatus, IdeaStatus[]> = {
-  captured: ["developed", "dropped"],
-  developed: ["developed", "produced", "dropped"],
-  produced: ["dropped"],
-  dropped: [],
-};
+/** The production stages in pipeline order; the counter bar and the moves read this. */
+export const IDEA_STAGES: readonly IdeaStage[] = ["captured", "developing", "packaging", "scripting", "producing", "published"];
+const STATUSES: readonly IdeaStatus[] = [...IDEA_STAGES, "dropped"];
 
+/** The stage after this one, or null at the end of the pipeline and on dropped. */
+export function nextStage(status: IdeaStatus): IdeaStage | null {
+  const position = IDEA_STAGES.indexOf(status as IdeaStage);
+  return position >= 0 ? (IDEA_STAGES[position + 1] ?? null) : null;
+}
+
+/**
+ * Allowed moves, the only place they are defined. An Idea walks the stages one
+ * at a time and never back, any stage before published can be dropped, and
+ * published and dropped are final. developing -> developing is a second develop
+ * run replacing the storyboard; a later stage is not developed again.
+ */
 export function canTransition(from: IdeaStatus, to: IdeaStatus) {
-  return TRANSITIONS[from].includes(to);
+  if (from === "dropped" || from === "published") return false;
+  if (to === "dropped") return true;
+  if (from === "developing" && to === "developing") return true;
+  return nextStage(from) === to;
 }
 
 /** Refuses by name, so the caller can show why a move was not allowed. */
 function requireTransition(from: IdeaStatus, to: IdeaStatus) {
   if (!canTransition(from, to)) throw new Error(`An idea cannot move from ${from} to ${to}.`);
+}
+
+/** Moves an Idea by hand. A forbidden move throws instead of being ignored. */
+export function moveIdea(idea: Idea, to: IdeaStatus, now: string): Idea {
+  requireTransition(idea.status, to);
+  return { ...idea, status: to, updatedAt: now };
+}
+
+/** Pushes an Idea to the next stage. Throws at the end of the pipeline and on dropped. */
+export function advanceIdea(idea: Idea, now: string): Idea {
+  const to = nextStage(idea.status);
+  if (!to) throw new Error(`An idea cannot move from ${idea.status} any further.`);
+  return moveIdea(idea, to, now);
+}
+
+/** How many Ideas sit on each stage, every stage listed even when empty. */
+export function countByStage(ideas: readonly Idea[]): Record<IdeaStatus, number> {
+  const counts = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<IdeaStatus, number>;
+  for (const idea of ideas) counts[idea.status] += 1;
+  return counts;
+}
+
+/**
+ * Maps a stored status onto the current stages. The four statuses before the
+ * pipeline (captured, developed, produced, dropped) land on the matching stage;
+ * a current status passes through; anything else is null.
+ */
+export function legacyStage(status: string): IdeaStatus | null {
+  if (status === "developed") return "developing";
+  if (status === "produced") return "producing";
+  return STATUSES.includes(status as IdeaStatus) ? (status as IdeaStatus) : null;
+}
+
+/** One PATCH body for `/api/ideas`: the id plus the stage to move to. */
+export type IdeaMove = { id: string; status: IdeaStatus };
+
+/** Bounds and rejects the body of `PATCH /api/ideas`; the route only maps the throw to a 400. */
+export function parseIdeaMove(body: unknown): IdeaMove {
+  const input = (body ?? {}) as Record<string, unknown>;
+  const id = typeof input.id === "string" ? input.id.trim() : "";
+  if (!id) throw new Error("id required");
+  const status = input.status;
+  if (typeof status !== "string" || !STATUSES.includes(status as IdeaStatus)) {
+    throw new Error(`status must be one of ${STATUSES.join(", ")}`);
+  }
+  return { id, status: status as IdeaStatus };
 }
 
 /** One bounded line: whitespace collapsed, trimmed, cut. Shared with lib/hooks-board.ts. */
@@ -79,7 +132,7 @@ export function newIdea(input: Partial<IdeaInput>, options: { id: string; now: s
  * a second run overwrites it, and the first run's result is then stale.
  */
 export function claimDevelop(idea: Idea, runId: string, now: string): Idea {
-  requireTransition(idea.status, "developed");
+  requireTransition(idea.status, "developing");
   return { ...idea, developRunId: runId, updatedAt: now };
 }
 
@@ -98,7 +151,7 @@ export function applyStoryboard(
   const { developRunId, forecast: _previous, ...rest } = idea;
   return {
     ...rest,
-    status: "developed",
+    status: "developing",
     storyboard,
     ...(options.forecast ? { forecast: options.forecast } : {}),
     developedAt: options.now,

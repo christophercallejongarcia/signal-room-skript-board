@@ -3,10 +3,17 @@ import assert from "node:assert/strict";
 import {
   IDEA_GOAL_MAX,
   IDEA_TITLE_MAX,
+  IDEA_STAGES,
+  advanceIdea,
   applyStoryboard,
   canTransition,
   claimDevelop,
+  countByStage,
+  legacyStage,
+  moveIdea,
   newIdea,
+  nextStage,
+  parseIdeaMove,
   parseStoryboard,
   releaseDevelop,
 } from "../lib/ideas.ts";
@@ -83,19 +90,83 @@ test("an empty goal stays absent instead of empty", () => {
   assert.equal(idea.goal, undefined);
 });
 
-test("captured develops or drops, produced never goes back", () => {
-  assert.ok(canTransition("captured", "developed"));
-  assert.ok(canTransition("captured", "dropped"));
-  assert.ok(!canTransition("captured", "produced"));
-  assert.ok(canTransition("developed", "developed"));
-  assert.ok(canTransition("developed", "produced"));
-  assert.ok(!canTransition("produced", "developed"));
-  assert.ok(!canTransition("dropped", "captured"));
+test("six production stages in order, dropped beside them", () => {
+  assert.deepEqual(IDEA_STAGES, ["captured", "developing", "packaging", "scripting", "producing", "published"]);
+  assert.ok(!IDEA_STAGES.includes("dropped"));
 });
 
-test("a produced idea is not developed again", () => {
-  const produced = { ...captured(), status: "produced" };
-  assert.throws(() => claimDevelop(produced, "run-a", LATER), /produced to developed/);
+test("every stage moves to the next one, published is the end", () => {
+  for (let i = 0; i < IDEA_STAGES.length - 1; i += 1) {
+    assert.ok(canTransition(IDEA_STAGES[i], IDEA_STAGES[i + 1]), `${IDEA_STAGES[i]} -> ${IDEA_STAGES[i + 1]}`);
+    assert.equal(nextStage(IDEA_STAGES[i]), IDEA_STAGES[i + 1]);
+  }
+  assert.equal(nextStage("published"), null);
+  assert.equal(nextStage("dropped"), null);
+});
+
+test("every stage can be dropped, dropped and published are final", () => {
+  for (const stage of IDEA_STAGES.slice(0, -1)) assert.ok(canTransition(stage, "dropped"), `${stage} -> dropped`);
+  assert.ok(!canTransition("published", "dropped"));
+  assert.ok(!canTransition("dropped", "captured"));
+  assert.ok(!canTransition("dropped", "developing"));
+});
+
+test("an idea never skips a stage or goes back", () => {
+  assert.ok(!canTransition("captured", "packaging"));
+  assert.ok(!canTransition("captured", "published"));
+  assert.ok(!canTransition("packaging", "developing"));
+  assert.ok(!canTransition("producing", "captured"));
+});
+
+test("a second develop run stays in developing, later stages are not developed again", () => {
+  assert.ok(canTransition("developing", "developing"));
+  assert.ok(!canTransition("packaging", "developing"));
+  assert.throws(() => claimDevelop({ ...captured(), status: "packaging" }, "run-1", NOW), /cannot move from packaging to developing/);
+});
+
+test("advance pushes an idea one stage further by hand", () => {
+  let idea = captured();
+  for (const stage of IDEA_STAGES.slice(1)) {
+    idea = advanceIdea(idea, LATER);
+    assert.equal(idea.status, stage);
+    assert.equal(idea.updatedAt, LATER);
+  }
+  assert.throws(() => advanceIdea(idea, LATER), /cannot move from published/);
+});
+
+test("a forbidden move is refused by name, not ignored", () => {
+  const idea = captured();
+  assert.throws(() => moveIdea(idea, "scripting", LATER), /cannot move from captured to scripting/);
+  assert.throws(() => moveIdea({ ...idea, status: "dropped" }, "captured", LATER), /cannot move from dropped to captured/);
+  const dropped = moveIdea(idea, "dropped", LATER);
+  assert.equal(dropped.status, "dropped");
+  assert.equal(dropped.updatedAt, LATER);
+});
+
+test("the counter bar knows every stage, even the empty ones", () => {
+  const counts = countByStage([
+    captured(),
+    { ...captured(), id: "b", status: "packaging" },
+    { ...captured(), id: "c", status: "packaging" },
+    { ...captured(), id: "d", status: "dropped" },
+  ]);
+  assert.deepEqual(counts, { captured: 1, developing: 0, packaging: 2, scripting: 0, producing: 0, published: 0, dropped: 1 });
+});
+
+test("old statuses land on the matching new stage, everything else stays", () => {
+  assert.equal(legacyStage("developed"), "developing");
+  assert.equal(legacyStage("produced"), "producing");
+  assert.equal(legacyStage("captured"), "captured");
+  assert.equal(legacyStage("dropped"), "dropped");
+  assert.equal(legacyStage("packaging"), "packaging");
+  assert.equal(legacyStage("nonsense"), null);
+});
+
+test("a move body needs an id and a known stage", () => {
+  assert.deepEqual(parseIdeaMove({ id: " idea-1 ", status: "packaging" }), { id: "idea-1", status: "packaging" });
+  assert.throws(() => parseIdeaMove({ status: "packaging" }), /id required/);
+  assert.throws(() => parseIdeaMove({ id: "idea-1", status: "developed" }), /status must be one of/);
+  assert.throws(() => parseIdeaMove({ id: "idea-1" }), /status must be one of/);
 });
 
 test("a develop run claims the idea", () => {
@@ -107,13 +178,13 @@ test("a develop run claims the idea", () => {
 
 test("a dropped idea cannot be developed", () => {
   const dropped = { ...captured(), status: "dropped" };
-  assert.throws(() => claimDevelop(dropped, "run-a", LATER), /dropped to developed/);
+  assert.throws(() => claimDevelop(dropped, "run-a", LATER), /dropped to developing/);
 });
 
 test("the claimed run writes its storyboard", () => {
   const claimed = claimDevelop(captured(), "run-a", LATER);
   const developed = applyStoryboard(claimed, "run-a", storyboard, { now: LATER, evidenceCount: 7 });
-  assert.equal(developed.status, "developed");
+  assert.equal(developed.status, "developing");
   assert.deepEqual(developed.storyboard, storyboard);
   assert.equal(developed.evidenceCount, 7);
   assert.equal(developed.developedAt, LATER);
@@ -125,7 +196,7 @@ test("a second develop run wins and the slow first one is dropped", () => {
   const second = claimDevelop(first, "run-b", LATER);
   assert.equal(applyStoryboard(second, "run-a", storyboard, { now: LATER, evidenceCount: 3 }), null);
   const settled = applyStoryboard(second, "run-b", storyboard, { now: LATER, evidenceCount: 3 });
-  assert.equal(settled.status, "developed");
+  assert.equal(settled.status, "developing");
   assert.equal(settled.evidenceCount, 3);
 });
 
@@ -214,5 +285,5 @@ test("a run without a forecast still writes the storyboard and clears the old fo
   });
   assert.deepEqual(second.storyboard, storyboard);
   assert.equal(second.forecast, undefined);
-  assert.equal(second.status, "developed");
+  assert.equal(second.status, "developing");
 });

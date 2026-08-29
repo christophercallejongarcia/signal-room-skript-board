@@ -803,9 +803,17 @@ main {
 .forecast-line.potential-none { color: var(--muted); }
 .idea-actions { display: flex; align-items: center; gap: 10px; }
 .idea-actions .state { text-transform: uppercase; letter-spacing: .08em; font-size: 9.5px; }
-.idea-actions .state.status-developed { color: var(--accent); }
-.idea-actions .state.status-produced { color: var(--ink); }
+.idea-actions .state.status-developing,
+.idea-actions .state.status-packaging,
+.idea-actions .state.status-scripting,
+.idea-actions .state.status-producing { color: var(--accent); }
+.idea-actions .state.status-published { color: var(--ink); }
 .idea-actions .state.status-dropped { color: var(--danger); }
+.stage-bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 18px; border-bottom: 1px solid var(--line-soft); }
+.stage-bar button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.stage-bar button strong { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink); }
+.stage-bar button.active { background: var(--surface-strong); border-color: var(--accent); color: var(--ink); }
+.stage-bar button.status-dropped strong { color: var(--danger); }
 .storyboard { margin: 0 18px 14px 56px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface-soft); }
 .storyboard summary { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; cursor: pointer; color: var(--accent); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
 .storyboard summary span { color: var(--muted); font-family: var(--font-mono); letter-spacing: 0; text-transform: none; }

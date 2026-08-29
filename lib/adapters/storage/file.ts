@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
-import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
+import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
 type Store = {
@@ -37,7 +37,8 @@ async function load(): Promise<Store> {
       creators: parsed.creators ?? [],
       signals: parsed.signals ?? [],
       runs: parsed.runs ?? [],
-      ideas: parsed.ideas ?? [],
+      // Ideas written before the six stages land on the matching stage; nothing else changes.
+      ideas: (parsed.ideas ?? []).map((idea) => ({ ...idea, status: legacyStage(idea.status) ?? idea.status })),
       formatReviews: parsed.formatReviews ?? [],
       hookRuns: parsed.hookRuns ?? [],
       briefings: parsed.briefings ?? [],
@@ -193,6 +194,17 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.ideas[index] = settled;
       await save(store);
       return settled;
+    });
+  },
+  async moveIdea(id, status, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.ideas.findIndex((idea) => idea.id === id);
+      if (index < 0) return null;
+      const moved = moveIdea(store.ideas[index], status, now);
+      store.ideas[index] = moved;
+      await save(store);
+      return moved;
     });
   },
 };

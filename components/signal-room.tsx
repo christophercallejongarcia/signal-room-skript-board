@@ -69,11 +69,11 @@ import {
   STRATEGY_GOAL,
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
-import type { IdeaInput } from "@/lib/ideas";
+import { IDEA_STAGES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
+import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
@@ -519,6 +519,27 @@ export function SignalRoom() {
     }
   }
 
+  /**
+   * Move an idea by hand. The server refuses a forbidden move with the reason,
+   * and that reason lands in the error box instead of a silent no-op.
+   */
+  async function moveIdea(ideaId: string, status: IdeaStatus) {
+    setIdeas((current) => ({ ...current, error: "" }));
+    try {
+      const response = await fetch("/api/ideas", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: ideaId, status }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { idea?: Idea; error?: string };
+      if (!response.ok || !payload.idea) throw new Error(payload.error || `The ideas table answered with HTTP ${response.status}.`);
+      const moved = payload.idea;
+      setIdeas((current) => ({ ...current, items: current.items.map((item) => (item.id === ideaId ? moved : item)) }));
+    } catch (error) {
+      setIdeas((current) => ({ ...current, error: error instanceof Error ? error.message : "The move failed." }));
+    }
+  }
+
   /** Capture from the Ideas form or from a card. Both land in the same ideas table. */
   async function captureIdea(input: IdeaInput) {
     const title = input.title.trim();
@@ -756,6 +777,7 @@ export function SignalRoom() {
             onRecheckBridge={checkBridge}
             onCapture={captureIdea}
             onDevelop={developIdea}
+            onMove={moveIdea}
             onReloadIdeas={loadIdeas}
           />
         )}
@@ -1597,10 +1619,14 @@ const bridgeCopy: Record<BridgeHealth, { label: string; hint: string; tone: "mut
   "logged-out": { label: "Codex not logged in", hint: "Run codex login in a terminal, then check again.", tone: "bad" },
 };
 
-const statusCopy: Record<Idea["status"], string> = {
+/** The six stages plus dropped, as the chips and the counter bar name them. */
+const statusCopy: Record<IdeaStatus, string> = {
   captured: "Captured",
-  developed: "Developed",
-  produced: "Produced",
+  developing: "Developing",
+  packaging: "Packaging",
+  scripting: "Scripting",
+  producing: "Producing",
+  published: "Published",
   dropped: "Dropped",
 };
 
@@ -1632,13 +1658,16 @@ function IdeaRow({
   developing,
   blocked,
   onDevelop,
+  onMove,
 }: {
   idea: Idea;
   index: number;
   developing: boolean;
   blocked: boolean;
   onDevelop: (id: string) => void;
+  onMove: (id: string, status: IdeaStatus) => void;
 }) {
+  const next = nextStage(idea.status);
   const meta = [
     formatDay(idea.createdAt),
     idea.sourceCreator && `from ${idea.sourceCreator}`,
@@ -1670,11 +1699,21 @@ function IdeaRow({
         </div>
         <div className="idea-actions">
           <span className={`state status-${idea.status}`}>{statusCopy[idea.status]}</span>
+          {next && (
+            <button className="ghost-button" type="button" onClick={() => onMove(idea.id, next)} disabled={developing} title={`Move to ${statusCopy[next]}`}>
+              <ArrowRight size={13} /> {statusCopy[next]}
+            </button>
+          )}
+          {canTransition(idea.status, "dropped") && (
+            <button className="ghost-button" type="button" onClick={() => onMove(idea.id, "dropped")} disabled={developing} title="Drop this idea">
+              <Trash size={13} />
+            </button>
+          )}
           <button
             className="ghost-button"
             type="button"
             onClick={() => onDevelop(idea.id)}
-            disabled={blocked || developing || idea.status === "dropped"}
+            disabled={blocked || developing || !canTransition(idea.status, "developing")}
           >
             {developing ? (
               <>
@@ -1734,6 +1773,7 @@ function IdeasView({
   onRecheckBridge,
   onCapture,
   onDevelop,
+  onMove,
   onReloadIdeas,
 }: {
   strategy: StrategyState;
@@ -1744,10 +1784,15 @@ function IdeasView({
   onRecheckBridge: () => void;
   onCapture: (input: IdeaInput) => void;
   onDevelop: (id: string) => void;
+  onMove: (id: string, status: IdeaStatus) => void;
   onReloadIdeas: () => void;
 }) {
   const [idea, setIdea] = useState("");
   const [goal, setGoal] = useState("");
+  /** The stage the list is narrowed to; null shows every idea. */
+  const [stage, setStage] = useState<IdeaStatus | null>(null);
+  const counts = countByStage(ideas.items);
+  const visible = stage ? ideas.items.filter((item) => item.status === stage) : ideas.items;
   const status = bridgeCopy[bridge];
   const { result, phase, error, evidence } = strategy;
   const blocked = bridge === "offline" || bridge === "logged-out" || phase === "loading";
@@ -1877,12 +1922,28 @@ function IdeasView({
             <p>{ideas.error}</p>
           </div>
         )}
+        <div className="stage-bar" role="group" aria-label="Ideas by stage">
+          {[...IDEA_STAGES, "dropped" as const].map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`${status === stage ? "active" : ""} status-${status}`}
+              aria-pressed={status === stage}
+              onClick={() => setStage((current) => (current === status ? null : status))}
+            >
+              <strong>{counts[status]}</strong> {statusCopy[status]}
+            </button>
+          ))}
+        </div>
         {ideas.phase === "loading" && <div className="empty-state">Reading the ideas table.</div>}
         {ideas.phase === "error" && <div className="empty-state">The ideas table is unreachable.</div>}
         {ideas.phase === "ready" && ideas.items.length === 0 && (
           <div className="empty-state">No idea captured yet. Capture one above, or from a card in Discover.</div>
         )}
-        {ideas.items.map((item, index) => (
+        {ideas.phase === "ready" && ideas.items.length > 0 && visible.length === 0 && stage && (
+          <div className="empty-state">No idea on {statusCopy[stage]}. Click the chip again to show every idea.</div>
+        )}
+        {visible.map((item, index) => (
           <IdeaRow
             key={item.id}
             idea={item}
@@ -1890,6 +1951,7 @@ function IdeasView({
             developing={ideas.developing === item.id}
             blocked={blocked || (ideas.developing !== null && ideas.developing !== item.id)}
             onDevelop={onDevelop}
+            onMove={onMove}
           />
         ))}
       </section>
