@@ -45,6 +45,7 @@ import {
   isOwned,
   isSaved,
   storeOrDemo,
+  withSavedAt,
   withoutOwned,
   type DiscoverView as DiscoverViewMode,
   type OutlierThreshold,
@@ -549,19 +550,22 @@ export function SignalRoom() {
     const saved = !isSaved(signal);
     const apply = (next: SignalRecord) =>
       setSignals((current) => current.map((item) => (item.id === next.id ? next : item)));
-    if (!live) {
-      const { savedAt: _dropped, ...rest } = signal;
-      apply(saved ? { ...rest, savedAt: new Date().toISOString() } : rest);
-      return;
+    // Optimistic, like markCreator: the card flips at once and rolls back when the store refuses.
+    apply(withSavedAt(signal, saved ? new Date().toISOString() : null));
+    if (!live) return;
+    try {
+      const response = await fetch("/api/signals", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: signal.id, saved }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const { signal: stored } = (await response.json()) as { signal: SignalRecord };
+      apply(stored);
+    } catch {
+      apply(signal);
+      setLastRefresh(saved ? "Saving the reel failed" : "Releasing the reel failed");
     }
-    const response = await fetch("/api/signals", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: signal.id, saved }),
-    });
-    if (!response.ok) return;
-    const { signal: stored } = (await response.json()) as { signal: SignalRecord };
-    apply(stored);
   }
 
   /**

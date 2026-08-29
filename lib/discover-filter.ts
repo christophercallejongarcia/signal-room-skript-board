@@ -33,6 +33,12 @@ export function isSaved(signal: { savedAt?: string } | undefined | null) {
   return Boolean(signal?.savedAt);
 }
 
+/** The signal with its saved mark set (a timestamp) or cleared (null). The one place the field is written. */
+export function withSavedAt<T extends { savedAt?: string }>(signal: T, savedAt: string | null): T {
+  const { savedAt: _current, ...rest } = signal;
+  return (savedAt ? { ...rest, savedAt } : rest) as T;
+}
+
 /** Chris' own accounts. Collected like every other creator, shown only in Profile. */
 export function isOwned(creator: Pick<Creator, "owned"> | undefined | null) {
   return Boolean(creator?.owned);

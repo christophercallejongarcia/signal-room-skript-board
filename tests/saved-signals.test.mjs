@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OUTLIER_THRESHOLDS, countSaved, filterDiscover, isSaved } from "../lib/discover-filter.ts";
+import { OUTLIER_THRESHOLDS, countSaved, filterDiscover, isSaved, withSavedAt } from "../lib/discover-filter.ts";
+import { mergeSignals } from "../lib/refresh-window.ts";
 import { parseSignalMark } from "../lib/signal-mark.ts";
 
 const NOW = Date.parse("2026-08-24T12:00:00.000Z");
@@ -74,4 +75,22 @@ test("parseSignalMark rejects a missing id and a non-boolean saved", () => {
   assert.throws(() => parseSignalMark({ id: "s1" }), /saved must be true or false/);
   assert.throws(() => parseSignalMark({ id: "s1", saved: "yes" }), /saved must be true or false/);
   assert.throws(() => parseSignalMark(null), /id required/);
+});
+
+test("withSavedAt sets the mark or clears the field entirely", () => {
+  const marked = withSavedAt(signals[1], "2026-08-24T00:00:00.000Z");
+  assert.equal(marked.savedAt, "2026-08-24T00:00:00.000Z");
+  assert.equal(isSaved(marked), true);
+  const cleared = withSavedAt(marked, null);
+  assert.equal("savedAt" in cleared, false);
+  assert.equal(isSaved(signals[1]), false, "the input is not mutated");
+});
+
+test("a delta refresh keeps the saved mark: the source never delivers savedAt", () => {
+  const stored = [withSavedAt(sig("s1", "a", 2.5, 1), "2026-08-23T10:00:00.000Z")];
+  const fresh = { ...sig("s1", "a", 2.5, 1), views: 999, savedAt: undefined };
+  const { signals: merged, updated } = mergeSignals(stored, [fresh]);
+  assert.equal(updated, 1);
+  assert.equal(merged[0].views, 999);
+  assert.equal(merged[0].savedAt, "2026-08-23T10:00:00.000Z");
 });

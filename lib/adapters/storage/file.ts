@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
+import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, claimDevelop, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 
@@ -99,8 +100,7 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       const store = await load();
       const index = store.signals.findIndex((signal) => signal.id === id);
       if (index < 0) return null;
-      const { savedAt: _dropped, ...rest } = store.signals[index];
-      const marked: SignalRecord = savedAt ? { ...rest, savedAt } : rest;
+      const marked = withSavedAt(store.signals[index], savedAt);
       store.signals[index] = marked;
       await save(store);
       return marked;
