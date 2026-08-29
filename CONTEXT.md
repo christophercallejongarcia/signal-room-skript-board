@@ -53,6 +53,14 @@ Nicht: "Job", "Execution", "Sync".
 Zwei Bremsen gegen unbemerkt teure Apify-Läufe. Erstens die Nutzung am Run: `usage` summiert `stats.computeUnits` und `usageTotalUsd` der Actor-Läufe (`lib/run-cost.ts`, gelesen aus dem Run-Objekt: der Client startet den Actor über `POST /acts/{id}/runs?waitForFinish=60`, pollt den Run bis zum Terminal-Status und liest dann das Dataset, weil die `run-sync`-Endpunkte nur den OUTPUT-Record liefern); fehlt der Dollar-Betrag, wird er aus den Compute-Units mal `APIFY_USD_PER_COMPUTE_UNIT` (0,40) geschätzt. Meldet ein Actor-Lauf gar nichts, zählt er in `unreported`, und ein Run ohne eine einzige Zahl zeigt im Profile-Tab "unknown" statt einer erfundenen Null. Zweitens `REFRESH_CREATOR_LIMIT` (25): mehr Creators fasst ein Delta-Refresh nicht an, zuerst die nie geprüften, dann die mit dem ältesten `lastCheckedAt`; die übrigen behalten ihren Cursor, der Run endet `partial`, und der nächste Lauf nimmt sie zuerst. Der Profile-Tab zeigt Kosten je Run und die Summe des laufenden Monats.
 Nicht: "Budget", "Quota", "Rate-Limit".
 
+**Transkript**
+Was in einem Reel gesagt wird, gespeichert als `transcript` am Signal, dazu `transcriptStatus` (`ready` oder `silent`). Der Delta-Refresh holt es einmalig für Reels ab der Schwelle (`pickTranscriptBatch` in `lib/transcripts.ts`: Reels mit `url`, Outlier ≥ `OUTLIER_THRESHOLD`, ohne Ergebnis, stärkste zuerst, höchstens `TRANSCRIPT_LIMIT_PER_RUN` (20) je Lauf) über den Apify-Actor `apple_yang/instagram-transcripts-scraper` (`lib/adapters/sources/apify-transcripts.ts`, ein Actor-Lauf mit `bulkUrls`). Ein Reel ohne verwertbare Tonspur wird `silent` und nie wieder angefragt; ein Reel, das der Actor nicht beantwortet, bleibt offen für den nächsten Lauf. Die Nutzung des Actor-Laufs zählt in `usage` desselben Runs, die Zahlen stehen als `transcripts` (`added`, `silent`) am Run; ein Actor-Fehler ist ein Run-Fehler unter `transcripts` und macht den Run `partial`, nie `failed`. Der Backfill holt keine Transkripte, das tut der nächste Refresh.
+Nicht: "Untertitel", "Captions" (Caption ist der Beitragstext), "Speech-to-Text".
+
+**Hook-Quelle**
+Woraus der Hook eines Signals gelesen wird, entschieden an einer Stelle: `hookOf` in `lib/hook-source.ts` nimmt den gesprochenen Einstieg (`spokenHook`: erster Satz des Transkripts, höchstens `SPOKEN_HOOK_MAX` 120 Zeichen), sonst die erste Caption-Zeile (`hookLine`), sonst den Titel. Format Signals und Format-Review klassifizieren über `classifyHook(hookOf(reel))`; das Evidenzpaket nennt ein Reel mit Transkript unter seinem gesprochenen Einstieg, sonst unter dem Titel.
+Nicht: "Caption-Zeile" (nur der Rückfall), "Opener".
+
 **Cover**
 Das Vorschaubild eines Signals. Der Connector liefert die signierte CDN-Adresse als `thumbnailUrl`; der Cover-Cache (`lib/adapters/storage/cover-cache.ts`) lädt sie einmal nach `data/covers/<externalId>.jpg`, und die UI rendert nur `coverUrl` (`/api/covers/<externalId>`), sonst den Platzhalter.
 Nicht: "Thumbnail" (nur noch als Feldname `thumbnailUrl` für die Quelle), "Preview", "Poster".
@@ -74,7 +82,7 @@ Nicht: "Cutoff", "Limit", "Grenzwert".
 ## Formate und Inhalte
 
 **Format Signal**
-Ein wiederkehrendes Hook-Muster über mehrere Outlier-Reels (z.B. "Die besten X", "Nie wieder X"), erkannt regelbasiert aus der ersten Caption-Zeile. Die Musterliste steht in `lib/format-signals.ts` als `FORMAT_PATTERNS` und ist durch einen weiteren Eintrag erweiterbar; `buildFormatSignals` liefert je Muster Anzahl, Durchschnitts-Outlier, Anteil an allen Outliern, bis zu `FORMAT_EXAMPLE_LIMIT` (3) Beispiel-Reels und die Wochenlinie über `FORMAT_WINDOW_DAYS` (90). Reels ohne erkanntes Muster stehen als "Unclassified" am Ende, mit ihrem Anteil.
+Ein wiederkehrendes Hook-Muster über mehrere Outlier-Reels (z.B. "Die besten X", "Nie wieder X"), erkannt regelbasiert aus dem Hook (siehe Hook-Quelle: gesprochener Einstieg, sonst erste Caption-Zeile). Die Musterliste steht in `lib/format-signals.ts` als `FORMAT_PATTERNS` und ist durch einen weiteren Eintrag erweiterbar; `buildFormatSignals` liefert je Muster Anzahl, Durchschnitts-Outlier, Anteil an allen Outliern, bis zu `FORMAT_EXAMPLE_LIMIT` (3) Beispiel-Reels und die Wochenlinie über `FORMAT_WINDOW_DAYS` (90). Reels ohne erkanntes Muster stehen als "Unclassified" am Ende, mit ihrem Anteil.
 Nicht: "Pattern", "Trend", "Template".
 
 **Format-Review**
@@ -86,7 +94,7 @@ Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beob
 Nicht: "Fremdnische", "External", "Competitor".
 
 **Hook**
-Die erste Zeile der Caption bzw. die ersten drei Sekunden eines Reels; Hooks werden im Hooks-Board variiert und gegen den Outlier-Korpus geprüft.
+Die erste Zeile der Caption bzw. die ersten drei Sekunden eines Reels (mit Transkript der gesprochene Einstieg, siehe Hook-Quelle); Hooks werden im Hooks-Board variiert und gegen den Outlier-Korpus geprüft.
 Nicht: "Titel" (Titel ist das YouTube-Pendant), "Opener", "Headline".
 
 **Hooks-Board**

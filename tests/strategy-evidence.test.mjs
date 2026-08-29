@@ -125,3 +125,15 @@ test("caption excerpt collapses whitespace and stays bounded", () => {
   assert.equal(captionExcerpt("  a \n\n b  "), "a b");
   assert.equal(captionExcerpt(undefined), "");
 });
+
+test("a reel with a transcript is cited by its spoken opening, one without keeps its title", () => {
+  const evidence = selectEvidence(
+    [
+      { ...reel("spoken", "a", 5, 1), outlier: 5, title: "Untitled reel", transcript: "Nie wieder Copy-Paste! Und so geht es." },
+      { ...reel("written", "a", 4, 1), outlier: 4 },
+    ],
+    creators,
+    { now: NOW },
+  );
+  assert.deepEqual(evidence.map((item) => item.title), ["Nie wieder Copy-Paste!", "Reel written"]);
+});

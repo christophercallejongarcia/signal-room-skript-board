@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, RunUsage, SignalRecord } from "./contracts";
+import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, RunUsage, SignalRecord, TranscriptCount } from "./contracts";
 import { collectForCreator, type CollectResult } from "./adapters/sources/apify-instagram.ts";
+import { transcribeReels, type Transcriber } from "./adapters/sources/apify-transcripts.ts";
 import { getStorage, type Storage } from "./adapters/storage/index.ts";
 import { cacheCovers } from "./adapters/storage/cover-cache.ts";
-import { REFRESH_CREATOR_LIMIT } from "./config.ts";
+import { REFRESH_CREATOR_LIMIT, TRANSCRIPT_LIMIT_PER_RUN } from "./config.ts";
 import { addUsage, pickRefreshBatch } from "./run-cost.ts";
+import { pickTranscriptBatch } from "./transcripts.ts";
 
 /** The slice of Storage a collection pass touches; the cron hands in one built over a Convex action context. */
 export type CollectStorage = Pick<Storage, "listCreators" | "upsertCreator" | "listSignals" | "saveSignals" | "saveRun">;
@@ -16,6 +18,10 @@ export type CollectDeps = {
   now: () => Date;
   /** Creators one Delta-Refresh may touch. */
   creatorLimit: number;
+  /** Fetches what is said in the given reels. */
+  transcribe: Transcriber;
+  /** Reels one Delta-Refresh may send to the transcript actor. */
+  transcriptLimit: number;
 };
 
 function defaultDeps(overrides: Partial<CollectDeps>): CollectDeps {
@@ -26,6 +32,8 @@ function defaultDeps(overrides: Partial<CollectDeps>): CollectDeps {
     cacheCovers,
     now: () => new Date(),
     creatorLimit: REFRESH_CREATOR_LIMIT,
+    transcribe: transcribeReels,
+    transcriptLimit: TRANSCRIPT_LIMIT_PER_RUN,
     ...overrides,
   };
 }
@@ -50,6 +58,35 @@ export async function collectAndStore(creator: Creator, overrides: Partial<Colle
   return { recordsAdded: saved.inserted, recordsUpdated: saved.updated, covers, usage };
 }
 
+/**
+ * The transcript pass of a refresh: the outlier reels without an outcome yet go
+ * to the transcript actor once, at most transcriptLimit of them. A reel with
+ * text stores it as ready, one without is marked silent so it is never asked
+ * for again; a reel the actor did not answer stays open for the next run. The
+ * actor's usage counts into the same run as the collection.
+ */
+async function transcribeOutliers(deps: CollectDeps, creators: Creator[]): Promise<{ count: TranscriptCount; usage: RunUsage }> {
+  const count: TranscriptCount = { added: 0, silent: 0 };
+  const batch = pickTranscriptBatch(await deps.storage.listSignals(), creators, { limit: deps.transcriptLimit });
+  if (batch.length === 0) return { count, usage: NO_USAGE };
+  const { results, usage } = await deps.transcribe(batch);
+  const byId = new Map(batch.map((reel) => [reel.id, reel]));
+  const patched: SignalRecord[] = [];
+  for (const result of results) {
+    const reel = byId.get(result.id);
+    if (!reel) continue;
+    if (result.transcript) {
+      patched.push({ ...reel, transcript: result.transcript, transcriptStatus: "ready" });
+      count.added += 1;
+    } else {
+      patched.push({ ...reel, transcriptStatus: "silent" });
+      count.silent += 1;
+    }
+  }
+  if (patched.length > 0) await deps.storage.saveSignals(patched);
+  return { count, usage };
+}
+
 function addCounts(a: CoverCacheResult, b: CoverCacheResult): CoverCacheResult {
   return { cached: a.cached + b.cached, skipped: a.skipped + b.skipped, failed: a.failed + b.failed };
 }
@@ -58,9 +95,9 @@ function newRunId(startedAt: Date) {
   return `run-${startedAt.toISOString()}-${randomUUID().slice(0, 8)}`;
 }
 
-function runStatus(checked: number, failed: number, skipped: number): Run["status"] {
+function runStatus(checked: number, failed: number, skipped: number, transcriptsFailed = false): Run["status"] {
   if (checked > 0 && failed >= checked) return "failed";
-  return failed === 0 && skipped === 0 ? "ok" : "partial";
+  return failed === 0 && skipped === 0 && !transcriptsFailed ? "ok" : "partial";
 }
 
 /**
@@ -130,6 +167,19 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
     }
   }
 
+  // Transcripts ride on the same run and the same budget as the collection. A
+  // failing actor is one logged error, never a lost refresh.
+  let transcripts: TranscriptCount = { added: 0, silent: 0 };
+  const creatorsFailed = errors.length;
+  try {
+    const pass = await transcribeOutliers(deps, instagram);
+    transcripts = pass.count;
+    usage = addUsage(usage, pass.usage);
+  } catch (error) {
+    errors.push({ creatorId: "transcripts", handle: "transcripts", message: error instanceof Error ? error.message : String(error) });
+    usage = addUsage(usage, { unreported: 1 });
+  }
+
   // Second pass over the stored corpus: a cover that failed on an earlier run
   // is retried as long as its CDN link still resolves. Already cached files are skipped.
   const catchUp = await deps.cacheCovers(await deps.storage.listSignals());
@@ -139,7 +189,7 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
   const run: Run = {
     id: newRunId(startedAt),
     kind: "refresh",
-    status: runStatus(creators.length, errors.length, skipped.length),
+    status: runStatus(creators.length, creatorsFailed, skipped.length, errors.length > creatorsFailed),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -149,6 +199,7 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
     recordsUpdated,
     errors,
     usage,
+    transcripts,
   };
   await deps.storage.saveRun(run);
 

@@ -38,6 +38,10 @@ export type SignalRecord = {
   externalId?: string;
   /** When Chris saved the signal. Absent means not saved; a refresh never touches it. */
   savedAt?: string;
+  /** What is said in the reel, fetched once for reels above the threshold. Absent until fetched. */
+  transcript?: string;
+  /** silent = the reel has no usable audio track; it is never tried again. ready = transcript is set. */
+  transcriptStatus?: "ready" | "silent";
 };
 
 export type RankedSignal = SignalRecord & {
@@ -91,7 +95,12 @@ export type Run = {
   errors: RunError[];
   /** Absent on runs logged before the cost guard. */
   usage?: RunUsage;
+  /** Transcript pass of a refresh: reels transcribed and reels marked silent. Absent on backfills and older runs. */
+  transcripts?: TranscriptCount;
 };
+
+/** Outcome of one transcript pass. */
+export type TranscriptCount = { added: number; silent: number };
 
 export type RefreshResult = {
   creatorsChecked: number;

@@ -1,6 +1,7 @@
 import { OUTLIER_THRESHOLD, STRATEGY_EVIDENCE_LIMIT, STRATEGY_EVIDENCE_WINDOW_DAYS } from "./config.ts";
 import type { Creator, RankedSignal, StrategyEvidenceItem } from "./contracts";
 import { isOutlier, withoutOwned } from "./discover-filter.ts";
+import { hookOf } from "./hook-source.ts";
 
 const DAY = 86_400_000;
 
@@ -46,8 +47,10 @@ export function selectEvidence(
     // Rank on the exact factor; rounding is presentation and would collapse neighbours.
     .sort((a, b) => b.outlier - a.outlier || (b.plays ?? b.views) - (a.plays ?? a.views))
     .slice(0, limit)
+    // The title is the reel's Hook. With a transcript that is the spoken opening; without one the
+    // stored title already is the first caption line, so hookOf would only re-derive it.
     .map((signal) => ({
-      title: signal.title,
+      title: signal.transcript ? hookOf(signal) || signal.title : signal.title,
       creator: creatorMap.get(signal.creatorId)!.handle,
       caption: captionExcerpt(signal.caption),
       plays: signal.plays ?? signal.views,

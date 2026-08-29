@@ -15,6 +15,11 @@ export const REFRESH_CREATOR_LIMIT = positiveEnv("REFRESH_CREATOR_LIMIT", 25);
  * APIFY_USD_PER_COMPUTE_UNIT to match your plan.
  */
 export const APIFY_USD_PER_COMPUTE_UNIT = positiveEnv("APIFY_USD_PER_COMPUTE_UNIT", 0.4);
+/**
+ * Reels one Delta-Refresh may send to the transcript actor. Strongest outliers
+ * first; the rest wait for the next run. Override with TRANSCRIPT_LIMIT_PER_RUN.
+ */
+export const TRANSCRIPT_LIMIT_PER_RUN = positiveEnv("TRANSCRIPT_LIMIT_PER_RUN", 20);
 
 function positiveEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);

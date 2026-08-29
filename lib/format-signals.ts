@@ -1,6 +1,9 @@
 import { FORMAT_WINDOW_DAYS, FORMAT_EXAMPLE_LIMIT, OUTLIER_THRESHOLD } from "./config.ts";
 import type { Creator, RankedSignal } from "./contracts";
 import { isOutlier, isOwned } from "./discover-filter.ts";
+import { hookLine, hookOf } from "./hook-source.ts";
+
+export { hookLine };
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -88,23 +91,17 @@ export const FORMAT_PATTERNS: FormatPattern[] = [
   },
 ];
 
-/**
- * The hook of a caption: its first non-empty line, leading decoration removed.
- * Emoji and punctuation are stripped from the front only, so a closing question
- * mark survives.
- */
-export function hookLine(caption: string | undefined) {
-  const line = (caption ?? "").split("\n").map((part) => part.trim()).find(Boolean) ?? "";
-  return line.replace(/^[^\p{L}\p{Nd}]+/u, "").replace(/\s+/g, " ").trim();
-}
-
 const patternById = new Map(FORMAT_PATTERNS.map((pattern) => [pattern.id, pattern]));
 
-/** Pure over one caption: the id of the first matching pattern, or UNCLASSIFIED. */
-export function classifyCaption(caption: string | undefined): string {
-  const hook = hookLine(caption);
+/** Pure over one hook line: the id of the first matching pattern, or UNCLASSIFIED. */
+export function classifyHook(hook: string): string {
   if (!hook) return UNCLASSIFIED;
   return FORMAT_PATTERNS.find((pattern) => pattern.match.test(hook))?.id ?? UNCLASSIFIED;
+}
+
+/** Pure over one caption: classifyHook over its first line. */
+export function classifyCaption(caption: string | undefined): string {
+  return classifyHook(hookLine(caption));
 }
 
 /** The heading a pattern id reads under. Unknown ids fall back to the id itself. */
@@ -148,14 +145,6 @@ export type FormatSignalOptions = {
   exampleLimit?: number;
 };
 
-/**
- * Instagram derives the title from the first caption line, so the title is the
- * honest stand-in when a record carries no caption of its own.
- */
-function captionOf(signal: RankedSignal) {
-  return signal.caption ?? signal.title;
-}
-
 /** Everything groupByPattern needs beyond the reels themselves. */
 type GroupSettings = { now: number; weekCount: number; exampleLimit: number };
 
@@ -163,7 +152,7 @@ function groupByPattern(scope: "own" | "foreign", reels: RankedSignal[], setting
   const { now, weekCount, exampleLimit } = settings;
   const buckets = new Map<string, RankedSignal[]>();
   for (const reel of reels) {
-    const id = classifyCaption(captionOf(reel));
+    const id = classifyHook(hookOf(reel));
     const bucket = buckets.get(id);
     if (bucket) bucket.push(reel);
     else buckets.set(id, [reel]);
@@ -181,7 +170,7 @@ function groupByPattern(scope: "own" | "foreign", reels: RankedSignal[], setting
     return {
       id,
       label: pattern?.label ?? "Unclassified",
-      hint: pattern?.hint ?? "No known shape in the first caption line",
+      hint: pattern?.hint ?? "No known shape in the hook",
       count: group.length,
       averageOutlier: Math.round((sum / group.length) * 10) / 10,
       share: group.length / reels.length,

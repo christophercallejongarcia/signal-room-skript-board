@@ -234,3 +234,13 @@ test("the title stands in when a signal carries no caption", () => {
   );
   assert.deepEqual(own.signals.map((signal) => signal.id), ["die-besten"]);
 });
+
+test("a transcript outranks the caption as the hook; without one the caption still decides", () => {
+  const creators = [{ id: "c", name: "C", handle: "@c", network: "instagram", audience: 1000, accent: "#000" }];
+  const base = { creatorId: "c", publishedAt: new Date(NOW - DAY).toISOString(), views: 0, likes: 0, comments: 0, durationSeconds: 20, thumbnailSeed: "s", topic: "x", format: "reel", plays: 5000, outlier: 5, channelRelative: 1, score: 1, relativeReach: 5, velocity: 1, reason: "" };
+  const spoken = { ...base, id: "spoken", title: "Untitled reel", caption: "🔥🔥", transcript: "Hör auf mit Notion. Es bremst dich." };
+  const written = { ...base, id: "written", title: "Die besten Tools", caption: "Die besten Tools\nmehr" };
+  const { own } = buildFormatSignals([spoken, written], creators, { now: NOW });
+  const ids = own.signals.map((s) => [s.id, s.examples.map((e) => e.id)]);
+  assert.deepEqual(ids.sort(), [["die-besten", ["written"]], ["hoer-auf", ["spoken"]]]);
+});

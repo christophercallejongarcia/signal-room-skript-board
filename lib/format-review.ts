@@ -16,7 +16,8 @@ import type {
   SignalRecord,
 } from "./contracts";
 import { isOutlier, isOwned } from "./discover-filter.ts";
-import { UNCLASSIFIED, buildFormatSignals, classifyCaption, patternLabel } from "./format-signals.ts";
+import { UNCLASSIFIED, buildFormatSignals, classifyHook, patternLabel } from "./format-signals.ts";
+import { hookOf } from "./hook-source.ts";
 
 const DAY = 86_400_000;
 
@@ -149,7 +150,7 @@ export function findRisingCreators(
     if (creator.audience <= 0 || creator.audience >= smallAudience) continue;
     if (now - new Date(signal.publishedAt).getTime() > windowDays * DAY) continue;
     if (!isOutlier(signal, threshold)) continue;
-    const patternId = classifyCaption(signal.caption ?? signal.title);
+    const patternId = classifyHook(hookOf(signal));
     if (patternId === UNCLASSIFIED) continue;
     const previous = best.get(creator.id);
     if (previous && previous.outlier >= signal.outlier) continue;
