@@ -248,6 +248,8 @@ main {
   line-height: 1;
 }
 .stat-blocks span { display: block; margin-top: 8px; color: var(--muted); font-size: 10.5px; }
+/* The month total above the run log: sized to its numbers, not stretched across the page. */
+.stat-blocks.run-month { grid-auto-columns: max-content; justify-content: start; }
 .stat-blocks .lime strong { color: var(--accent); }
 
 .next-refresh {

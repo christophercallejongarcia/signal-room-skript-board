@@ -4,6 +4,22 @@ export { DEFAULT_OUTLIER_THRESHOLD as OUTLIER_THRESHOLD } from "./discover-filte
 export const BACKFILL_DAYS = 90;
 /** Maximum posts pulled per creator per run. Keeps Apify cost bounded. */
 export const MAX_RESULTS_PER_CREATOR = 150;
+/**
+ * Creators one Delta-Refresh may touch. Past this the run ends partial and the
+ * rest keep their cursor for the next run. Override with REFRESH_CREATOR_LIMIT.
+ */
+export const REFRESH_CREATOR_LIMIT = positiveEnv("REFRESH_CREATOR_LIMIT", 25);
+/**
+ * Dollar estimate per Apify compute unit, used only when an actor run reports
+ * compute units but no usageTotalUsd. Apify's list price; override with
+ * APIFY_USD_PER_COMPUTE_UNIT to match your plan.
+ */
+export const APIFY_USD_PER_COMPUTE_UNIT = positiveEnv("APIFY_USD_PER_COMPUTE_UNIT", 0.4);
+
+function positiveEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 /** Days of history the Strategy-Provider reads as evidence. */
 export const STRATEGY_EVIDENCE_WINDOW_DAYS = 30;
 /** How many outlier reels go into one evidence packet. */

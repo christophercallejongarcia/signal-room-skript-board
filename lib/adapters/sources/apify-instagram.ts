@@ -1,6 +1,7 @@
-import type { Creator, SignalRecord, SourceConnector } from "../../contracts";
+import type { Creator, RunUsage, SignalRecord, SourceConnector } from "../../contracts";
 import { MAX_RESULTS_PER_CREATOR } from "../../config.ts";
 import { refreshWindowSince } from "../../refresh-window.ts";
+import { sumUsage } from "../../run-cost.ts";
 import { runActor } from "./apify-client.ts";
 
 type ApifyProfile = {
@@ -51,7 +52,7 @@ export function normalizeHandle(input: string) {
 
 export async function resolveProfile(handleInput: string): Promise<ResolvedProfile> {
   const handle = normalizeHandle(handleInput);
-  const items = await runActor<ApifyProfile>("apify~instagram-profile-scraper", { usernames: [handle] });
+  const { items } = await runActor<ApifyProfile>("apify~instagram-profile-scraper", { usernames: [handle] });
   const profile = items.find((item) => !item.error);
   if (!profile) throw new Error(`Instagram profile @${handle} not found (${items[0]?.error ?? "no data"})`);
   return {
@@ -96,7 +97,10 @@ function mapPost(post: ApifyPost, creator: Creator): SignalRecord | null {
 
 export type ActorRunner = typeof runActor;
 
-export async function collectForCreator(creator: Creator, run: ActorRunner = runActor): Promise<SignalRecord[]> {
+/** Signals of one creator plus what the two actor streams cost. */
+export type CollectResult = { records: SignalRecord[]; usage: RunUsage };
+
+export async function collectForCreator(creator: Creator, run: ActorRunner = runActor): Promise<CollectResult> {
   const handle = normalizeHandle(creator.handle);
   // "posts" misses reels on many accounts (only the grid/carousel tab); "reels" misses image posts.
   // Fetch both and merge by shortCode so the corpus is complete.
@@ -119,7 +123,8 @@ export async function collectForCreator(creator: Creator, run: ActorRunner = run
     result.status === "rejected" ? [`${streams[i]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`] : [],
   );
   if (failures.length) throw new Error(failures.join("; "));
-  const batches = settled.map((result) => (result.status === "fulfilled" ? result.value : []));
+  const results = settled.map((result) => (result.status === "fulfilled" ? result.value : { items: [], usage: {} }));
+  const batches = results.map((result) => result.items);
   const seen = new Set<string>();
   const records: SignalRecord[] = [];
   for (const item of batches.flat()) {
@@ -129,7 +134,7 @@ export async function collectForCreator(creator: Creator, run: ActorRunner = run
     if (record.externalId) seen.add(record.externalId);
     records.push(record);
   }
-  return records;
+  return { records, usage: sumUsage(results.map((result) => result.usage)) };
 }
 
 export const apifyInstagramConnector: SourceConnector = {
@@ -137,7 +142,7 @@ export const apifyInstagramConnector: SourceConnector = {
   async collect(creators) {
     const results: SignalRecord[] = [];
     for (const creator of creators.filter((c) => c.network === "instagram")) {
-      results.push(...(await collectForCreator(creator)));
+      results.push(...(await collectForCreator(creator)).records);
     }
     return results;
   },

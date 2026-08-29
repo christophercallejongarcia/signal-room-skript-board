@@ -10,9 +10,17 @@ export const runFields = {
   finishedAt: v.string(),
   durationMs: v.number(),
   creatorsChecked: v.number(),
+  creatorsSkipped: v.optional(v.number()),
   recordsAdded: v.number(),
   recordsUpdated: v.number(),
   errors: v.array(v.object({ creatorId: v.string(), handle: v.string(), message: v.string() })),
+  usage: v.optional(
+    v.object({
+      unreported: v.number(),
+      computeUnits: v.optional(v.number()),
+      costUsd: v.optional(v.number()),
+    }),
+  ),
 };
 
 /** Short-form plan attached to an idea; shared with convex/ideas.ts. */

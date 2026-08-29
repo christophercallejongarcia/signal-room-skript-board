@@ -39,8 +39,12 @@ Der Folgelauf über `/api/refresh`, der pro Creator das Fenster seit `lastChecke
 Nicht: "Delta-Sync", "Update", "Incremental Scrape".
 
 **Run**
-Ein protokollierter Durchlauf von Backfill (`lib/collect.ts` `runBackfill`, aus `POST /api/creators`) oder Delta-Refresh (`runRefresh`): Art, Status (`ok`/`partial`/`failed`), Start, Ende, Dauer, geprüfte Creators, neue und aktualisierte Signale, Fehler pro Creator. Tabelle `runs` (Convex) bzw. `runs` in `data/store.json`; `GET /api/runs` liefert die letzten zehn für den Profile-Tab. Kosten pro Run sind geplant (SPEC T3.6).
+Ein protokollierter Durchlauf von Backfill (`lib/collect.ts` `runBackfill`, aus `POST /api/creators`) oder Delta-Refresh (`runRefresh`): Art, Status (`ok`/`partial`/`failed`), Start, Ende, Dauer, geprüfte und übersprungene Creators, neue und aktualisierte Signale, Fehler pro Creator und die Apify-Nutzung (`usage`). Tabelle `runs` (Convex) bzw. `runs` in `data/store.json`; `GET /api/runs` liefert die letzten zehn plus die Monatssumme für den Profile-Tab. `partial` heißt: mindestens ein Creator ist fehlgeschlagen oder das Creator-Limit hat den Lauf beendet.
 Nicht: "Job", "Execution", "Sync".
+
+**Kosten-Guard**
+Zwei Bremsen gegen unbemerkt teure Apify-Läufe. Erstens die Nutzung am Run: `usage` summiert `stats.computeUnits` und `usageTotalUsd` der Actor-Läufe (`lib/run-cost.ts`, gelesen aus dem Run-Objekt von `run-sync`, das der Client statt `run-sync-get-dataset-items` aufruft); fehlt der Dollar-Betrag, wird er aus den Compute-Units mal `APIFY_USD_PER_COMPUTE_UNIT` (0,40) geschätzt. Meldet ein Actor-Lauf gar nichts, zählt er in `unreported`, und ein Run ohne eine einzige Zahl zeigt im Profile-Tab "unknown" statt einer erfundenen Null. Zweitens `REFRESH_CREATOR_LIMIT` (25): mehr Creators fasst ein Delta-Refresh nicht an, zuerst die nie geprüften, dann die mit dem ältesten `lastCheckedAt`; die übrigen behalten ihren Cursor, der Run endet `partial`, und der nächste Lauf nimmt sie zuerst. Der Profile-Tab zeigt Kosten je Run und die Summe des laufenden Monats.
+Nicht: "Budget", "Quota", "Rate-Limit".
 
 **Cover**
 Das Vorschaubild eines Signals. Der Connector liefert die signierte CDN-Adresse als `thumbnailUrl`; der Cover-Cache (`lib/adapters/storage/cover-cache.ts`) lädt sie einmal nach `data/covers/<externalId>.jpg`, und die UI rendert nur `coverUrl` (`/api/covers/<externalId>`), sonst den Platzhalter.

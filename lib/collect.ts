@@ -1,21 +1,27 @@
 import { randomUUID } from "node:crypto";
-import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, SignalRecord } from "./contracts";
-import { collectForCreator } from "./adapters/sources/apify-instagram.ts";
+import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, RunUsage, SignalRecord } from "./contracts";
+import { collectForCreator, type CollectResult } from "./adapters/sources/apify-instagram.ts";
 import { getStorage, type Storage } from "./adapters/storage/index.ts";
 import { cacheCovers } from "./adapters/storage/cover-cache.ts";
+import { REFRESH_CREATOR_LIMIT } from "./config.ts";
+import { addUsage, pickRefreshBatch } from "./run-cost.ts";
 
 export type CollectDeps = {
   storage: Storage;
-  collect: (creator: Creator) => Promise<SignalRecord[]>;
+  collect: (creator: Creator) => Promise<CollectResult>;
   cacheCovers: (records: SignalRecord[]) => Promise<CoverCacheResult>;
   now: () => Date;
+  /** Creators one Delta-Refresh may touch. */
+  creatorLimit: number;
 };
 
 function defaultDeps(overrides: Partial<CollectDeps>): CollectDeps {
-  return { storage: getStorage(), collect: collectForCreator, cacheCovers, now: () => new Date(), ...overrides };
+  return { storage: getStorage(), collect: collectForCreator, cacheCovers, now: () => new Date(), creatorLimit: REFRESH_CREATOR_LIMIT, ...overrides };
 }
 
-export type CollectStep = { recordsAdded: number; recordsUpdated: number; covers: CoverCacheResult };
+export type CollectStep = { recordsAdded: number; recordsUpdated: number; covers: CoverCacheResult; usage: RunUsage };
+
+const NO_USAGE: RunUsage = { unreported: 0 };
 
 /**
  * One collection step for a creator: pull signals (backfill or delta-refresh
@@ -26,11 +32,11 @@ export type CollectStep = { recordsAdded: number; recordsUpdated: number; covers
 export async function collectAndStore(creator: Creator, overrides: Partial<CollectDeps> = {}): Promise<CollectStep> {
   const deps = defaultDeps(overrides);
   const startedAt = deps.now();
-  const records = await deps.collect(creator);
+  const { records, usage } = await deps.collect(creator);
   const saved = await deps.storage.saveSignals(records);
   await deps.storage.upsertCreator({ ...creator, lastCheckedAt: startedAt.toISOString() });
   const covers = await deps.cacheCovers(records);
-  return { recordsAdded: saved.inserted, recordsUpdated: saved.updated, covers };
+  return { recordsAdded: saved.inserted, recordsUpdated: saved.updated, covers, usage };
 }
 
 function addCounts(a: CoverCacheResult, b: CoverCacheResult): CoverCacheResult {
@@ -41,9 +47,9 @@ function newRunId(startedAt: Date) {
   return `run-${startedAt.toISOString()}-${randomUUID().slice(0, 8)}`;
 }
 
-function runStatus(checked: number, failed: number): Run["status"] {
-  if (failed === 0) return "ok";
-  return failed >= checked ? "failed" : "partial";
+function runStatus(checked: number, failed: number, skipped: number): Run["status"] {
+  if (checked > 0 && failed >= checked) return "failed";
+  return failed === 0 && skipped === 0 ? "ok" : "partial";
 }
 
 /**
@@ -73,23 +79,30 @@ export async function runBackfill(creator: Creator, overrides: Partial<CollectDe
     recordsAdded: step?.recordsAdded ?? 0,
     recordsUpdated: step?.recordsUpdated ?? 0,
     errors: step ? [] : [{ creatorId: creator.id, handle: creator.handle, message }],
+    // A failed backfill ran the actors too, but their usage never came back: unknown, not free.
+    usage: step?.usage ?? { unreported: 2 },
   });
   if (!step) throw failure;
   return step;
 }
 
 /**
- * Delta-refresh over every Instagram creator. A failing creator is recorded
- * in the run and skipped; the others continue. The run is persisted even when
- * every creator failed, so the Profile tab shows what happened.
+ * Delta-refresh over the Instagram creators, at most creatorLimit of them per
+ * run (never-checked and stalest cursor first). A failing creator is recorded
+ * in the run and skipped; the others continue. Creators past the limit keep
+ * their lastCheckedAt and the run ends partial, so the next run picks them up
+ * first. The run is persisted even when every creator failed, so the Profile
+ * tab shows what happened and what it cost.
  */
 export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<RefreshResult> {
   const deps = defaultDeps(overrides);
   const startedAt = deps.now();
-  const creators = (await deps.storage.listCreators()).filter((c) => c.network === "instagram");
+  const instagram = (await deps.storage.listCreators()).filter((c) => c.network === "instagram");
+  const { batch: creators, skipped } = pickRefreshBatch(instagram, deps.creatorLimit);
   let recordsAdded = 0;
   let recordsUpdated = 0;
   let covers: CoverCacheResult = { cached: 0, skipped: 0, failed: 0 };
+  let usage = NO_USAGE;
   const errors: RunError[] = [];
 
   for (const creator of creators) {
@@ -98,8 +111,11 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
       recordsAdded += step.recordsAdded;
       recordsUpdated += step.recordsUpdated;
       covers = addCounts(covers, step.covers);
+      usage = addUsage(usage, step.usage);
     } catch (error) {
       errors.push({ creatorId: creator.id, handle: creator.handle, message: error instanceof Error ? error.message : String(error) });
+      // The failing creator's actors ran (one stream may have finished) but their usage is lost with the error.
+      usage = addUsage(usage, { unreported: 2 });
     }
   }
 
@@ -112,19 +128,22 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
   const run: Run = {
     id: newRunId(startedAt),
     kind: "refresh",
-    status: runStatus(creators.length, errors.length),
+    status: runStatus(creators.length, errors.length, skipped.length),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     creatorsChecked: creators.length,
+    creatorsSkipped: skipped.length,
     recordsAdded,
     recordsUpdated,
     errors,
+    usage,
   };
   await deps.storage.saveRun(run);
 
   return {
     creatorsChecked: creators.length,
+    creatorsSkipped: skipped.length,
     recordsAdded,
     recordsUpdated,
     completedAt: run.finishedAt,

@@ -57,7 +57,23 @@ export type SaveResult = { inserted: number; updated: number };
 
 export type RunError = { creatorId: string; handle: string; message: string };
 
-/** One logged collection pass. ok = no errors, partial = some creators failed, failed = every creator failed. */
+/**
+ * Apify usage of one collection pass, summed over its actor runs. computeUnits
+ * and costUsd are absent when no actor run reported a figure: the run then
+ * reads as unknown, never as free.
+ */
+export type RunUsage = {
+  /** Actor runs Apify sent no usage figure for. */
+  unreported: number;
+  computeUnits?: number;
+  /** usageTotalUsd as Apify reports it, else computeUnits times APIFY_USD_PER_COMPUTE_UNIT. */
+  costUsd?: number;
+};
+
+/**
+ * One logged collection pass. ok = no errors, partial = some creators failed or
+ * the refresh hit REFRESH_CREATOR_LIMIT, failed = every creator failed.
+ */
 export type Run = {
   id: string;
   kind: "backfill" | "refresh";
@@ -66,13 +82,19 @@ export type Run = {
   finishedAt: string;
   durationMs: number;
   creatorsChecked: number;
+  /** Creators the limit left for the next refresh. They keep their lastCheckedAt. */
+  creatorsSkipped?: number;
   recordsAdded: number;
   recordsUpdated: number;
   errors: RunError[];
+  /** Absent on runs logged before the cost guard. */
+  usage?: RunUsage;
 };
 
 export type RefreshResult = {
   creatorsChecked: number;
+  /** Creators left for the next refresh because the limit was reached. */
+  creatorsSkipped?: number;
   recordsAdded: number;
   recordsUpdated: number;
   completedAt: string;

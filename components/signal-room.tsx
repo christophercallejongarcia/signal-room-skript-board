@@ -69,7 +69,8 @@ import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { Briefing, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, SignalRecord } from "@/lib/contracts";
+import type { Briefing, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
+import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
@@ -162,6 +163,25 @@ function ageInWindow(publishedAt: string, generatedAt: string) {
   return `${Math.round(hours)}h old`;
 }
 
+/** Dollars with cents; the tenth of a cent shows because a single delta run costs about that. */
+function formatUsd(usd: number) {
+  return usd < 0.1 ? `$${usd.toFixed(3)}` : `$${usd.toFixed(2)}`;
+}
+
+/**
+ * One run's Apify cost for the log. No usage (logged before the guard) or no
+ * figure from any actor run reads unknown; a partly reported run shows its
+ * known part with a plus, never a number that pretends to be complete.
+ */
+function formatRunCost(usage: RunUsage | undefined) {
+  if (!usage || usage.costUsd === undefined) return { label: "unknown", title: "Apify reported no usage for this run" };
+  const units = usage.computeUnits === undefined ? "" : `${usage.computeUnits.toFixed(3)} CU`;
+  if (usage.unreported > 0) {
+    return { label: `${formatUsd(usage.costUsd)}+`, title: `${units || "usage"} reported; ${usage.unreported} actor runs without a figure` };
+  }
+  return { label: formatUsd(usage.costUsd), title: units || "Apify total" };
+}
+
 function formatStamp(iso: string) {
   return new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
@@ -193,6 +213,7 @@ export function SignalRoom() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState("Demo snapshot");
   const [runs, setRuns] = useState<Run[]>([]);
+  const [runsMonth, setRunsMonth] = useState<MonthUsage | null>(null);
   const [runsState, setRunsState] = useState<"loading" | "ready" | "error">("loading");
   const [addState, setAddState] = useState<"idle" | "loading" | "error">("idle");
   const [threshold, setThreshold] = useState<OutlierThreshold>(DEFAULT_OUTLIER_THRESHOLD);
@@ -214,8 +235,9 @@ export function SignalRoom() {
     try {
       const response = await fetch("/api/runs");
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as { runs: Run[] };
+      const data = (await response.json()) as { runs: Run[]; month?: MonthUsage };
       setRuns(data.runs);
+      setRunsMonth(data.month ?? null);
       setRunsState("ready");
     } catch {
       setRunsState("error");
@@ -366,7 +388,9 @@ export function SignalRoom() {
         const result = (await response.json()) as RefreshResult;
         await Promise.all([loadStore(), loadRuns(), loadBriefings()]);
         const failed = result.errors?.length ?? 0;
-        if (failed === 0) setLastRefresh("Refreshed just now");
+        const left = result.creatorsSkipped ?? 0;
+        if (failed === 0 && left === 0) setLastRefresh("Refreshed just now");
+        else if (failed === 0) setLastRefresh(`Refreshed ${result.creatorsChecked} creators, ${left} left for the next run`);
         else if (failed >= result.creatorsChecked) setLastRefresh("Refresh failed");
         else setLastRefresh(`Refreshed with ${failed} of ${result.creatorsChecked} creators failing`);
       } else {
@@ -717,7 +741,7 @@ export function SignalRoom() {
             onReload={loadHookRuns}
           />
         )}
-        {activeTab === "profile" && <ProfileView creators={creators} rankedSignals={rankedSignals} runs={runs} runsState={runsState} />}
+        {activeTab === "profile" && <ProfileView creators={creators} rankedSignals={rankedSignals} runs={runs} runsMonth={runsMonth} runsState={runsState} />}
       </main>
 
       {showAddCreator && <AddCreatorDialog onClose={() => setShowAddCreator(false)} onSubmit={addCreator} state={addState} />}
@@ -2089,7 +2113,7 @@ function laneStats(reels: Ranked[]) {
   };
 }
 
-function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: Creator[]; rankedSignals: Ranked[]; runs: Run[]; runsState: "loading" | "ready" | "error" }) {
+function ProfileView({ creators, rankedSignals, runs, runsMonth, runsState }: { creators: Creator[]; rankedSignals: Ranked[]; runs: Run[]; runsMonth: MonthUsage | null; runsState: "loading" | "ready" | "error" }) {
   const owned = creators.filter(isOwned);
   const ownedIds = new Set(owned.map((c) => c.id));
   const nowMs = Date.now();
@@ -2170,24 +2194,37 @@ function ProfileView({ creators, rankedSignals, runs, runsState }: { creators: C
         </tbody>
       </table>
 
-      <div className="section-head"><div><p className="kicker">Collection log</p><h2>Last runs</h2></div><p className="note">Every refresh is logged: window, counts, and which creators failed. A failing creator keeps its cursor and is retried next run.</p></div>
+      <div className="section-head"><div><p className="kicker">Collection log</p><h2>Last runs</h2></div><p className="note">Every refresh is logged: window, counts, Apify cost, and which creators failed. A failing creator keeps its cursor and is retried next run. A refresh touches at most the configured number of creators; the rest keep their cursor and go first next time.</p></div>
+      {runsMonth && (
+        <div className="stat-blocks run-month">
+          <div className="lime"><strong>{runsMonth.costUsd === undefined ? "unknown" : formatUsd(runsMonth.costUsd)}</strong><span>Apify this month</span></div>
+          <div><strong>{runsMonth.computeUnits === undefined ? "—" : runsMonth.computeUnits.toFixed(2)}</strong><span>compute units</span></div>
+          <div><strong>{runsMonth.runs}</strong><span>runs in {runsMonth.month}</span></div>
+          <div><strong>{runsMonth.unknownRuns}</strong><span>runs without a figure</span></div>
+        </div>
+      )}
       <table className="desk-table">
-        <thead><tr><th>Started</th><th>Status</th><th className="hide-sm">Duration</th><th className="right">Creators</th><th className="right">New</th><th className="right">Updated</th><th className="hide-sm">Errors</th></tr></thead>
+        <thead><tr><th>Started</th><th>Status</th><th className="hide-sm">Duration</th><th className="right">Creators</th><th className="right">New</th><th className="right">Updated</th><th className="right">Cost</th><th className="hide-sm">Errors</th></tr></thead>
         <tbody>
-          {runs.slice(0, 10).map((run) => (
-            <tr key={run.id}>
-              <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
-              <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
-              <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
-              <td className="right num">{run.creatorsChecked}</td>
-              <td className="right num">{run.recordsAdded}</td>
-              <td className="right num">{run.recordsUpdated}</td>
-              <td className="hide-sm muted">{run.errors.length === 0 ? "—" : run.errors.map((e) => `${e.handle}: ${e.message}`).join(" · ")}</td>
-            </tr>
-          ))}
-          {runsState === "loading" && runs.length === 0 && <tr><td colSpan={7}><div className="empty-state">Loading runs…</div></td></tr>}
-          {runsState === "error" && <tr><td colSpan={7}><div className="empty-state">Run log unavailable. Reload to try again.</div></td></tr>}
-          {runsState === "ready" && runs.length === 0 && <tr><td colSpan={7}><div className="empty-state">No runs yet. Hit refresh to log the first one.</div></td></tr>}
+          {runs.slice(0, 10).map((run) => {
+            const cost = formatRunCost(run.usage);
+            const skipped = run.creatorsSkipped ?? 0;
+            return (
+              <tr key={run.id}>
+                <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
+                <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
+                <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
+                <td className="right num" title={skipped ? `${skipped} left for the next run by the creator limit` : undefined}>{run.creatorsChecked}{skipped ? <small className="muted"> +{skipped} left</small> : null}</td>
+                <td className="right num">{run.recordsAdded}</td>
+                <td className="right num">{run.recordsUpdated}</td>
+                <td className={cost.label === "unknown" ? "right muted" : "right num"} title={cost.title}>{cost.label}</td>
+                <td className="hide-sm muted">{run.errors.length === 0 ? "—" : run.errors.map((e) => `${e.handle}: ${e.message}`).join(" · ")}</td>
+              </tr>
+            );
+          })}
+          {runsState === "loading" && runs.length === 0 && <tr><td colSpan={8}><div className="empty-state">Loading runs…</div></td></tr>}
+          {runsState === "error" && <tr><td colSpan={8}><div className="empty-state">Run log unavailable. Reload to try again.</div></td></tr>}
+          {runsState === "ready" && runs.length === 0 && <tr><td colSpan={8}><div className="empty-state">No runs yet. Hit refresh to log the first one.</div></td></tr>}
         </tbody>
       </table>
 
