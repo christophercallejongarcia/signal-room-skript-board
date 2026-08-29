@@ -91,10 +91,11 @@ export function applyStoryboard(
   idea: Idea,
   runId: string,
   storyboard: Storyboard,
-  options: { now: string; evidenceCount: number; forecast?: Forecast | null },
+  options: { now: string; evidenceCount: number; forecast: Forecast | null },
 ): Idea | null {
   if (idea.developRunId !== runId) return null;
-  const { developRunId, forecast: previous, ...rest } = idea;
+  // The previous forecast belongs to the previous storyboard and goes with it.
+  const { developRunId, forecast: _previous, ...rest } = idea;
   return {
     ...rest,
     status: "developed",

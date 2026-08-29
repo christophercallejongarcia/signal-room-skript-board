@@ -190,7 +190,7 @@ test("a storyboard drops unknown fields and trims text", () => {
 const forecast = {
   range: { low: 12_000, high: 48_000 },
   potential: "medium",
-  comparable: 3,
+  comparableCount: 3,
   risk: "Der Hook verspricht mehr, als das Reel zeigt.",
   tension: "Warum speichern alle einen Teardown, den keiner nachbaut?",
 };

@@ -1614,10 +1614,15 @@ const potentialCopy: Record<NonNullable<Forecast["potential"]>, string> = {
   high: "High potential",
 };
 
-/** The one line the list shows: the range and potential, or the honest "no forecast". */
-function forecastLine(forecast: Forecast) {
-  if (!forecast.range || !forecast.potential) return "No forecast: no comparable reel in the evidence";
-  return `${formatNumber(forecast.range.low)}–${formatNumber(forecast.range.high)} plays · ${potentialCopy[forecast.potential]} · ${forecast.comparable} comparable reels`;
+/**
+ * The one line the list shows: the range and potential, or the honest "no
+ * forecast". A developed idea without a forecast says so too, so a missing
+ * number is never mistaken for a pending one.
+ */
+function forecastLine(forecast: Forecast | undefined) {
+  if (!forecast) return "No forecast: the bridge answered without one";
+  if (!forecast.range || !forecast.potential) return "No forecast: fewer than two comparable reels in the evidence";
+  return `${formatNumber(forecast.range.low)}–${formatNumber(forecast.range.high)} plays · ${potentialCopy[forecast.potential]} · ${forecast.comparableCount} comparable reels`;
 }
 
 /** One stored idea with its storyboard folded away until it is wanted. */
@@ -1649,8 +1654,8 @@ function IdeaRow({
           <small>{meta.join(" · ")}</small>
           <h3>{idea.title}</h3>
           {idea.goal && <p className="idea-goal">{idea.goal}</p>}
-          {idea.forecast && (
-            <p className={idea.forecast.range ? `forecast-line potential-${idea.forecast.potential}` : "forecast-line potential-none"}>
+          {idea.storyboard && (
+            <p className={idea.forecast?.range ? `forecast-line potential-${idea.forecast.potential}` : "forecast-line potential-none"}>
               <ChartLineUp size={11} /> {forecastLine(idea.forecast)}
             </p>
           )}
@@ -1703,10 +1708,10 @@ function IdeaRow({
             <dd>{idea.storyboard.caption}</dd>
             <dt>Takeaway</dt>
             <dd>{idea.storyboard.takeaway}</dd>
+            <dt>Forecast</dt>
+            <dd>{forecastLine(idea.forecast)}</dd>
             {idea.forecast && (
               <>
-                <dt>Forecast</dt>
-                <dd>{forecastLine(idea.forecast)}</dd>
                 <dt>Biggest risk</dt>
                 <dd>{idea.forecast.risk}</dd>
                 <dt>Tension</dt>

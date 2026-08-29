@@ -8,7 +8,7 @@ import {
   STRATEGY_EVIDENCE_WINDOW_DAYS,
   STRATEGY_GOAL,
 } from "@/lib/config";
-import type { Forecast, Storyboard, StoryboardRequest, StrategyEvidenceItem } from "@/lib/contracts";
+import type { Forecast, Storyboard, StoryboardRequest } from "@/lib/contracts";
 import { parseForecastAnswer } from "@/lib/forecast";
 import { parseStoryboard } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
@@ -22,10 +22,7 @@ export const maxDuration = 300;
  * The storyboard is the contract; the forecast rides along. An answer without a
  * usable forecast field still yields the storyboard, and the idea carries none.
  */
-async function askBridge(
-  request: StoryboardRequest,
-  evidence: StrategyEvidenceItem[],
-): Promise<{ storyboard: Storyboard; forecast: Forecast | null }> {
+async function askBridge(request: StoryboardRequest): Promise<{ storyboard: Storyboard; forecast: Forecast | null }> {
   const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/storyboard`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -36,7 +33,7 @@ async function askBridge(
     throw new Error(payload.error || `The bridge answered with HTTP ${response.status}.`);
   }
   const answer: unknown = await response.json();
-  return { storyboard: parseStoryboard(answer), forecast: parseForecastAnswer(answer, evidence) };
+  return { storyboard: parseStoryboard(answer), forecast: parseForecastAnswer(answer, request.evidence) };
 }
 
 /**
@@ -69,15 +66,12 @@ export async function POST(request: Request) {
   if (!claimed) return NextResponse.json({ error: "No idea with that id." }, { status: 404 });
 
   try {
-    const { storyboard, forecast } = await askBridge(
-      {
-        goal: STRATEGY_GOAL,
-        audience: STRATEGY_AUDIENCE,
-        idea: { title: claimed.title, ...(claimed.goal ? { goal: claimed.goal } : {}) },
-        evidence,
-      },
+    const { storyboard, forecast } = await askBridge({
+      goal: STRATEGY_GOAL,
+      audience: STRATEGY_AUDIENCE,
+      idea: { title: claimed.title, ...(claimed.goal ? { goal: claimed.goal } : {}) },
       evidence,
-    );
+    });
     const idea = await storage.settleIdeaDevelop(ideaId, runId, {
       storyboard,
       forecast,

@@ -54,3 +54,29 @@ export function selectEvidence(
       outlier: Math.round(signal.outlier * 10) / 10,
     }));
 }
+
+/** Titles are compared as one bounded, lower-cased line on both sides, so a double space or a newline in a stored title never breaks the match. */
+function titleKey(title: unknown) {
+  return typeof title === "string" ? title.replace(/\s+/g, " ").trim().slice(0, 300).toLowerCase() : "";
+}
+
+/**
+ * The packet entries whose title the Bridge cited, exactly as written; a title
+ * the packet does not carry is dropped, and a title cited twice counts once.
+ * This is the rule for a Beleg on the Hooks-Board and for a comparable Reel
+ * in a Prognose: the app only ever shows Reels it selected itself.
+ */
+export function citedEvidence(cited: unknown, evidence: StrategyEvidenceItem[], limit = Infinity) {
+  const byTitle = new Map(evidence.map((item) => [titleKey(item.title), item]));
+  const matched: StrategyEvidenceItem[] = [];
+  const seen = new Set<string>();
+  for (const title of Array.isArray(cited) ? cited : []) {
+    const key = titleKey(title);
+    const match = key ? byTitle.get(key) : undefined;
+    if (!match || seen.has(key)) continue;
+    seen.add(key);
+    matched.push(match);
+    if (matched.length >= limit) break;
+  }
+  return matched;
+}

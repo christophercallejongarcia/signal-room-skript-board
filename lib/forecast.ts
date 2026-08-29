@@ -1,5 +1,6 @@
 import type { Forecast, ForecastPotential, StrategyEvidenceItem } from "./contracts";
 import { bounded, STORYBOARD_LINE_MAX } from "./ideas.ts";
+import { citedEvidence } from "./strategy-evidence.ts";
 
 /**
  * Fewer comparable Reels than this is no base: one Reel is an anecdote, not a
@@ -31,25 +32,6 @@ function potentialOf(outliers: number[]): ForecastPotential {
 }
 
 /**
- * The comparable Reels are the packet entries whose title the Bridge cited,
- * matched exactly like a Beleg on the Hooks-Board: a title the packet does not
- * carry is dropped, so the range only ever rests on Reels the app selected.
- */
-function comparableReels(cited: unknown, evidence: StrategyEvidenceItem[]) {
-  const byTitle = new Map(evidence.map((item) => [item.title.toLowerCase().trim(), item]));
-  const matched: StrategyEvidenceItem[] = [];
-  const seen = new Set<string>();
-  for (const title of Array.isArray(cited) ? cited : []) {
-    const key = bounded(title, 300).toLowerCase();
-    const match = byTitle.get(key);
-    if (!match || seen.has(key)) continue;
-    seen.add(key);
-    matched.push(match);
-  }
-  return matched;
-}
-
-/**
  * Derives the Forecast from the Bridge answer and the packet the answer was
  * written against. Range and potential are computed here, not taken from the
  * answer: the Bridge names which Reels compare, the corpus says what they did.
@@ -60,15 +42,16 @@ export function deriveForecast(answer: ForecastAnswer, evidence: StrategyEvidenc
   const tension = bounded(answer.tension, STORYBOARD_LINE_MAX);
   if (!tension) throw new Error("Forecast field tension is empty.");
 
-  const comparable = comparableReels(answer.comparable, evidence);
+  // The comparable Reels are matched like a Beleg: only titles the packet carries count.
+  const comparable = citedEvidence(answer.comparable, evidence);
   if (comparable.length < FORECAST_MIN_COMPARABLE) {
-    return { range: null, potential: null, comparable: comparable.length, risk, tension };
+    return { range: null, potential: null, comparableCount: comparable.length, risk, tension };
   }
   const plays = comparable.map((item) => item.plays);
   return {
     range: { low: Math.min(...plays), high: Math.max(...plays) },
     potential: potentialOf(comparable.map((item) => item.outlier)),
-    comparable: comparable.length,
+    comparableCount: comparable.length,
     risk,
     tension,
   };

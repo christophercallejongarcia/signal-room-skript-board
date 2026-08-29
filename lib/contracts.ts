@@ -163,7 +163,7 @@ export type Forecast = {
   range: { low: number; high: number } | null;
   potential: ForecastPotential | null;
   /** How many packet Reels the Bridge named as comparable and the packet confirmed. */
-  comparable: number;
+  comparableCount: number;
   /** The one thing most likely to sink the Reel. */
   risk: string;
   /** The open question the Reel resolves. */
@@ -435,7 +435,7 @@ export interface StorageAdapter {
 
 /** Outcome handed to settleIdeaDevelop: a storyboard, or nothing when the run failed. */
 export type SettleDevelop =
-  | { storyboard: Storyboard; forecast?: Forecast | null; now: string; evidenceCount: number }
+  | { storyboard: Storyboard; forecast: Forecast | null; now: string; evidenceCount: number }
   | { storyboard: null; now: string };
 
 export interface StrategyProvider {

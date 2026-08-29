@@ -10,6 +10,7 @@ import {
 } from "./config.ts";
 import type { HookEvidence, HookGroup, HookHypothesis, HookRun, HookVariant, StrategyEvidenceItem } from "./contracts";
 import { bounded, boundedText } from "./ideas.ts";
+import { citedEvidence } from "./strategy-evidence.ts";
 
 /**
  * The five hypotheses, in the order the board reads them. A variant tests exactly
@@ -161,7 +162,6 @@ export function parseHookBoard(
   const raw = (value as { hooks?: unknown }).hooks;
   if (!Array.isArray(raw) || raw.length === 0) throw new Error("The hooks answer needs at least one hook.");
   const perVariant = options.evidencePerVariant ?? HOOK_EVIDENCE_PER_VARIANT;
-  const byTitle = new Map(evidence.map((item) => [item.title.toLowerCase().trim(), item]));
 
   return raw.map((entry, index) => {
     const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
@@ -171,16 +171,7 @@ export function parseHookBoard(
     const rationale = bounded(item.rationale, HOOK_RATIONALE_MAX);
     if (!rationale) throw new Error(`Hook ${index + 1} has no rationale.`);
 
-    const cited: HookEvidence[] = [];
-    const seen = new Set<string>();
-    for (const title of Array.isArray(item.evidence) ? item.evidence : []) {
-      const key = bounded(title, 300).toLowerCase();
-      const match = byTitle.get(key);
-      if (!match || seen.has(key)) continue;
-      seen.add(key);
-      cited.push(asEvidence(match));
-      if (cited.length >= perVariant) break;
-    }
+    const cited = citedEvidence(item.evidence, evidence, perVariant).map(asEvidence);
 
     return {
       hook,

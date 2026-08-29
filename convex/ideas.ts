@@ -68,7 +68,7 @@ export const settle = mutation({
     if (!existing) return null;
     const { _id, _creationTime, ...idea } = existing;
     const settled = storyboard
-      ? applyStoryboard(idea, runId, storyboard, { now, evidenceCount: evidenceCount ?? 0, forecast })
+      ? applyStoryboard(idea, runId, storyboard, { now, evidenceCount: evidenceCount ?? 0, forecast: forecast ?? null })
       : releaseDevelop(idea, runId, now);
     // A newer run holds the claim: this result is stale and is dropped.
     if (!settled) return null;

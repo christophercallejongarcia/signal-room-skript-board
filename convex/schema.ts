@@ -36,7 +36,7 @@ export const storyboardFields = {
 export const forecastFields = {
   range: v.union(v.object({ low: v.number(), high: v.number() }), v.null()),
   potential: v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.null()),
-  comparable: v.number(),
+  comparableCount: v.number(),
   risk: v.string(),
   tension: v.string(),
 };

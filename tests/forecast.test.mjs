@@ -22,7 +22,7 @@ const answer = {
 test("the range spans the plays of the comparable reels, nothing else", () => {
   const forecast = deriveForecast(answer, evidence);
   assert.deepEqual(forecast.range, { low: 12_000, high: 48_000 });
-  assert.equal(forecast.comparable, 3);
+  assert.equal(forecast.comparableCount, 3);
   assert.equal(forecast.risk, answer.risk);
   assert.equal(forecast.tension, answer.tension);
 });
@@ -43,13 +43,19 @@ test("a title the packet does not carry is not a comparable reel", () => {
     { ...answer, comparable: ["Erfundenes Reel", "der teardown, den alle speichern ", "Nie wieder leere Captions"] },
     evidence,
   );
-  assert.equal(forecast.comparable, 2);
+  assert.equal(forecast.comparableCount, 2);
   assert.deepEqual(forecast.range, { low: 31_000, high: 48_000 });
+});
+
+test("a stored title with doubled whitespace still matches the copied title", () => {
+  const packet = [{ ...evidence[0], title: "Der Teardown,  den\nalle speichern" }, evidence[2]];
+  const forecast = deriveForecast({ ...answer, comparable: ["Der Teardown, den alle speichern", evidence[2].title] }, packet);
+  assert.equal(forecast.comparableCount, 2);
 });
 
 test("a title cited twice counts once", () => {
   const forecast = deriveForecast({ ...answer, comparable: [evidence[0].title, evidence[0].title] }, evidence);
-  assert.equal(forecast.comparable, 1);
+  assert.equal(forecast.comparableCount, 1);
 });
 
 test("without a comparable base there is no range and no potential, only risk and tension", () => {
