@@ -70,7 +70,7 @@ import {
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
 import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
-import { nextRefreshAt, REFRESH_TIME_ZONE } from "@/lib/refresh-schedule";
+import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refresh-schedule";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
@@ -1468,7 +1468,7 @@ function FormatsView({
 
 /** Wall clock in the sweep's zone, so the box reads the same wherever the browser sits. */
 function formatRefreshInstant(at: Date) {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: REFRESH_TIME_ZONE, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(at) + " Berlin";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: REFRESH_TIME_ZONE, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(at) + ` ${REFRESH_ZONE_LABEL}`;
 }
 
 function ChannelsView({

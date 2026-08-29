@@ -6,6 +6,8 @@
  */
 export const REFRESH_HOUR = 10;
 export const REFRESH_TIME_ZONE = "Europe/Berlin";
+/** How the UI names the zone next to a time. Derived, so a zone change cannot leave the label lying. */
+export const REFRESH_ZONE_LABEL = REFRESH_TIME_ZONE.split("/").pop() ?? REFRESH_TIME_ZONE;
 
 /** UTC offsets, in hours, the zone takes over the year. Berlin: CET (+1) and CEST (+2). */
 const ZONE_OFFSETS_HOURS = [1, 2];
@@ -52,9 +54,12 @@ export function isRefreshHour(now: Date): boolean {
   return zonedParts(now).hour === REFRESH_HOUR;
 }
 
-/** One UTC cron spec per offset the zone takes, so one of them is REFRESH_HOUR local on any day. */
-export function refreshCronSpecs(): string[] {
+/** One cron slot per offset the zone takes, so one of them is REFRESH_HOUR local on any day. */
+export type RefreshSlot = { utcHour: number; spec: string };
+
+export function refreshCronSlots(): RefreshSlot[] {
   return [...ZONE_OFFSETS_HOURS]
     .sort((a, b) => b - a)
-    .map((offset) => `0 ${REFRESH_HOUR - offset} * * *`);
+    .map((offset) => REFRESH_HOUR - offset)
+    .map((utcHour) => ({ utcHour, spec: `0 ${utcHour} * * *` }));
 }

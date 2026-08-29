@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { REFRESH_HOUR, REFRESH_TIME_ZONE, isRefreshHour, nextRefreshAt, refreshCronSpecs } from "../lib/refresh-schedule.ts";
+import { REFRESH_HOUR, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL, isRefreshHour, nextRefreshAt, refreshCronSlots } from "../lib/refresh-schedule.ts";
 
 test("the sweep is pinned to 10:00 Europe/Berlin", () => {
   assert.equal(REFRESH_HOUR, 10);
   assert.equal(REFRESH_TIME_ZONE, "Europe/Berlin");
+  assert.equal(REFRESH_ZONE_LABEL, "Berlin");
 });
 
 test("next refresh today when it is still before 10:00 Berlin (summer, CEST = UTC+2)", () => {
@@ -37,6 +38,6 @@ test("the guard fires only in the 10:00 Berlin hour, whichever UTC hour that is"
   assert.equal(isRefreshHour(new Date("2026-01-15T08:00:00.000Z")), false); // winter: the 08:00 UTC slot is 09:00 Berlin
 });
 
-test("one cron spec per UTC hour that can be 10:00 Berlin", () => {
-  assert.deepEqual(refreshCronSpecs(), ["0 8 * * *", "0 9 * * *"]);
+test("one cron slot per UTC hour that can be 10:00 Berlin", () => {
+  assert.deepEqual(refreshCronSlots(), [{ utcHour: 8, spec: "0 8 * * *" }, { utcHour: 9, spec: "0 9 * * *" }]);
 });

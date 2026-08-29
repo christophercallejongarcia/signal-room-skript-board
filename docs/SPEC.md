@@ -164,8 +164,8 @@ Definition: ADR-0003.
 ## Epic 6. Automatisierung
 
 ### T6.1 Daily Watch Cron
-- launchd (lokal) oder Vercel Cron ruft `/api/refresh` täglich 10:00. Ergebnis in `runs`.
-- AK: Profile-Tab zeigt "Next refresh" und letzten Lauf.
+- Convex-Cron (`convex/crons.ts`) stößt `internal.refresh.run` täglich 10:00 Europe/Berlin an (zwei UTC-Slots plus Wanduhr-Guard). Ergebnis in `runs`, Apify-Token als Convex-Env.
+- AK: Tracked Channels zeigt "Next refresh" und letzten Lauf.
 
 ### T6.2 Briefing-Generierung — erledigt
 - Jeder `POST /api/refresh` schreibt danach ein Briefing: die zehn stärksten Reels der letzten `BRIEFING_WINDOW_HOURS` (24), sortiert nach Outlier × Frische (`briefingScore` in `lib/briefing.ts`, Frische fällt linear von 1 auf `BRIEFING_FRESHNESS_FLOOR` 0.5 am Fensterrand).

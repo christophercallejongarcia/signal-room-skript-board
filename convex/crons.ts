@@ -1,6 +1,6 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
-import { refreshCronSpecs } from "../lib/refresh-schedule";
+import { refreshCronSlots } from "../lib/refresh-schedule";
 
 const crons = cronJobs();
 
@@ -9,8 +9,8 @@ const crons = cronJobs();
  * hour that can be 10:00 local; the action checks the wall clock and only one
  * of the two does the work on any given day (lib/refresh-schedule.ts).
  */
-for (const spec of refreshCronSpecs()) {
-  crons.cron(`daily refresh (${spec.split(" ")[1]}:00 UTC slot)`, spec, internal.refresh.run, {});
+for (const slot of refreshCronSlots()) {
+  crons.cron(`daily sweep (${slot.utcHour}:00 UTC slot)`, slot.spec, internal.refresh.run, {});
 }
 
 /**
