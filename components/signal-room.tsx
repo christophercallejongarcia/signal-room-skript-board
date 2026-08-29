@@ -73,7 +73,7 @@ import type { IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { Briefing, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
+import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
@@ -1608,6 +1608,18 @@ function formatDay(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
+const potentialCopy: Record<NonNullable<Forecast["potential"]>, string> = {
+  low: "Low potential",
+  medium: "Medium potential",
+  high: "High potential",
+};
+
+/** The one line the list shows: the range and potential, or the honest "no forecast". */
+function forecastLine(forecast: Forecast) {
+  if (!forecast.range || !forecast.potential) return "No forecast: no comparable reel in the evidence";
+  return `${formatNumber(forecast.range.low)}–${formatNumber(forecast.range.high)} plays · ${potentialCopy[forecast.potential]} · ${forecast.comparable} comparable reels`;
+}
+
 /** One stored idea with its storyboard folded away until it is wanted. */
 function IdeaRow({
   idea,
@@ -1637,6 +1649,11 @@ function IdeaRow({
           <small>{meta.join(" · ")}</small>
           <h3>{idea.title}</h3>
           {idea.goal && <p className="idea-goal">{idea.goal}</p>}
+          {idea.forecast && (
+            <p className={idea.forecast.range ? `forecast-line potential-${idea.forecast.potential}` : "forecast-line potential-none"}>
+              <ChartLineUp size={11} /> {forecastLine(idea.forecast)}
+            </p>
+          )}
           {idea.sourceSignalId &&
             (idea.sourceUrl ? (
               <a className="signal-link" href={idea.sourceUrl} target="_blank" rel="noreferrer">
@@ -1686,6 +1703,16 @@ function IdeaRow({
             <dd>{idea.storyboard.caption}</dd>
             <dt>Takeaway</dt>
             <dd>{idea.storyboard.takeaway}</dd>
+            {idea.forecast && (
+              <>
+                <dt>Forecast</dt>
+                <dd>{forecastLine(idea.forecast)}</dd>
+                <dt>Biggest risk</dt>
+                <dd>{idea.forecast.risk}</dd>
+                <dt>Tension</dt>
+                <dd>{idea.forecast.tension}</dd>
+              </>
+            )}
           </dl>
         </details>
       )}

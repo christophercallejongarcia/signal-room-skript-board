@@ -185,6 +185,7 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
         ? applyStoryboard(store.ideas[index], runId, result.storyboard, {
             now: result.now,
             evidenceCount: result.evidenceCount,
+            forecast: result.forecast,
           })
         : releaseDevelop(store.ideas[index], runId, result.now);
       // A newer run holds the claim: this result is stale and is dropped.

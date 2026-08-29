@@ -186,3 +186,33 @@ test("a storyboard drops unknown fields and trims text", () => {
   assert.equal(parsed.hook, "Drei Sekunden");
   assert.equal("extra" in parsed, false);
 });
+
+const forecast = {
+  range: { low: 12_000, high: 48_000 },
+  potential: "medium",
+  comparable: 3,
+  risk: "Der Hook verspricht mehr, als das Reel zeigt.",
+  tension: "Warum speichern alle einen Teardown, den keiner nachbaut?",
+};
+
+test("the develop run writes its forecast next to the storyboard", () => {
+  const claimed = claimDevelop(captured(), "run-a", LATER);
+  const developed = applyStoryboard(claimed, "run-a", storyboard, { now: LATER, evidenceCount: 7, forecast });
+  assert.deepEqual(developed.forecast, forecast);
+});
+
+test("a run without a forecast still writes the storyboard and clears the old forecast", () => {
+  const first = applyStoryboard(claimDevelop(captured(), "run-a", NOW), "run-a", storyboard, {
+    now: NOW,
+    evidenceCount: 7,
+    forecast,
+  });
+  const second = applyStoryboard(claimDevelop(first, "run-b", LATER), "run-b", storyboard, {
+    now: LATER,
+    evidenceCount: 4,
+    forecast: null,
+  });
+  assert.deepEqual(second.storyboard, storyboard);
+  assert.equal(second.forecast, undefined);
+  assert.equal(second.status, "developed");
+});

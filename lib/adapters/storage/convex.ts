@@ -70,7 +70,7 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
         runId,
         now: result.now,
         storyboard: result.storyboard,
-        ...(result.storyboard ? { evidenceCount: result.evidenceCount } : {}),
+        ...(result.storyboard ? { evidenceCount: result.evidenceCount, forecast: result.forecast ?? null } : {}),
       })) as Idea | null;
     },
   };

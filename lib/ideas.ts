@@ -1,4 +1,4 @@
-import type { Idea, IdeaStatus, Storyboard, StoryboardBeat } from "./contracts";
+import type { Forecast, Idea, IdeaStatus, Storyboard, StoryboardBeat } from "./contracts";
 
 export const IDEA_TITLE_MAX = 200;
 export const IDEA_GOAL_MAX = 800;
@@ -83,19 +83,23 @@ export function claimDevelop(idea: Idea, runId: string, now: string): Idea {
   return { ...idea, developRunId: runId, updatedAt: now };
 }
 
-/** Writes the storyboard, or null when a newer run has taken the claim. */
+/**
+ * Writes the storyboard, or null when a newer run has taken the claim. The
+ * forecast of the previous run goes with it: a run without one leaves none.
+ */
 export function applyStoryboard(
   idea: Idea,
   runId: string,
   storyboard: Storyboard,
-  options: { now: string; evidenceCount: number },
+  options: { now: string; evidenceCount: number; forecast?: Forecast | null },
 ): Idea | null {
   if (idea.developRunId !== runId) return null;
-  const { developRunId, ...rest } = idea;
+  const { developRunId, forecast: previous, ...rest } = idea;
   return {
     ...rest,
     status: "developed",
     storyboard,
+    ...(options.forecast ? { forecast: options.forecast } : {}),
     developedAt: options.now,
     evidenceCount: options.evidenceCount,
     updatedAt: options.now,

@@ -124,6 +124,10 @@ Nicht: "Draft", "Konzept".
 Der Short-Form-Plan an einer Idea: `hook` (erste drei Sekunden), genau drei `beats` mit Label und Detail, `cta`, `caption` (Zeilenumbrüche bleiben erhalten) und `takeaway`. Entsteht im Develop-Lauf über `POST /api/ideas/develop`, der Bridge antwortet auf `/v1/storyboard` gegen `storyboardOutputSchema`. Ein Develop-Lauf hält die Idea über `developRunId`; startet ein zweiter Lauf, wird das Ergebnis des ersten verworfen.
 Nicht: "Skript", "Outline", "Shotlist".
 
+**Prognose**
+Was eine Idea vor der Produktion wahrscheinlich bringt, gespeichert als `forecast` an der Idea (`Forecast` in `lib/contracts.ts`) und geschrieben vom Develop-Lauf neben dem Storyboard. Vier Teile: Reichweiten-Spanne (`range`, Plays des schwächsten und stärksten vergleichbaren Reels), Potenzial (`potential`: `low`, `medium`, `high` nach dem Median-Outlier der Vergleichsreels, Grenzen `FORECAST_MEDIUM_OUTLIER` 3 und `FORECAST_HIGH_OUTLIER` 5), größtes Risiko (`risk`) und Spannung (`tension`, die Frage, die das Reel auflöst). Der Bridge schätzt keine Zahl: er nennt im Feld `forecast.comparable` die Titel der Reels aus dem Evidenzpaket, die er für vergleichbar hält, und `deriveForecast` (`lib/forecast.ts`) rechnet Spanne und Potenzial aus genau diesen Reels; Titel, die das Paket nicht führt, fallen weg wie ein Beleg. Unter `FORECAST_MIN_COMPARABLE` (2) Vergleichsreels sind `range` und `potential` null, und die UI zeigt "No forecast", Risiko und Spannung bleiben stehen. Eine Bridge-Antwort ohne brauchbares `forecast`-Feld erzeugt das Storyboard trotzdem, die Idea trägt dann keine Prognose. Ideen-Liste zeigt die Spanne als Zeile unter dem Titel, das aufgeklappte Storyboard dazu Risiko und Spannung.
+Nicht: "Forecast" (nur als Feldname), "Schätzung", "Vorhersage", "Score".
+
 **Strategy-Provider**
 Die Komponente, die aus einem Evidenzpaket eine Idea erzeugt; läuft über den lokalen Bridge mit Codex SDK, siehe ADR-0004. Antwortet auf Deutsch.
 Nicht: "LLM", "KI-Backend", "Agent".

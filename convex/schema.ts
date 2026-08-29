@@ -32,6 +32,15 @@ export const storyboardFields = {
   takeaway: v.string(),
 };
 
+/** Forecast at an idea; range and potential are null without a comparable base. */
+export const forecastFields = {
+  range: v.union(v.object({ low: v.number(), high: v.number() }), v.null()),
+  potential: v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.null()),
+  comparable: v.number(),
+  risk: v.string(),
+  tension: v.string(),
+};
+
 /** One saved content approach. developRunId is set only while a develop run is in flight. */
 export const ideaFields = {
   id: v.string(),
@@ -42,6 +51,7 @@ export const ideaFields = {
   sourceCreator: v.optional(v.string()),
   sourceUrl: v.optional(v.string()),
   storyboard: v.optional(v.object(storyboardFields)),
+  forecast: v.optional(v.object(forecastFields)),
   developRunId: v.optional(v.string()),
   developedAt: v.optional(v.string()),
   evidenceCount: v.optional(v.number()),

@@ -798,6 +798,9 @@ main {
 .idea-entry .idea-row { border-bottom: 0; align-items: start; }
 .idea-entry .idea-row .rank { padding-top: 3px; }
 .idea-goal { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.forecast-line { display: inline-flex; align-items: center; gap: 5px; margin: 5px 0 0; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink); }
+.forecast-line.potential-high { color: var(--accent); }
+.forecast-line.potential-none { color: var(--muted); }
 .idea-actions { display: flex; align-items: center; gap: 10px; }
 .idea-actions .state { text-transform: uppercase; letter-spacing: .08em; font-size: 9.5px; }
 .idea-actions .state.status-developed { color: var(--accent); }

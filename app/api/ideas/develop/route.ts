@@ -8,7 +8,8 @@ import {
   STRATEGY_EVIDENCE_WINDOW_DAYS,
   STRATEGY_GOAL,
 } from "@/lib/config";
-import type { Storyboard, StoryboardRequest } from "@/lib/contracts";
+import type { Forecast, Storyboard, StoryboardRequest, StrategyEvidenceItem } from "@/lib/contracts";
+import { parseForecastAnswer } from "@/lib/forecast";
 import { parseStoryboard } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 
@@ -17,7 +18,14 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 
-async function askBridge(request: StoryboardRequest): Promise<Storyboard> {
+/**
+ * The storyboard is the contract; the forecast rides along. An answer without a
+ * usable forecast field still yields the storyboard, and the idea carries none.
+ */
+async function askBridge(
+  request: StoryboardRequest,
+  evidence: StrategyEvidenceItem[],
+): Promise<{ storyboard: Storyboard; forecast: Forecast | null }> {
   const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/storyboard`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -27,7 +35,8 @@ async function askBridge(request: StoryboardRequest): Promise<Storyboard> {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || `The bridge answered with HTTP ${response.status}.`);
   }
-  return parseStoryboard(await response.json());
+  const answer: unknown = await response.json();
+  return { storyboard: parseStoryboard(answer), forecast: parseForecastAnswer(answer, evidence) };
 }
 
 /**
@@ -60,14 +69,18 @@ export async function POST(request: Request) {
   if (!claimed) return NextResponse.json({ error: "No idea with that id." }, { status: 404 });
 
   try {
-    const storyboard = await askBridge({
-      goal: STRATEGY_GOAL,
-      audience: STRATEGY_AUDIENCE,
-      idea: { title: claimed.title, ...(claimed.goal ? { goal: claimed.goal } : {}) },
+    const { storyboard, forecast } = await askBridge(
+      {
+        goal: STRATEGY_GOAL,
+        audience: STRATEGY_AUDIENCE,
+        idea: { title: claimed.title, ...(claimed.goal ? { goal: claimed.goal } : {}) },
+        evidence,
+      },
       evidence,
-    });
+    );
     const idea = await storage.settleIdeaDevelop(ideaId, runId, {
       storyboard,
+      forecast,
       now: new Date().toISOString(),
       evidenceCount: evidence.length,
     });

@@ -51,7 +51,7 @@ test("storyboard runs bound goal, audience and evidence the same way", () => {
 });
 
 test("the storyboard schema asks for hook, three beats, cta, caption and takeaway", () => {
-  assert.deepEqual(storyboardOutputSchema.required, ["hook", "beats", "cta", "caption", "takeaway"]);
+  assert.deepEqual(storyboardOutputSchema.required, ["hook", "beats", "cta", "caption", "takeaway", "forecast"]);
   assert.equal(storyboardOutputSchema.properties.beats.minItems, 3);
   assert.equal(storyboardOutputSchema.properties.beats.maxItems, 3);
   assert.deepEqual(storyboardOutputSchema.properties.beats.items.required, ["label", "detail"]);
@@ -76,4 +76,18 @@ test("the storyboard prompt carries the idea and the evidence", () => {
   const prompt = buildStoryboardPrompt(valid);
   assert.match(prompt, /Warum Outlier lügen/);
   assert.match(prompt, /Der Teardown, den alle speichern/);
+});
+
+test("the storyboard schema asks for a forecast with comparable titles, risk and tension", () => {
+  const forecast = storyboardOutputSchema.properties.forecast;
+  assert.deepEqual(forecast.required, ["comparable", "risk", "tension"]);
+  assert.equal(forecast.properties.comparable.items.type, "string");
+  assert.equal(forecast.additionalProperties, false);
+});
+
+test("the storyboard prompt asks for the forecast without a self-estimated reach", () => {
+  const prompt = buildStoryboardPrompt(validateStoryboardRequest(valid));
+  assert.match(prompt, /forecast\.comparable/);
+  assert.match(prompt, /Do not estimate reach yourself/);
+  assert.match(prompt, /an empty list is a valid answer/);
 });

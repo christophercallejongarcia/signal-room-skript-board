@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { ideaFields, storyboardFields } from "./schema";
+import { forecastFields, ideaFields, storyboardFields } from "./schema";
 import { applyStoryboard, claimDevelop, releaseDevelop } from "../lib/ideas";
 
 /** Newest first, capped so the Ideas tab never pulls the whole repository. */
@@ -57,9 +57,10 @@ export const settle = mutation({
     runId: v.string(),
     now: v.string(),
     storyboard: v.union(v.object(storyboardFields), v.null()),
+    forecast: v.optional(v.union(v.object(forecastFields), v.null())),
     evidenceCount: v.optional(v.number()),
   },
-  handler: async (ctx, { id, runId, now, storyboard, evidenceCount }) => {
+  handler: async (ctx, { id, runId, now, storyboard, forecast, evidenceCount }) => {
     const existing = await ctx.db
       .query("ideas")
       .withIndex("by_external_id", (q) => q.eq("id", id))
@@ -67,7 +68,7 @@ export const settle = mutation({
     if (!existing) return null;
     const { _id, _creationTime, ...idea } = existing;
     const settled = storyboard
-      ? applyStoryboard(idea, runId, storyboard, { now, evidenceCount: evidenceCount ?? 0 })
+      ? applyStoryboard(idea, runId, storyboard, { now, evidenceCount: evidenceCount ?? 0, forecast })
       : releaseDevelop(idea, runId, now);
     // A newer run holds the claim: this result is stale and is dropped.
     if (!settled) return null;

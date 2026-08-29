@@ -137,8 +137,18 @@ export const storyboardOutputSchema = {
     cta: { type: "string" },
     caption: { type: "string" },
     takeaway: { type: "string" },
+    forecast: {
+      type: "object",
+      properties: {
+        comparable: { type: "array", items: { type: "string" }, maxItems: MAX_EVIDENCE },
+        risk: { type: "string" },
+        tension: { type: "string" },
+      },
+      required: ["comparable", "risk", "tension"],
+      additionalProperties: false,
+    },
   },
-  required: ["hook", "beats", "cta", "caption", "takeaway"],
+  required: ["hook", "beats", "cta", "caption", "takeaway", "forecast"],
   additionalProperties: false,
 };
 
@@ -152,6 +162,11 @@ export function buildStoryboardPrompt(request) {
       "cta is the single action at the end. caption is the post caption, first line usable as a Hook.",
       "takeaway names what the viewer can do after watching.",
       "Ground the beats in the named Reels; say which Outlier carries which beat inside the detail.",
+      "forecast is the honest prognosis before production. Do not estimate reach yourself; the app derives the range from the Reels you name.",
+      "forecast.comparable lists the evidence titles, copied exactly as written in the packet, whose subject, promise and format are close enough to this Idea that their plays say what it could bring.",
+      "Only cite titles that appear in the packet. Leave comparable empty when nothing in the packet compares; an empty list is a valid answer.",
+      "forecast.risk is one sentence naming the single biggest reason this Reel could fail.",
+      "forecast.tension is one sentence naming the open question the Reel resolves for the viewer.",
     ],
     request,
   );

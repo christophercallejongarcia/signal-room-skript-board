@@ -151,6 +151,25 @@ export type Storyboard = {
   takeaway: string;
 };
 
+export type ForecastPotential = "low" | "medium" | "high";
+
+/**
+ * What an Idea is likely to bring, said before production. Range and potential
+ * are derived from the comparable Reels of the evidence packet, never estimated
+ * freely; without a comparable base both are null ("keine Prognose").
+ */
+export type Forecast = {
+  /** Plays of the weakest and strongest comparable Reel. */
+  range: { low: number; high: number } | null;
+  potential: ForecastPotential | null;
+  /** How many packet Reels the Bridge named as comparable and the packet confirmed. */
+  comparable: number;
+  /** The one thing most likely to sink the Reel. */
+  risk: string;
+  /** The open question the Reel resolves. */
+  tension: string;
+};
+
 /** A saved content approach. Lives in the ideas table, developed through the Bridge. */
 export type Idea = {
   id: string;
@@ -164,6 +183,8 @@ export type Idea = {
   /** https link back to that Signal, kept for the same reason. */
   sourceUrl?: string;
   storyboard?: Storyboard;
+  /** Written with the storyboard; absent when the Bridge answered without one. */
+  forecast?: Forecast;
   /** Set while a develop run is in flight. Only the run holding it may write back. */
   developRunId?: string;
   developedAt?: string;
@@ -414,7 +435,7 @@ export interface StorageAdapter {
 
 /** Outcome handed to settleIdeaDevelop: a storyboard, or nothing when the run failed. */
 export type SettleDevelop =
-  | { storyboard: Storyboard; now: string; evidenceCount: number }
+  | { storyboard: Storyboard; forecast?: Forecast | null; now: string; evidenceCount: number }
   | { storyboard: null; now: string };
 
 export interface StrategyProvider {
