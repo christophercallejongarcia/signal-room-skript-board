@@ -38,11 +38,16 @@ test("monthUsage sums the runs of the current month and counts the ones without 
     { startedAt: "2026-07-31T23:59:00.000Z", usage: { unreported: 0, computeUnits: 9, costUsd: 9 } },
   ];
   const month = monthUsage(runs, new Date("2026-08-29T12:00:00.000Z"));
-  assert.deepEqual(month, { month: "2026-08", runs: 3, unknownRuns: 2, computeUnits: 1, costUsd: 0.4 });
+  assert.deepEqual(month, { month: "2026-08", runs: 3, unknownRuns: 2, truncated: false, computeUnits: 1, costUsd: 0.4 });
 });
 
 test("monthUsage on an empty month has no total", () => {
-  assert.deepEqual(monthUsage([], new Date("2026-08-29T12:00:00.000Z")), { month: "2026-08", runs: 0, unknownRuns: 0 });
+  assert.deepEqual(monthUsage([], new Date("2026-08-29T12:00:00.000Z")), { month: "2026-08", runs: 0, unknownRuns: 0, truncated: false });
+});
+
+test("monthUsage says truncated when the window it was handed never reaches the previous month", () => {
+  const runs = [{ startedAt: "2026-08-29T10:00:00.000Z", usage: { unreported: 0, costUsd: 1 } }, { startedAt: "2026-08-28T10:00:00.000Z", usage: { unreported: 0, costUsd: 1 } }];
+  assert.equal(monthUsage(runs, new Date("2026-08-29T12:00:00.000Z")).truncated, true);
 });
 
 test("pickRefreshBatch takes the stalest cursors first and never-checked creators before them", () => {

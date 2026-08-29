@@ -2197,7 +2197,7 @@ function ProfileView({ creators, rankedSignals, runs, runsMonth, runsState }: { 
       <div className="section-head"><div><p className="kicker">Collection log</p><h2>Last runs</h2></div><p className="note">Every refresh is logged: window, counts, Apify cost, and which creators failed. A failing creator keeps its cursor and is retried next run. A refresh touches at most the configured number of creators; the rest keep their cursor and go first next time.</p></div>
       {runsMonth && (
         <div className="stat-blocks run-month">
-          <div className="lime"><strong>{runsMonth.costUsd === undefined ? "unknown" : formatUsd(runsMonth.costUsd)}</strong><span>Apify this month</span></div>
+          <div className="lime" title={runsMonth.truncated ? "Only the newest 100 runs are summed; the month has more." : undefined}><strong>{runsMonth.costUsd === undefined ? "unknown" : `${formatUsd(runsMonth.costUsd)}${runsMonth.truncated ? "+" : ""}`}</strong><span>Apify this month</span></div>
           <div><strong>{runsMonth.computeUnits === undefined ? "—" : runsMonth.computeUnits.toFixed(2)}</strong><span>compute units</span></div>
           <div><strong>{runsMonth.runs}</strong><span>runs in {runsMonth.month}</span></div>
           <div><strong>{runsMonth.unknownRuns}</strong><span>runs without a figure</span></div>

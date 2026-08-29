@@ -123,7 +123,8 @@ export async function collectForCreator(creator: Creator, run: ActorRunner = run
     result.status === "rejected" ? [`${streams[i]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`] : [],
   );
   if (failures.length) throw new Error(failures.join("; "));
-  const results = settled.map((result) => (result.status === "fulfilled" ? result.value : { items: [], usage: {} }));
+  // Every result is fulfilled here: a rejection threw above.
+  const results = settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
   const batches = results.map((result) => result.items);
   const seen = new Set<string>();
   const records: SignalRecord[] = [];
