@@ -200,6 +200,7 @@ export default defineSchema({
     caption: v.optional(v.string()),
     format: v.optional(v.string()),
     topic: v.string(),
+    savedAt: v.optional(v.string()),
   })
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])

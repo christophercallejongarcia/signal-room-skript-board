@@ -94,6 +94,18 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       return { inserted, updated };
     });
   },
+  async markSignal(id, savedAt) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.signals.findIndex((signal) => signal.id === id);
+      if (index < 0) return null;
+      const { savedAt: _dropped, ...rest } = store.signals[index];
+      const marked: SignalRecord = savedAt ? { ...rest, savedAt } : rest;
+      store.signals[index] = marked;
+      await save(store);
+      return marked;
+    });
+  },
   async saveRun(run) {
     await serialized(async () => {
       const store = await load();

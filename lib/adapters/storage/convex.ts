@@ -28,6 +28,9 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
       }
       return total;
     },
+    async markSignal(id, savedAt) {
+      return (await client.mutation(anyApi.signals.mark, { id, savedAt })) as SignalRecord | null;
+    },
     async saveRun(run) {
       await client.mutation(anyApi.runs.upsert, { run });
     },

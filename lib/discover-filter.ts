@@ -28,6 +28,11 @@ export function isOutlier(signal: { outlier?: number }, threshold: number) {
   return (signal.outlier ?? 0) >= threshold;
 }
 
+/** A signal Chris marked to find again. The mark is the timestamp; absent means not saved. */
+export function isSaved(signal: { savedAt?: string } | undefined | null) {
+  return Boolean(signal?.savedAt);
+}
+
 /** Chris' own accounts. Collected like every other creator, shown only in Profile. */
 export function isOwned(creator: Pick<Creator, "owned"> | undefined | null) {
   return Boolean(creator?.owned);
@@ -65,7 +70,7 @@ export function filterDiscover<T extends RankedSignal>(
   filters: DiscoverFilters & { view: DiscoverView },
 ): T[] {
   const scoped = filterScope(signals, creators, filters);
-  if (filters.view === "saved") return [];
+  if (filters.view === "saved") return scoped.filter(isSaved);
   if (filters.view === "outliers") return scoped.filter((signal) => isOutlier(signal, filters.threshold));
   return scoped;
 }
@@ -73,6 +78,11 @@ export function filterDiscover<T extends RankedSignal>(
 /** Stat-block counter. Delegates to the same predicate the outlier view uses. */
 export function countOutliers(signals: RankedSignal[], creators: Creator[], filters: DiscoverFilters) {
   return filterDiscover(signals, creators, { ...filters, view: "outliers" }).length;
+}
+
+/** Stat-block counter for the saved view. Delegates to the same predicate the view uses. */
+export function countSaved(signals: RankedSignal[], creators: Creator[], filters: DiscoverFilters) {
+  return filterDiscover(signals, creators, { ...filters, view: "saved" }).length;
 }
 
 export type CorpusSnapshot = { creators: Creator[]; signals: SignalRecord[] };

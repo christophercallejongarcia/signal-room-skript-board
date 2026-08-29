@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowsClockwise,
   Binoculars,
+  BookmarkSimple,
   ChartLineUp,
   Globe,
   CheckCircle,
@@ -38,9 +39,11 @@ import {
   DEFAULT_OUTLIER_THRESHOLD,
   OUTLIER_THRESHOLDS,
   countOutliers,
+  countSaved,
   filterDiscover,
   isOutlier,
   isOwned,
+  isSaved,
   storeOrDemo,
   withoutOwned,
   type DiscoverView as DiscoverViewMode,
@@ -539,6 +542,29 @@ export function SignalRoom() {
   }
 
   /**
+   * Save or release one signal. The mark is written to the store, so it survives a
+   * restart; the demo fixtures have no store, so there it only lives in this tab.
+   */
+  async function toggleSaved(signal: SignalRecord) {
+    const saved = !isSaved(signal);
+    const apply = (next: SignalRecord) =>
+      setSignals((current) => current.map((item) => (item.id === next.id ? next : item)));
+    if (!live) {
+      const { savedAt: _dropped, ...rest } = signal;
+      apply(saved ? { ...rest, savedAt: new Date().toISOString() } : rest);
+      return;
+    }
+    const response = await fetch("/api/signals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: signal.id, saved }),
+    });
+    if (!response.ok) return;
+    const { signal: stored } = (await response.json()) as { signal: SignalRecord };
+    apply(stored);
+  }
+
+  /**
    * Develop through the server route, which claims the idea for one run. A second
    * run on the same idea wins, and the slower answer is dropped instead of written.
    */
@@ -680,6 +706,7 @@ export function SignalRoom() {
             threshold={threshold}
             onThreshold={setThreshold}
             onCreateIdea={captureIdea}
+            onToggleSaved={toggleSaved}
           />
         )}
         {activeTab === "briefing" && (
@@ -772,6 +799,7 @@ function DiscoverView({
   threshold,
   onThreshold,
   onCreateIdea,
+  onToggleSaved,
 }: {
   rankedSignals: Ranked[];
   creators: Creator[];
@@ -782,6 +810,7 @@ function DiscoverView({
   threshold: OutlierThreshold;
   onThreshold: (threshold: OutlierThreshold) => void;
   onCreateIdea: (input: IdeaInput) => void;
+  onToggleSaved: (signal: SignalRecord) => void;
 }) {
   const [view, setView] = useState<DiscoverViewMode>("all");
   const [published, setPublished] = useState<PublishedWindow>("90");
@@ -800,6 +829,8 @@ function DiscoverView({
   const filters = { network, creatorId: channel, published, now: nowMs, threshold };
   // Counter and outlier view share one predicate, so the stat block always equals the card count.
   const outliers = countOutliers(rankedSignals, creators, filters);
+  // Same for the saved view: the stat block and the matches counter read the predicate the cards use.
+  const saved = countSaved(rankedSignals, creators, filters);
   const filtered = filterDiscover(rankedSignals, creators, { ...filters, view })
     .sort((a, b) => {
       if (sort === "outlier") return (b.outlier ?? 0) - (a.outlier ?? 0);
@@ -834,6 +865,7 @@ function DiscoverView({
           <div><strong>{stats.knownVideos}</strong><span>known videos</span></div>
           <div><strong>{stats.newIn48}</strong><span>new in 48h</span></div>
           <div className="lime"><strong>{outliers}</strong><span>{formatThreshold(threshold)}+ outliers</span></div>
+          <div><strong>{saved}</strong><span>saved</span></div>
         </div>
       </section>
 
@@ -845,7 +877,9 @@ function DiscoverView({
             <button className={view === "outliers" ? "active" : ""} onClick={() => setView("outliers")}>Outliers</button>
             <button className={view === "saved" ? "active" : ""} onClick={() => setView("saved")}>Saved</button>
           </div>
-          <p className="filter-hint">{view === "outliers" ? "Ranked by follower-relative reach" : "Newest uploads first"}</p>
+          <p className="filter-hint">
+            {view === "outliers" ? "Ranked by follower-relative reach" : view === "saved" ? "Only what you saved" : "Newest uploads first"}
+          </p>
         </div>
         <div>
           <label htmlFor="f-published">Published</label>
@@ -910,7 +944,7 @@ function DiscoverView({
       {shown.length === 0 ? (
         <div className="empty-state">
           {view === "saved"
-            ? "No saved videos yet."
+            ? "No saved videos match these filters. Save one from a card, or widen the window."
             : `No ${isIg ? "Instagram" : "YouTube"} uploads match these filters. Add a creator under Tracked Channels.`}
         </div>
       ) : (
@@ -937,20 +971,30 @@ function DiscoverView({
                     <span><strong className="lime">{(signal.outlier ?? 0).toFixed(1)}x</strong></span>
                   </div>
                   <div className="signal-actions">
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() =>
-                        onCreateIdea({
-                          title: signal.title,
-                          sourceSignalId: signal.id,
-                          sourceCreator: creator.handle,
-                          sourceUrl: signal.url,
-                        })
-                      }
-                    >
-                      <Lightbulb size={13} /> Create idea
-                    </button>
+                    <span className="signal-buttons">
+                      <button
+                        className={isSaved(signal) ? "ghost-button active" : "ghost-button"}
+                        type="button"
+                        aria-pressed={isSaved(signal)}
+                        onClick={() => onToggleSaved(signal)}
+                      >
+                        <BookmarkSimple size={13} weight={isSaved(signal) ? "fill" : "regular"} /> {isSaved(signal) ? "Saved" : "Save"}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() =>
+                          onCreateIdea({
+                            title: signal.title,
+                            sourceSignalId: signal.id,
+                            sourceCreator: creator.handle,
+                            sourceUrl: signal.url,
+                          })
+                        }
+                      >
+                        <Lightbulb size={13} /> Create idea
+                      </button>
+                    </span>
                     {signal.url && (
                       <a className="signal-link" href={signal.url} target="_blank" rel="noreferrer">
                         Open on {isIg ? "Instagram" : "YouTube"} <ArrowSquareOut size={11} />

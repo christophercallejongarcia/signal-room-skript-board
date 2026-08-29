@@ -468,6 +468,8 @@ main {
 .signal-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--muted); font-size: 10.5px; text-decoration: none; }
 .signal-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .signal-actions .signal-link { margin-top: 0; }
+.signal-buttons { display: inline-flex; align-items: center; gap: 6px; }
+.ghost-button.active { border-color: var(--accent); color: var(--accent); }
 .signal-link:hover { color: var(--ink); }
 
 .empty-state {

@@ -34,6 +34,7 @@ Design-Tokens (aus den Frames abgeleitet):
 ### T1.3 Discover-Hero mit Stat-Blöcken und Filter-Leiste `[done]`
 - Kicker + Headline + Subline links, drei Stat-Blöcke rechts (known videos, new in 48h, 2x+ outliers).
 - Filter-Leiste als segmentierte Kacheln, View-Toggle All/Outliers/Saved.
+- Saved (Ticket 19): jede Karte hat einen Merken-Knopf, die Markierung liegt als `savedAt` am Signal (`PATCH /api/signals`) und überlebt Neustart und Refresh in beiden Stores; der Saved-View zeigt genau die gemerkten Signale, Netzwerk/Zeitfenster/Channel/Sortierung greifen weiter, vierter Stat-Block "saved". Prädikat `isSaved` und Zähler `countSaved` in `lib/discover-filter.ts`, getestet in `tests/saved-signals.test.mjs`.
 - Netzwerk-Toggle YouTube / IG oberhalb (Pill-Gruppe).
 - AK: Layout wie `cue_0000.jpg`.
 

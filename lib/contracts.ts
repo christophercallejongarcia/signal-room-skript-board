@@ -36,6 +36,8 @@ export type SignalRecord = {
   caption?: string;
   format?: "reel" | "post" | "long" | "short";
   externalId?: string;
+  /** When Chris saved the signal. Absent means not saved; a refresh never touches it. */
+  savedAt?: string;
 };
 
 export type RankedSignal = SignalRecord & {
@@ -374,6 +376,11 @@ export interface StorageAdapter {
   addCreator(creator: Creator): Promise<void>;
   listSignals(): Promise<SignalRecord[]>;
   saveSignals(records: SignalRecord[]): Promise<SaveResult>;
+  /**
+   * Sets or clears the saved mark on one signal. savedAt null clears it. Returns
+   * the stored signal, or null when no signal has that id.
+   */
+  markSignal(id: string, savedAt: string | null): Promise<SignalRecord | null>;
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;

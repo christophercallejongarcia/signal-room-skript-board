@@ -38,3 +38,20 @@ export const bulkUpsert = mutation({
     return { inserted, updated };
   },
 });
+
+/** Sets or clears the saved mark. Null clears the field; a refresh never writes it (bulkUpsert only patches delivered fields). */
+export const mark = mutation({
+  args: { id: v.string(), savedAt: v.union(v.string(), v.null()) },
+  handler: async (ctx, { id, savedAt }) => {
+    const existing = await ctx.db
+      .query("signals")
+      .withIndex("by_external_id", (q) => q.eq("id", id))
+      .unique();
+    if (!existing) return null;
+    await ctx.db.patch(existing._id, { savedAt: savedAt ?? undefined });
+    const row = await ctx.db.get(existing._id);
+    if (!row) return null;
+    const { _id, _creationTime, ...signal } = row;
+    return signal;
+  },
+});
