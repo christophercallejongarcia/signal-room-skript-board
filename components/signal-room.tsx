@@ -69,7 +69,7 @@ import {
   STRATEGY_GOAL,
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
-import { IDEA_STAGES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
+import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
@@ -1668,8 +1668,10 @@ function IdeaRow({
   onMove: (id: string, status: IdeaStatus) => void;
 }) {
   const next = nextStage(idea.status);
+  // "since" says how long the idea has sat on its stage; a fresh capture has no second date.
   const meta = [
     formatDay(idea.createdAt),
+    idea.status !== "captured" && `${statusCopy[idea.status].toLowerCase()} since ${formatDay(idea.updatedAt)}`,
     idea.sourceCreator && `from ${idea.sourceCreator}`,
     idea.evidenceCount && `${idea.evidenceCount} reels as evidence`,
   ].filter(Boolean);
@@ -1923,7 +1925,7 @@ function IdeasView({
           </div>
         )}
         <div className="stage-bar" role="group" aria-label="Ideas by stage">
-          {[...IDEA_STAGES, "dropped" as const].map((status) => (
+          {IDEA_STATUSES.map((status) => (
             <button
               key={status}
               type="button"

@@ -8,7 +8,8 @@ export const STORYBOARD_BEATS = 3;
 
 /** The production stages in pipeline order; the counter bar and the moves read this. */
 export const IDEA_STAGES: readonly IdeaStage[] = ["captured", "developing", "packaging", "scripting", "producing", "published"];
-const STATUSES: readonly IdeaStatus[] = [...IDEA_STAGES, "dropped"];
+/** Every status the counter bar and the move parser know: the stages plus dropped. */
+export const IDEA_STATUSES: readonly IdeaStatus[] = [...IDEA_STAGES, "dropped"];
 
 /** The stage after this one, or null at the end of the pipeline and on dropped. */
 export function nextStage(status: IdeaStatus): IdeaStage | null {
@@ -29,9 +30,20 @@ export function canTransition(from: IdeaStatus, to: IdeaStatus) {
   return nextStage(from) === to;
 }
 
+/**
+ * A move the rules do not allow. Its own class so the route can answer 409 for
+ * exactly this and not for a store that is unreachable.
+ */
+export class ForbiddenMoveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ForbiddenMoveError";
+  }
+}
+
 /** Refuses by name, so the caller can show why a move was not allowed. */
 function requireTransition(from: IdeaStatus, to: IdeaStatus) {
-  if (!canTransition(from, to)) throw new Error(`An idea cannot move from ${from} to ${to}.`);
+  if (!canTransition(from, to)) throw new ForbiddenMoveError(`An idea cannot move from ${from} to ${to}.`);
 }
 
 /** Moves an Idea by hand. A forbidden move throws instead of being ignored. */
@@ -40,17 +52,10 @@ export function moveIdea(idea: Idea, to: IdeaStatus, now: string): Idea {
   return { ...idea, status: to, updatedAt: now };
 }
 
-/** Pushes an Idea to the next stage. Throws at the end of the pipeline and on dropped. */
-export function advanceIdea(idea: Idea, now: string): Idea {
-  const to = nextStage(idea.status);
-  if (!to) throw new Error(`An idea cannot move from ${idea.status} any further.`);
-  return moveIdea(idea, to, now);
-}
-
-/** How many Ideas sit on each stage, every stage listed even when empty. */
+/** How many Ideas sit on each stage, every stage listed even when empty; a status the pipeline does not know is not counted. */
 export function countByStage(ideas: readonly Idea[]): Record<IdeaStatus, number> {
-  const counts = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<IdeaStatus, number>;
-  for (const idea of ideas) counts[idea.status] += 1;
+  const counts = Object.fromEntries(IDEA_STATUSES.map((status) => [status, 0])) as Record<IdeaStatus, number>;
+  for (const idea of ideas) if (idea.status in counts) counts[idea.status] += 1;
   return counts;
 }
 
@@ -62,7 +67,7 @@ export function countByStage(ideas: readonly Idea[]): Record<IdeaStatus, number>
 export function legacyStage(status: string): IdeaStatus | null {
   if (status === "developed") return "developing";
   if (status === "produced") return "producing";
-  return STATUSES.includes(status as IdeaStatus) ? (status as IdeaStatus) : null;
+  return IDEA_STATUSES.includes(status as IdeaStatus) ? (status as IdeaStatus) : null;
 }
 
 /** One PATCH body for `/api/ideas`: the id plus the stage to move to. */
@@ -74,8 +79,8 @@ export function parseIdeaMove(body: unknown): IdeaMove {
   const id = typeof input.id === "string" ? input.id.trim() : "";
   if (!id) throw new Error("id required");
   const status = input.status;
-  if (typeof status !== "string" || !STATUSES.includes(status as IdeaStatus)) {
-    throw new Error(`status must be one of ${STATUSES.join(", ")}`);
+  if (typeof status !== "string" || !IDEA_STATUSES.includes(status as IdeaStatus)) {
+    throw new Error(`status must be one of ${IDEA_STATUSES.join(", ")}`);
   }
   return { id, status: status as IdeaStatus };
 }

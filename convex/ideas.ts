@@ -1,7 +1,18 @@
-import { internalMutation, mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
 import { forecastFields, ideaFields, storyboardFields } from "./schema";
-import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../lib/ideas";
+import { ForbiddenMoveError, applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../lib/ideas";
+
+/** The row for one external id, split into its Convex id and the Idea the lib functions take. */
+async function findIdea(ctx: MutationCtx, id: string) {
+  const existing = await ctx.db
+    .query("ideas")
+    .withIndex("by_external_id", (q) => q.eq("id", id))
+    .unique();
+  if (!existing) return null;
+  const { _id, _creationTime, ...idea } = existing;
+  return { _id, idea };
+}
 
 /** Newest first, capped so the Ideas tab never pulls the whole repository. */
 export const list = query({
@@ -20,10 +31,7 @@ export const list = query({
 export const upsert = mutation({
   args: { idea: v.object(ideaFields) },
   handler: async (ctx, { idea }) => {
-    const existing = await ctx.db
-      .query("ideas")
-      .withIndex("by_external_id", (q) => q.eq("id", idea.id))
-      .unique();
+    const existing = await findIdea(ctx, idea.id);
     if (existing) await ctx.db.replace(existing._id, idea);
     else await ctx.db.insert("ideas", idea);
     return null;
@@ -38,12 +46,9 @@ export const upsert = mutation({
 export const claim = mutation({
   args: { id: v.string(), runId: v.string(), now: v.string() },
   handler: async (ctx, { id, runId, now }) => {
-    const existing = await ctx.db
-      .query("ideas")
-      .withIndex("by_external_id", (q) => q.eq("id", id))
-      .unique();
+    const existing = await findIdea(ctx, id);
     if (!existing) return null;
-    const { _id, _creationTime, ...idea } = existing;
+    const { _id, idea } = existing;
     const claimed = claimDevelop(idea, runId, now);
     await ctx.db.replace(_id, claimed);
     return claimed;
@@ -61,12 +66,9 @@ export const settle = mutation({
     evidenceCount: v.optional(v.number()),
   },
   handler: async (ctx, { id, runId, now, storyboard, forecast, evidenceCount }) => {
-    const existing = await ctx.db
-      .query("ideas")
-      .withIndex("by_external_id", (q) => q.eq("id", id))
-      .unique();
+    const existing = await findIdea(ctx, id);
     if (!existing) return null;
-    const { _id, _creationTime, ...idea } = existing;
+    const { _id, idea } = existing;
     const settled = storyboard
       ? applyStoryboard(idea, runId, storyboard, { now, evidenceCount: evidenceCount ?? 0, forecast: forecast ?? null })
       : releaseDevelop(idea, runId, now);
@@ -78,19 +80,23 @@ export const settle = mutation({
 });
 
 /**
- * Moves the idea by hand. A forbidden move throws out of moveIdea and reaches
- * the caller as an error, so the UI can say why instead of ignoring the click.
+ * Moves the idea by hand. A forbidden move is thrown as ConvexError with
+ * kind "forbidden-move", because a plain Error is redacted to "Server Error"
+ * on a production deployment and the reason would never reach the UI.
  */
 export const move = mutation({
   args: { id: v.string(), status: ideaFields.status, now: v.string() },
   handler: async (ctx, { id, status, now }) => {
-    const existing = await ctx.db
-      .query("ideas")
-      .withIndex("by_external_id", (q) => q.eq("id", id))
-      .unique();
+    const existing = await findIdea(ctx, id);
     if (!existing) return null;
-    const { _id, _creationTime, ...idea } = existing;
-    const moved = moveIdea(idea, status, now);
+    const { _id, idea } = existing;
+    let moved;
+    try {
+      moved = moveIdea(idea, status, now);
+    } catch (error) {
+      if (error instanceof ForbiddenMoveError) throw new ConvexError({ kind: "forbidden-move", message: error.message });
+      throw error;
+    }
     await ctx.db.replace(_id, moved);
     return moved;
   },

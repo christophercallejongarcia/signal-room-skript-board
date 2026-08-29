@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import {
   IDEA_GOAL_MAX,
   IDEA_TITLE_MAX,
+  ForbiddenMoveError,
   IDEA_STAGES,
-  advanceIdea,
+  IDEA_STATUSES,
   applyStoryboard,
   canTransition,
   claimDevelop,
@@ -124,18 +125,20 @@ test("a second develop run stays in developing, later stages are not developed a
   assert.throws(() => claimDevelop({ ...captured(), status: "packaging" }, "run-1", NOW), /cannot move from packaging to developing/);
 });
 
-test("advance pushes an idea one stage further by hand", () => {
+test("an idea is pushed one stage at a time to the end of the pipeline", () => {
   let idea = captured();
   for (const stage of IDEA_STAGES.slice(1)) {
-    idea = advanceIdea(idea, LATER);
+    idea = moveIdea(idea, nextStage(idea.status), LATER);
     assert.equal(idea.status, stage);
     assert.equal(idea.updatedAt, LATER);
   }
-  assert.throws(() => advanceIdea(idea, LATER), /cannot move from published/);
+  assert.equal(nextStage(idea.status), null);
+  assert.deepEqual(IDEA_STATUSES, [...IDEA_STAGES, "dropped"]);
 });
 
 test("a forbidden move is refused by name, not ignored", () => {
   const idea = captured();
+  assert.throws(() => moveIdea(idea, "scripting", LATER), ForbiddenMoveError);
   assert.throws(() => moveIdea(idea, "scripting", LATER), /cannot move from captured to scripting/);
   assert.throws(() => moveIdea({ ...idea, status: "dropped" }, "captured", LATER), /cannot move from dropped to captured/);
   const dropped = moveIdea(idea, "dropped", LATER);
@@ -149,6 +152,7 @@ test("the counter bar knows every stage, even the empty ones", () => {
     { ...captured(), id: "b", status: "packaging" },
     { ...captured(), id: "c", status: "packaging" },
     { ...captured(), id: "d", status: "dropped" },
+    { ...captured(), id: "e", status: "nonsense" },
   ]);
   assert.deepEqual(counts, { captured: 1, developing: 0, packaging: 2, scripting: 0, producing: 0, published: 0, dropped: 1 });
 });

@@ -1,6 +1,8 @@
 import { ConvexHttpClient } from "convex/browser";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
 import { anyApi } from "convex/server";
+import { ConvexError } from "convex/values";
+import { ForbiddenMoveError } from "../../ideas.ts";
 import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SaveResult, SignalRecord, StorageAdapter } from "../../contracts";
 
 /** Uses anyApi so the adapter compiles before `npx convex dev` generates convex/_generated. */
@@ -74,7 +76,14 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
       })) as Idea | null;
     },
     async moveIdea(id, status, now) {
-      return (await client.mutation(anyApi.ideas.move, { id, status, now })) as Idea | null;
+      try {
+        return (await client.mutation(anyApi.ideas.move, { id, status, now })) as Idea | null;
+      } catch (error) {
+        // The mutation refuses a forbidden move as ConvexError; hand it on as the lib's own error.
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
+        if (data?.kind === "forbidden-move") throw new ForbiddenMoveError(data.message ?? "That move is not allowed.");
+        throw error;
+      }
     },
   };
 }
