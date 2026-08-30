@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runBriefing } from "@/lib/briefing-run";
 import { runRefresh } from "@/lib/collect";
+import { runSlate } from "@/lib/slate-run";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,5 +20,14 @@ export async function POST() {
     console.error("Briefing after refresh failed:", error instanceof Error ? error.message : error);
   }
 
-  return NextResponse.json({ ...result, ...(briefingId ? { briefingId } : {}) });
+  // The slate reads the same corpus and needs the Bridge. One per day: a second
+  // refresh finds the morning's slate and hands it back untouched.
+  let slateId: string | undefined;
+  try {
+    slateId = (await runSlate()).id;
+  } catch (error) {
+    console.error("Slate after refresh failed:", error instanceof Error ? error.message : error);
+  }
+
+  return NextResponse.json({ ...result, ...(briefingId ? { briefingId } : {}), ...(slateId ? { slateId } : {}) });
 }

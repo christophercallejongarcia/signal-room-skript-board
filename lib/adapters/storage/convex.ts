@@ -1,10 +1,10 @@
 import { ConvexHttpClient } from "convex/browser";
-import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
+import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
 import { ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SaveResult, SignalRecord, StorageAdapter } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter } from "../../contracts";
 
 /**
  * Whoever can call Convex functions: the HTTP client from the Next server, or an
@@ -65,6 +65,12 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     },
     async listBriefings(limit = BRIEFING_HISTORY) {
       return (await client.query(anyApi.briefings.list, { limit })) as Briefing[];
+    },
+    async listSlates(limit = SLATE_HISTORY) {
+      return (await client.query(anyApi.slates.list, { limit })) as Slate[];
+    },
+    async saveSlate(slate) {
+      await client.mutation(anyApi.slates.upsert, { slate });
     },
     async listFormatReviews(limit = 6) {
       return (await client.query(anyApi.formatReviews.list, { limit })) as FormatReview[];

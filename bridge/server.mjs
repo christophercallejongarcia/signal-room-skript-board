@@ -7,11 +7,14 @@ import {
   buildHooksPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
+  buildSlatePrompt,
   hooksOutputSchema,
+  slateOutputSchema,
   storyboardOutputSchema,
   strategyOutputSchema,
   validateBriefingRequest,
   validateHooksRequest,
+  validateSlateRequest,
   validateStoryboardRequest,
   validateStrategyRequest,
 } from "./request.mjs";
@@ -121,6 +124,18 @@ const routes = new Map([
         // One angle per Reel: the schema is built from the packet the caller sent.
         const request = validateBriefingRequest(input);
         return runCodex(buildBriefingPrompt(request), briefingOutputSchema(request.evidence.length));
+      },
+    },
+  ],
+  [
+    "/v1/slate",
+    {
+      label: "Slate",
+      failure: "The local Codex slate run failed.",
+      run: (input) => {
+        // Exactly count starts, each naming a Reel by its position in the packet the bridge accepted.
+        const request = validateSlateRequest(input);
+        return runCodex(buildSlatePrompt(request), slateOutputSchema(request.count, request.evidence.length));
       },
     },
   ],

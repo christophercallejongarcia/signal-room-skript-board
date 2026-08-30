@@ -175,6 +175,13 @@ Definition: ADR-0003.
 - Briefing-Tab zeigt Datum, Anzahl Quellen, was der Schnitt weggelassen hat, die gerankte Liste mit Cover, Kennzahlen und Angle; ältere Tage über den Day-Picker. "Create idea" legt eine Idee mit Quell-Reel an, der Angle wird zum Ziel.
 - AK: Ranking und Angle-Zuordnung getestet (`tests/briefing.test.mjs`, `tests/bridge-briefing.test.mjs`).
 
+### T6.5 Produktions-Slate aus den Tagessignalen — erledigt
+- Nach jedem lokalen `POST /api/refresh` entsteht ein Slate: `SLATE_SIZE` (10) Startpunkte, die der Bridge (`/v1/slate`) aus den Reels der letzten 24 Stunden liest, je mit Themen-Etikett (`topic`) und Quell-Signal (`sourceSignalId`, Handle, Titel, Link, Outlier, Plays). Das Paket ist die Briefing-Auswahl (`slateSources`, höchstens 12 Reels); der Bridge nennt das Quell-Reel als Position im Paket, nie als Titel.
+- Tabelle `slates` (Convex) bzw. `slates` in `data/store.json`, ein Dokument je Tag (`slate-<YYYY-MM-DD>`). Ein zweiter Refresh am selben Tag findet das Slate und lässt es stehen; `POST /api/slates` mit `{ force: true }` baut es neu. Der Convex-Cron schreibt keins (kein Bridge in der Cloud).
+- Einzelner Startpunkt neu über `POST /api/slates/regenerate` (die übrigen Pitches gehen als `taken` mit, die anderen neun bleiben unverändert). Richtung für den nächsten Durchlauf über `PATCH /api/slates`, wirkt in jedem Lauf danach, auch im Slate des Folgetags. "Create idea" (`POST /api/slates/ideas`) legt eine Idea mit Quell-Signal an und merkt die `ideaId` am Startpunkt.
+- Abschnitt "Production slate" unter der Briefing-Liste, ältere Tage über den Day-Picker; Demo-Modus zeigt nur den Hinweis, weil das Paket nie aus Fixtures kommt.
+- AK: `tests/slate.test.mjs` (reine Logik), `tests/slate-run.test.mjs` (Idempotenz, Richtung, Einzel-Neuerzeugung, Bridge-Ausfall), `tests/bridge-slate.test.mjs` (Bridge-Vertrag).
+
 ### T6.3 Trend Radar (später)
 - Quellen: Instagram-Hashtag-Suche via Apify, optional GitHub Trending. Opportunity-Score = Momentum × Coverage-Gap.
 - AK: Mindestens eine Quelle liefert täglich Topics.

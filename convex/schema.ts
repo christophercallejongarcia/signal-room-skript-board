@@ -102,6 +102,35 @@ export const briefingFields = {
   items: v.array(v.object(briefingItemFields)),
 };
 
+/** One Startpunkt on a daily Slate; part of slateFields. */
+const slateStartFields = {
+  position: v.number(),
+  pitch: v.string(),
+  topic: v.string(),
+  sourceSignalId: v.string(),
+  sourceCreator: v.string(),
+  sourceTitle: v.string(),
+  sourceUrl: v.optional(v.string()),
+  outlier: v.number(),
+  plays: v.number(),
+  regeneratedAt: v.optional(v.string()),
+  ideaId: v.optional(v.string()),
+};
+
+/** One daily Slate; shared with convex/slates.ts. One document per day. */
+export const slateFields = {
+  id: v.string(),
+  generatedAt: v.string(),
+  updatedAt: v.string(),
+  day: v.string(),
+  windowStart: v.string(),
+  windowHours: v.number(),
+  sources: v.number(),
+  direction: v.optional(v.string()),
+  directionApplied: v.optional(v.string()),
+  starts: v.array(v.object(slateStartFields)),
+};
+
 /** One pattern's month over month move; part of formatReviewFields. */
 const reviewPatternFields = {
   id: v.string(),
@@ -234,6 +263,9 @@ export default defineSchema({
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),
   briefings: defineTable(briefingFields)
+    .index("by_external_id", ["id"])
+    .index("by_day", ["day"]),
+  slates: defineTable(slateFields)
     .index("by_external_id", ["id"])
     .index("by_day", ["day"]),
   formatReviews: defineTable(formatReviewFields)

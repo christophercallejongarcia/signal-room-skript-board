@@ -120,6 +120,8 @@ export type RefreshResult = {
   runId?: string;
   /** id of the Briefing the refresh left behind, absent when composing it failed. */
   briefingId?: string;
+  /** id of the Slate the refresh left or found for the day, absent when the run failed. */
+  slateId?: string;
 };
 
 /** One outlier reel as handed to the Strategy-Provider. Source text, never instructions. */
@@ -337,6 +339,68 @@ export type Briefing = {
   items: BriefingItem[];
 };
 
+/**
+ * One Startpunkt on a Slate: a short-form starting point with its Themen-Etikett
+ * and the Signal it was read from. Like a BriefingItem it carries what the row
+ * shows, so the slate reads without a join back into signals.
+ */
+export type SlateStart = {
+  /** 1-based place on the slate. Stays when the start is regenerated. */
+  position: number;
+  /** The starting point itself, one or two sentences. */
+  pitch: string;
+  /** Themen-Etikett, a few words. */
+  topic: string;
+  sourceSignalId: string;
+  /** Creator handle, including the leading @. */
+  sourceCreator: string;
+  /** Title of the source Reel as the packet carried it. */
+  sourceTitle: string;
+  sourceUrl?: string;
+  outlier: number;
+  plays: number;
+  /** Set when this start replaced the one the run wrote; the rest of the slate stayed. */
+  regeneratedAt?: string;
+  /** id of the Idea this start became. Absent until the click. */
+  ideaId?: string;
+};
+
+/**
+ * One daily Slate: ten starting points read from the Signals of the last 24
+ * hours. Written after the refresh, one document per day; a second refresh on
+ * the same day leaves it alone, so regenerated starts and captured Ideas keep.
+ */
+export type Slate = {
+  /** slate-<day>. One document per day. */
+  id: string;
+  generatedAt: string;
+  updatedAt: string;
+  /** The day the slate covers, as YYYY-MM-DD in UTC. */
+  day: string;
+  windowStart: string;
+  windowHours: number;
+  /** Reels in the packet the starts were read from. */
+  sources: number;
+  /** Richtung for the next run, as typed. Carried into every later run until changed. */
+  direction?: string;
+  /** The direction the most recent run (full or single) was given. */
+  directionApplied?: string;
+  /** In position order. Empty when the window held nothing. */
+  starts: SlateStart[];
+};
+
+/** What the Bridge needs for one Slate run: the packet plus what the run is for. */
+export type SlateRequest = {
+  goal: string;
+  audience: string;
+  direction?: string;
+  /** Starts asked for: the whole slate, or 1 for a regenerated position. */
+  count: number;
+  /** Pitches already on the slate, so a regenerated start does not repeat one. */
+  taken?: string[];
+  evidence: StrategyEvidenceItem[];
+};
+
 /** The five hypotheses a Hook variant tests. The board groups by these. */
 export type HookHypothesis = "curiosity" | "list" | "contrast" | "promise" | "story";
 
@@ -429,6 +493,10 @@ export interface StorageAdapter {
   listBriefings(limit?: number): Promise<Briefing[]>;
   /** Replaces the whole row for briefing.id, so a second refresh on the same day overwrites it. */
   saveBriefing(briefing: Briefing): Promise<void>;
+  /** Newest first. */
+  listSlates(limit?: number): Promise<Slate[]>;
+  /** Replaces the whole row for slate.id. The day's document is one row however often it is touched. */
+  saveSlate(slate: Slate): Promise<void>;
   /** Newest first. */
   listFormatReviews(limit?: number): Promise<FormatReview[]>;
   /** Replaces the whole row for review.id, so a rerun inside the same month overwrites it. */

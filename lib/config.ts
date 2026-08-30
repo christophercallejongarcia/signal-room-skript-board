@@ -60,6 +60,17 @@ export const BRIEFING_ANGLE_MAX = 300;
 export const BRIEFING_CAPTION_EXCERPT = 200;
 /** Briefings kept in the picker. Two weeks of mornings. */
 export const BRIEFING_HISTORY = 14;
+/** Starting points one Slate carries. */
+export const SLATE_SIZE = 10;
+/** Reels of the window handed to the Bridge as the packet a Slate is read from. */
+export const SLATE_SOURCE_LIMIT = 12;
+/** Bounds for what the Bridge returns on a slate run. The Bridge is the untrusted side. */
+export const SLATE_PITCH_MAX = 400;
+export const SLATE_TOPIC_MAX = 60;
+/** Longest Richtung the slate takes for its next run. */
+export const SLATE_DIRECTION_MAX = 500;
+/** Slates kept in the picker. Two weeks of mornings, like the briefings. */
+export const SLATE_HISTORY = 14;
 /** Longest input the Hooks board accepts, in characters as pasted. */
 export const HOOK_INPUT_MAX = 20_000;
 /** How many hooks one run may ask for. */

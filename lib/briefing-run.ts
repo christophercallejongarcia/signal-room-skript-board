@@ -1,8 +1,8 @@
 import { STRATEGY_AUDIENCE, STRATEGY_BRIDGE_URL, STRATEGY_GOAL } from "./config.ts";
 import { getStorage } from "./adapters/storage/index.ts";
 import { withCoverUrls } from "./adapters/storage/cover-cache.ts";
-import { applyAngles, buildBriefing } from "./briefing.ts";
-import type { Briefing, BriefingItem, StorageAdapter, StrategyEvidenceItem } from "./contracts";
+import { applyAngles, briefingPacket, buildBriefing } from "./briefing.ts";
+import type { Briefing, BriefingItem, StorageAdapter } from "./contracts";
 
 export type BriefingDeps = {
   storage: Pick<StorageAdapter, "listCreators" | "listSignals" | "saveBriefing">;
@@ -13,28 +13,14 @@ export type BriefingDeps = {
 };
 
 /** The bridge gives up on a Codex turn after 120 s; this is the same ceiling from the caller's side. */
-const BRIDGE_TIMEOUT_MS = 120_000;
-
-/**
- * The ranked reels as the Bridge reads them. A briefing item already carries the
- * excerpt and the numbers, so the packet is a projection, not a second selection.
- */
-function packet(items: BriefingItem[]): StrategyEvidenceItem[] {
-  return items.map((item) => ({
-    title: item.title,
-    creator: item.creator,
-    caption: item.caption,
-    plays: item.plays,
-    outlier: item.outlier,
-  }));
-}
+export const BRIDGE_TIMEOUT_MS = 120_000;
 
 /** One angle per item, in the order of the items. Throws when the Bridge is unhappy. */
 async function askBridge(items: BriefingItem[]) {
   const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/briefing`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ goal: STRATEGY_GOAL, audience: STRATEGY_AUDIENCE, evidence: packet(items) }),
+    body: JSON.stringify({ goal: STRATEGY_GOAL, audience: STRATEGY_AUDIENCE, evidence: briefingPacket(items) }),
     signal: AbortSignal.timeout(BRIDGE_TIMEOUT_MS),
   });
   if (!response.ok) {

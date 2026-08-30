@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, StorageAdapter } from "../../contracts";
-import { BRIEFING_HISTORY, HOOK_RUN_HISTORY } from "../../config.ts";
+import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter } from "../../contracts";
+import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
@@ -14,6 +14,7 @@ type Store = {
   formatReviews: FormatReview[];
   hookRuns: HookRun[];
   briefings: Briefing[];
+  slates: Slate[];
 };
 
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
@@ -27,7 +28,9 @@ const MAX_HOOK_RUNS = 100;
 const MAX_FORMAT_REVIEWS = 24;
 /** Briefings kept in the file store. One per day, so this is a quarter of mornings. */
 const MAX_BRIEFINGS = 90;
-const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [] };
+/** Slates kept in the file store. One per day, like the briefings. */
+const MAX_SLATES = 90;
+const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
 
 async function load(): Promise<Store> {
   try {
@@ -42,6 +45,7 @@ async function load(): Promise<Store> {
       formatReviews: parsed.formatReviews ?? [],
       hookRuns: parsed.hookRuns ?? [],
       briefings: parsed.briefings ?? [],
+      slates: parsed.slates ?? [],
     };
   } catch {
     return { ...EMPTY };
@@ -128,6 +132,19 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.briefings = [briefing, ...store.briefings.filter((existing) => existing.id !== briefing.id)]
         .sort((a, b) => b.day.localeCompare(a.day))
         .slice(0, MAX_BRIEFINGS);
+      await save(store);
+    });
+  },
+  async listSlates(limit = SLATE_HISTORY) {
+    const slates = (await load()).slates;
+    return [...slates].sort((a, b) => b.day.localeCompare(a.day)).slice(0, limit);
+  },
+  async saveSlate(slate) {
+    await serialized(async () => {
+      const store = await load();
+      store.slates = [slate, ...store.slates.filter((existing) => existing.id !== slate.id)]
+        .sort((a, b) => b.day.localeCompare(a.day))
+        .slice(0, MAX_SLATES);
       await save(store);
     });
   },

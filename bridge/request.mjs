@@ -209,6 +209,90 @@ export function buildBriefingPrompt(request) {
   );
 }
 
+/** Mirrors SLATE_SIZE in lib/config.ts: the most starts one slate run may ask for. */
+const SLATE_COUNT_MAX = 10;
+/** Above the app's SLATE_PITCH_MAX (400), for the same reason as every other ceiling here. */
+const MAX_PITCH = 500;
+
+/**
+ * A slate run: the packet plus how many starting points to write, the Richtung
+ * for the run and the pitches already on the slate. count is a whole number
+ * because the answer schema is built from it and a start names its Reel by
+ * packet position.
+ */
+export function validateSlateRequest(input) {
+  const { goal, audience, evidence } = validateStrategyRequest(input);
+  const count = input.count;
+  if (!Number.isInteger(count) || count < 1 || count > SLATE_COUNT_MAX) {
+    throw new Error(`count must be a whole number from 1 to ${SLATE_COUNT_MAX}.`);
+  }
+  const direction = cleanString(input.direction, MAX_GOAL);
+  const taken = Array.isArray(input.taken)
+    ? input.taken.slice(0, SLATE_COUNT_MAX).map((pitch) => cleanString(pitch, MAX_PITCH)).filter(Boolean)
+    : [];
+
+  return {
+    goal,
+    audience,
+    ...(direction ? { direction } : {}),
+    count,
+    ...(taken.length > 0 ? { taken } : {}),
+    evidence,
+  };
+}
+
+/**
+ * Built per run: exactly count starts, each naming its Reel as a position into
+ * the packet the bridge accepted (1 to sourceCount), never as a title.
+ */
+export function slateOutputSchema(count, sourceCount) {
+  return {
+    type: "object",
+    properties: {
+      starts: {
+        type: "array",
+        minItems: count,
+        maxItems: count,
+        items: {
+          type: "object",
+          properties: {
+            pitch: { type: "string" },
+            topic: { type: "string" },
+            source: { type: "integer", minimum: 1, maximum: sourceCount },
+          },
+          required: ["pitch", "topic", "source"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["starts"],
+    additionalProperties: false,
+  };
+}
+
+/** One slate run: short-form starting points read from the Reels of the day. */
+export function buildSlatePrompt(request) {
+  const numbered = request.evidence.map((item, index) => `${index + 1}. ${item.creator}: ${item.title}`);
+  return buildPrompt(
+    [
+      `Write exactly ${request.count} starting point${request.count === 1 ? "" : "s"} for short-form Reels, read from the Reels in the packet below.`,
+      "A starting point (pitch) is one or two sentences: what the Reel would show or claim for the goal and audience above. Not a title, not meta talk.",
+      "topic is a label of two to four words naming the subject the starting point belongs to.",
+      "source is the number of the packet Reel the starting point was read from. The packet Reels, numbered:",
+      ...numbered,
+      "Spread the starting points over the packet where the Reels allow it; several may come from one Reel when it carries more than one angle.",
+      "Do not repeat a Reel's own title back; say what the own take on it is.",
+      ...(request.direction
+        ? [`Direction for this run, given by the person the slate is for: ${request.direction}`]
+        : []),
+      ...(request.taken && request.taken.length > 0
+        ? ["Starting points already on the slate; write something that is not one of these:", ...request.taken.map((pitch) => `- ${pitch}`)]
+        : []),
+    ],
+    request,
+  );
+}
+
 /** The five hypotheses the board groups by. Mirrors HOOK_HYPOTHESES in lib/hooks-board.ts. */
 const HOOK_HYPOTHESES = ["curiosity", "list", "contrast", "promise", "story"];
 

@@ -17,6 +17,7 @@ import type * as ideas from "../ideas.js";
 import type * as refresh from "../refresh.js";
 import type * as runs from "../runs.js";
 import type * as signals from "../signals.js";
+import type * as slates from "../slates.js";
 
 import type {
   ApiFromModules,
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   refresh: typeof refresh;
   runs: typeof runs;
   signals: typeof signals;
+  slates: typeof slates;
 }>;
 
 /**

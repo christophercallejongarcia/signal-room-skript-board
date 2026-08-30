@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowCounterClockwise,
   ArrowRight,
   ArrowsClockwise,
   Binoculars,
@@ -62,6 +63,8 @@ import {
   HOOK_INPUT_MAX,
   HOOK_RUN_HISTORY,
   OUTLIER_THRESHOLD,
+  SLATE_DIRECTION_MAX,
+  SLATE_SIZE,
   STRATEGY_AUDIENCE,
   STRATEGY_BRIDGE_URL,
   STRATEGY_EVIDENCE_LIMIT,
@@ -74,7 +77,7 @@ import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refr
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord } from "@/lib/contracts";
+import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord, Slate } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
@@ -106,6 +109,19 @@ type BriefingState = {
   briefings: Briefing[];
   phase: "loading" | "ready" | "running" | "error";
   /** id of the briefing on screen, null reads the newest one. */
+  selected: string | null;
+  error: string;
+};
+
+/** The stored slates as the Briefing tab sees them, newest first. */
+type SlateState = {
+  slates: Slate[];
+  phase: "loading" | "ready" | "running" | "error";
+  /** Position whose start is being written anew, null when none is. */
+  regenerating: number | null;
+  /** Position whose start is becoming an Idea, null when none is. */
+  capturing: number | null;
+  /** id of the slate on screen, null reads the newest one. */
   selected: string | null;
   error: string;
 };
@@ -307,6 +323,102 @@ export function SignalRoom() {
     }
   }
 
+  async function loadSlates() {
+    try {
+      const response = await fetch("/api/slates", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { slates: Slate[] };
+      setSlates((current) => ({ ...current, slates: data.slates, phase: "ready" }));
+    } catch {
+      setSlates((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
+  /** Puts one slate in place of the one with its id, newest first, and shows it. */
+  function placeSlate(slate: Slate, patch: Partial<SlateState> = {}) {
+    setSlates((current) => ({
+      ...current,
+      slates: [slate, ...current.slates.filter((item) => item.id !== slate.id)].sort((a, b) => b.day.localeCompare(a.day)),
+      selected: slate.id,
+      error: "",
+      ...patch,
+    }));
+  }
+
+  /** Reads the slate answer of a route, or throws its reason. */
+  async function slateAnswer(response: Response, failure: string) {
+    const payload = (await response.json().catch(() => ({}))) as { slate?: Slate; idea?: Idea; error?: string };
+    if (!response.ok || !payload.slate) throw new Error(payload.error || `${failure} (HTTP ${response.status}).`);
+    return payload as { slate: Slate; idea?: Idea };
+  }
+
+  /** The manual pass. Every local Delta-Refresh runs the same one; force rebuilds the day's slate. */
+  async function composeSlate(force: boolean) {
+    setSlates((current) => ({ ...current, phase: "running", error: "" }));
+    try {
+      const response = await fetch("/api/slates", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      const { slate } = await slateAnswer(response, "The slate could not be composed");
+      placeSlate(slate, { phase: "ready" });
+    } catch (error) {
+      setSlates((current) => ({ ...current, phase: "ready", error: error instanceof Error ? error.message : "The slate could not be composed." }));
+    }
+  }
+
+  /** One position anew; the other starts stay as they are. */
+  async function regenerateSlateStart(id: string, position: number) {
+    if (slates.regenerating !== null) return;
+    setSlates((current) => ({ ...current, regenerating: position, error: "" }));
+    try {
+      const response = await fetch("/api/slates/regenerate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, position }),
+      });
+      const { slate } = await slateAnswer(response, "The start could not be regenerated");
+      placeSlate(slate, { regenerating: null });
+    } catch (error) {
+      setSlates((current) => ({ ...current, regenerating: null, error: error instanceof Error ? error.message : "The start could not be regenerated." }));
+    }
+  }
+
+  /** Stores the direction for the next run on the slate. */
+  async function saveSlateDirection(id: string, direction: string) {
+    setSlates((current) => ({ ...current, error: "" }));
+    try {
+      const response = await fetch("/api/slates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, direction }),
+      });
+      const { slate } = await slateAnswer(response, "The direction could not be saved");
+      placeSlate(slate);
+    } catch (error) {
+      setSlates((current) => ({ ...current, error: error instanceof Error ? error.message : "The direction could not be saved." }));
+    }
+  }
+
+  /** The click: one start becomes an Idea with its source reel; the row says so and the Ideas tab has it. */
+  async function captureSlateStart(id: string, position: number) {
+    if (slates.capturing !== null) return;
+    setSlates((current) => ({ ...current, capturing: position, error: "" }));
+    try {
+      const response = await fetch("/api/slates/ideas", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, position }),
+      });
+      const { slate, idea } = await slateAnswer(response, "The idea could not be captured");
+      placeSlate(slate, { capturing: null });
+      if (idea) setIdeas((current) => ({ ...current, items: [idea, ...current.items.filter((item) => item.id !== idea.id)], phase: "ready" }));
+    } catch (error) {
+      setSlates((current) => ({ ...current, capturing: null, error: error instanceof Error ? error.message : "The idea could not be captured." }));
+    }
+  }
+
   async function loadFormatReview() {
     try {
       const response = await fetch("/api/format-reviews", { cache: "no-store" });
@@ -355,6 +467,7 @@ export function SignalRoom() {
     loadIdeas();
     loadHookRuns();
     loadBriefings();
+    loadSlates();
     loadFormatReview();
     checkBridge();
   }, []);
@@ -367,6 +480,14 @@ export function SignalRoom() {
   const [briefings, setBriefings] = useState<BriefingState>({
     briefings: [],
     phase: "loading",
+    selected: null,
+    error: "",
+  });
+  const [slates, setSlates] = useState<SlateState>({
+    slates: [],
+    phase: "loading",
+    regenerating: null,
+    capturing: null,
     selected: null,
     error: "",
   });
@@ -391,7 +512,7 @@ export function SignalRoom() {
       const response = await fetch("/api/refresh", { method: "POST" });
       if (response.ok) {
         const result = (await response.json()) as RefreshResult;
-        await Promise.all([loadStore(), loadRuns(), loadBriefings()]);
+        await Promise.all([loadStore(), loadRuns(), loadBriefings(), loadSlates()]);
         const failed = result.errors?.length ?? 0;
         const left = result.creatorsSkipped ?? 0;
         if (failed === 0 && left === 0) setLastRefresh("Refreshed just now");
@@ -744,6 +865,14 @@ export function SignalRoom() {
             onCompose={composeBriefingNow}
             onSelect={(id) => setBriefings((current) => ({ ...current, selected: id }))}
             onCreateIdea={captureIdea}
+            slate={{
+              state: slates,
+              onCompose: composeSlate,
+              onSelect: (id) => setSlates((current) => ({ ...current, selected: id })),
+              onRegenerate: regenerateSlateStart,
+              onDirection: saveSlateDirection,
+              onCapture: captureSlateStart,
+            }}
           />
         )}
         {activeTab === "radar" && <RadarView rankedSignals={research} />}
@@ -1058,6 +1187,7 @@ function BriefingView({
   onCompose,
   onSelect,
   onCreateIdea,
+  slate,
 }: {
   state: BriefingState;
   signals: SignalRecord[];
@@ -1066,6 +1196,7 @@ function BriefingView({
   onCompose: () => void;
   onSelect: (id: string) => void;
   onCreateIdea: (input: IdeaInput) => void;
+  slate: SlateSectionProps;
 }) {
   const stored = state.selected
     ? state.briefings.find((item) => item.id === state.selected) ?? state.briefings[0]
@@ -1186,7 +1317,180 @@ function BriefingView({
           ))}
         </div>
       )}
+
+      <SlateSection {...slate} live={live} />
     </div>
+  );
+}
+
+/** What the slate section needs from the shell: the stored slates and the five moves on them. */
+type SlateSectionProps = {
+  state: SlateState;
+  onCompose: (force: boolean) => void;
+  onSelect: (id: string) => void;
+  onRegenerate: (id: string, position: number) => void;
+  onDirection: (id: string, direction: string) => void;
+  onCapture: (id: string, position: number) => void;
+};
+
+/**
+ * The Produktions-Slate under the briefing: ten starting points the Bridge read
+ * from the same window, each with its topic label and the reel it came from.
+ * One start can be written anew while the other nine stay; a click turns one
+ * into an Idea; the direction typed here goes into every run after it.
+ */
+function SlateSection({ state, live, onCompose, onSelect, onRegenerate, onDirection, onCapture }: SlateSectionProps & { live: boolean }) {
+  const slate = state.selected
+    ? state.slates.find((item) => item.id === state.selected) ?? state.slates[0]
+    : state.slates[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const isToday = slate?.day === today;
+  const running = state.phase === "running";
+  const busy = running || state.regenerating !== null || state.capturing !== null;
+
+  return (
+    <section className="panel slate-panel">
+      <div className="panel-head">
+        <div>
+          <p className="kicker">Production slate / last {slate?.windowHours ?? BRIEFING_WINDOW_HOURS} hours</p>
+          <h2>{slate ? `${slate.starts.length} starting points` : "Today's starting points"}</h2>
+          <p>
+            {SLATE_SIZE} short-form starting points the bridge read from the reels of the window, each with a topic and the reel it
+            came from. Regenerate one and the rest stay; a click turns one into an idea with its source reel.
+          </p>
+        </div>
+        <div className="brief-controls">
+          {state.slates.length > 1 && (
+            <label className="sort-select">
+              Day
+              <select value={slate?.id ?? ""} onChange={(event) => onSelect(event.target.value)}>
+                {state.slates.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.day} ({item.starts.length})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {live && (
+            <button className={isToday ? "ghost-button" : "primary-button"} type="button" onClick={() => onCompose(isToday)} disabled={busy}>
+              {running ? "Composing…" : isToday ? "Rebuild today's slate" : "Compose today's slate"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="slate-status">
+        {state.phase === "loading" && "Loading the slates…"}
+        {state.phase === "error" && "The slates could not be read."}
+        {state.error && <span className="bad">{state.error}</span>}
+        {!state.error && slate && state.phase !== "loading" && (
+          <>
+            Composed {formatStamp(slate.generatedAt)}
+            {slate.updatedAt !== slate.generatedAt && ` · touched ${formatStamp(slate.updatedAt)}`}
+            {slate.directionApplied ? ` · direction applied: “${slate.directionApplied}”` : " · no direction yet"}
+          </>
+        )}
+        {!state.error && !slate && state.phase === "ready" && (live
+          ? "No slate yet. Every local refresh writes one, or compose today's now."
+          : "Demo fixtures. The slate reads the stored corpus only: add a creator to the watchlist, then refresh.")}
+      </div>
+
+      {slate && slate.starts.length === 0 && (
+        <p className="empty-note">
+          Nothing was published in the last {slate.windowHours} hours, so there was nothing to read a start from. The next refresh writes the next slate.
+        </p>
+      )}
+
+      {slate && slate.starts.length > 0 && (
+        <ol className="slate-list">
+          {slate.starts.map((start) => {
+            const regenerating = state.regenerating === start.position;
+            const capturing = state.capturing === start.position;
+            return (
+              <li className={regenerating ? "slate-row pending" : "slate-row"} key={start.position}>
+                <span className="rank">{String(start.position).padStart(2, "0")}</span>
+                <div>
+                  <div className="meta">
+                    <span className="topic">{start.topic}</span>
+                    <span>{start.sourceCreator}</span>
+                    <strong>{formatOutlier(start.outlier)} outlier</strong>
+                    <span>{formatNumber(start.plays)} plays</span>
+                    {start.regeneratedAt && <span>regenerated {formatStamp(start.regeneratedAt)}</span>}
+                  </div>
+                  <p className="pitch">{start.pitch}</p>
+                  <p className="source">
+                    From {start.sourceCreator}: {start.sourceTitle}
+                    {start.sourceUrl && (
+                      <a href={start.sourceUrl} target="_blank" rel="noreferrer" aria-label="Open source reel"><ArrowSquareOut size={12} /></a>
+                    )}
+                  </p>
+                </div>
+                <div className="actions">
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => onRegenerate(slate.id, start.position)}
+                    disabled={busy}
+                    title="Write this start anew; the other starts stay"
+                  >
+                    <ArrowCounterClockwise size={13} className={regenerating ? "spin" : ""} /> {regenerating ? "Writing…" : "Regenerate"}
+                  </button>
+                  {start.ideaId ? (
+                    <span className="status-chip"><CheckCircle size={13} weight="fill" /> In ideas</span>
+                  ) : (
+                    <button className="ghost-button" type="button" onClick={() => onCapture(slate.id, start.position)} disabled={busy}>
+                      <Lightbulb size={13} /> {capturing ? "Capturing…" : "Create idea"}
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {slate && slate.id === state.slates[0]?.id ? (
+        <SlateDirectionForm key={slate.id} slate={slate} disabled={busy} onSave={(direction) => onDirection(slate.id, direction)} />
+      ) : slate ? (
+        <p className="slate-direction-note">
+          {slate.directionApplied ? `Direction this slate was given: “${slate.directionApplied}”.` : "This slate was given no direction."} The
+          direction for the next run is set on the newest slate.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** The direction for the next run. Only the newest slate carries it, because that is the one the next run reads. */
+function SlateDirectionForm({ slate, disabled, onSave }: { slate: Slate; disabled: boolean; onSave: (direction: string) => void }) {
+  const [direction, setDirection] = useState(slate.direction ?? "");
+  const stored = slate.direction ?? "";
+  const dirty = direction.trim() !== stored;
+
+  return (
+    <form
+      className="slate-direction"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(direction.trim());
+      }}
+    >
+      <label htmlFor="slate-direction">Direction for the next run</label>
+      <textarea
+        id="slate-direction"
+        placeholder="e.g. mehr Werkzeug, weniger Meinung"
+        value={direction}
+        maxLength={SLATE_DIRECTION_MAX}
+        onChange={(event) => setDirection(event.target.value)}
+      />
+      <div className="slate-direction-foot">
+        <span>
+          {stored ? "Stored. Goes into every regenerated start and into tomorrow's slate until changed." : "Not stored yet. Once saved it goes into every run after this one."}
+        </span>
+        <button className="secondary-button" type="submit" disabled={disabled || !dirty}>Save direction</button>
+      </div>
+    </form>
   );
 }
 

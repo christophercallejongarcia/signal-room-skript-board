@@ -125,6 +125,18 @@ Nicht: "Momentum", "Velocity" (Velocity ist Plays pro Stunde beim Scorer), "Rank
 Der eine Satz unter einem Briefing-Reel: wie Chris dieses Thema für sein Publikum drehen würde. Kommt vom Bridge über `/v1/briefing`, eine Liste in der Reihenfolge der Items, und wird von `applyAngles` positionsweise angehängt. Der Angle ist Beiwerk: fällt der Bridge aus, steht das Briefing ohne ihn (`angles: false`). Beim "Create idea" wird er das Ziel der Idee.
 Nicht: "Take", "Spin", "Kommentar"; "Angle" allein meint den Strategy-Entwurf (`StrategyResponse.angle`).
 
+**Slate**
+Das Produktions-Slate des Tages: `SLATE_SIZE` (10) Startpunkte, die der Bridge aus den Signalen der letzten `BRIEFING_WINDOW_HOURS` (24) liest. Gespeichert in der Tabelle `slates`, ein Dokument je Tag unter `slate-<YYYY-MM-DD>`; anders als das Briefing wird es von einem zweiten Refresh am selben Tag nicht überschrieben, sondern gefunden und so gelassen (`runSlate` in `lib/slate-run.ts`), damit neu erzeugte Startpunkte und daraus entstandene Ideas stehen bleiben. `POST /api/slates` mit `{ force: true }` baut das Tagesdokument neu. Das Paket sind dieselben Reels wie beim Briefing (`slateSources` in `lib/slate.ts` über `selectBriefingSignals`, höchstens `SLATE_SOURCE_LIMIT` 12, nur Reels mit Titel und Handle), der Bridge antwortet auf `/v1/slate` gegen `slateOutputSchema(count, sourceCount)`. Anders als der Angle ist das Slate das Dokument selbst: fällt der Bridge aus, entsteht keins. Der Convex-Cron schreibt kein Slate (kein Bridge in der Cloud); der lokale Refresh und der Knopf im Briefing-Tab tun es. Angezeigt als Abschnitt "Production slate" unter der Briefing-Liste, ältere Tage über den Day-Picker.
+Nicht: "Vorschlagsliste", "Backlog", "Queue", "Briefing" (das Briefing sind die Reels, das Slate die Startpunkte daraus).
+
+**Startpunkt**
+Ein Eintrag auf dem Slate (`SlateStart`): `pitch` (ein bis zwei Sätze, was das Reel zeigen oder behaupten würde), `topic` (das Themen-Etikett, zwei bis vier Worte) und das Quell-Signal (`sourceSignalId`, `sourceCreator`, `sourceTitle`, `sourceUrl`, Outlier, Plays). Der Bridge nennt das Quell-Signal als Position im Paket (`source`, 1-basiert), nie als Titel, damit zwei Reels mit gleichem Titel auseinander bleiben; `parseSlateAnswer` lehnt eine Antwort mit falscher Anzahl oder einer Position außerhalb des Pakets ganz ab. Ein einzelner Startpunkt wird über `POST /api/slates/regenerate` neu erzeugt (`regenerateStart`: Paket aus dem Fenster des Slates, die übrigen Pitches gehen als `taken` mit, damit der neue keiner davon ist; `replaceStart` setzt ihn an dieselbe Position mit `regeneratedAt`, die anderen bleiben unverändert). Der Klick "Create idea" (`POST /api/slates/ideas`, `ideaFromStart`) macht aus ihm eine Idea mit `sourceSignalId`, `sourceCreator`, `sourceUrl` und dem Pitch als Titel; der Startpunkt trägt danach die `ideaId` und wird nicht zweimal zur Idea.
+Nicht: "Vorschlag", "Prompt", "Hook" (ein Hook ist die erste Zeile, ein Startpunkt der ganze Ansatz), "Idea" (das wird er erst per Klick).
+
+**Richtung**
+Der Freitext für den nächsten Durchlauf ("mehr Werkzeug, weniger Meinung"), gespeichert als `direction` am Slate über `PATCH /api/slates` (Body geparst von `parseSlateDirection`, höchstens `SLATE_DIRECTION_MAX` 500 Zeichen, leer löscht sie). Sie wirkt in jedem Lauf danach: beim Neu-Erzeugen eines Startpunkts, beim Neubau des Tages und im Slate des nächsten Tages, weil `runSlate` die Richtung vom neuesten gespeicherten Slate übernimmt. `directionApplied` am Slate sagt, welche Richtung der letzte Lauf bekommen hat; die Statuszeile zeigt sie.
+Nicht: "Prompt", "Instruktion", "Feedback", "Direction" (nur als Feldname und englisches UI-Label).
+
 ## Ergänzende Begriffe
 
 **Idea**

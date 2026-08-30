@@ -5,7 +5,7 @@ import {
   BRIEFING_WINDOW_HOURS,
 } from "./config.ts";
 import { outlierScorer } from "./adapters/scoring/outlier.ts";
-import type { Briefing, BriefingItem, Creator, RankedSignal, SignalRecord } from "./contracts";
+import type { Briefing, BriefingItem, Creator, RankedSignal, SignalRecord, StrategyEvidenceItem } from "./contracts";
 import { withoutOwned } from "./discover-filter.ts";
 import { bounded } from "./ideas.ts";
 import { captionExcerpt } from "./strategy-evidence.ts";
@@ -128,6 +128,21 @@ export function buildBriefing(
     angles: false,
     items,
   };
+}
+
+/**
+ * The ranked reels as the Bridge reads them. A briefing item already carries the
+ * excerpt and the numbers, so the packet is a projection, not a second selection.
+ * The Briefing and the Slate hand the Bridge the same shape.
+ */
+export function briefingPacket(items: Pick<BriefingItem, "title" | "creator" | "caption" | "plays" | "outlier">[]): StrategyEvidenceItem[] {
+  return items.map((item) => ({
+    title: item.title,
+    creator: item.creator,
+    caption: item.caption,
+    plays: item.plays,
+    outlier: item.outlier,
+  }));
 }
 
 /**
