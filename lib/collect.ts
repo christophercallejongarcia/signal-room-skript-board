@@ -61,30 +61,53 @@ export async function collectAndStore(creator: Creator, overrides: Partial<Colle
 /**
  * The transcript pass of a refresh: the outlier reels without an outcome yet go
  * to the transcript actor once, at most transcriptLimit of them. A reel with
- * text stores it as ready, one without is marked silent so it is never asked
- * for again; a reel the actor did not answer stays open for the next run. The
- * actor's usage counts into the same run as the collection.
+ * text stores it as ready, one the actor answered without text is silent, one
+ * the actor left out while answering others is missing; all three are final,
+ * so no reel is paid for twice. An answer that matches none of the reels is
+ * treated as an actor fault (most likely a changed output shape), the reels
+ * stay open and the run carries the error. The actor's usage counts into the
+ * same run as the collection.
  */
 async function transcribeOutliers(deps: CollectDeps, creators: Creator[]): Promise<{ count: TranscriptCount; usage: RunUsage }> {
-  const count: TranscriptCount = { added: 0, silent: 0 };
+  const count: TranscriptCount = { added: 0, silent: 0, missing: 0 };
+  if (deps.transcriptLimit <= 0) return { count, usage: NO_USAGE };
   const batch = pickTranscriptBatch(await deps.storage.listSignals(), creators, { limit: deps.transcriptLimit });
   if (batch.length === 0) return { count, usage: NO_USAGE };
   const { results, usage } = await deps.transcribe(batch);
-  const byId = new Map(batch.map((reel) => [reel.id, reel]));
+  const answered = new Map(results.map((result) => [result.id, result.transcript]));
+  if (![...answered.keys()].some((id) => batch.some((reel) => reel.id === id))) {
+    throw new TranscriptMismatch(batch.length, results.length, usage);
+  }
   const patched: SignalRecord[] = [];
-  for (const result of results) {
-    const reel = byId.get(result.id);
-    if (!reel) continue;
-    if (result.transcript) {
-      patched.push({ ...reel, transcript: result.transcript, transcriptStatus: "ready" });
+  for (const reel of batch) {
+    // savedAt is Chris' mark: never part of what a refresh writes back.
+    const { savedAt, ...stored } = reel;
+    void savedAt;
+    if (!answered.has(reel.id)) {
+      patched.push({ ...stored, transcriptStatus: "missing" });
+      count.missing += 1;
+    } else if (answered.get(reel.id)) {
+      patched.push({ ...stored, transcript: answered.get(reel.id)!, transcriptStatus: "ready" });
       count.added += 1;
     } else {
-      patched.push({ ...reel, transcriptStatus: "silent" });
+      patched.push({ ...stored, transcriptStatus: "silent" });
       count.silent += 1;
     }
   }
-  if (patched.length > 0) await deps.storage.saveSignals(patched);
+  await deps.storage.saveSignals(patched);
   return { count, usage };
+}
+
+/** The actor ran and was paid, but nothing it returned belongs to the reels it was sent. */
+class TranscriptMismatch extends Error {
+  // Assigned in the body, not as a parameter property: the tests import this
+  // module under Node's type-stripping, which cannot rewrite that shorthand.
+  readonly usage: RunUsage;
+
+  constructor(sent: number, returned: number, usage: RunUsage) {
+    super(`transcript actor answered ${returned} item(s), none for the ${sent} reel(s) sent`);
+    this.usage = usage;
+  }
 }
 
 function addCounts(a: CoverCacheResult, b: CoverCacheResult): CoverCacheResult {
@@ -169,15 +192,17 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
 
   // Transcripts ride on the same run and the same budget as the collection. A
   // failing actor is one logged error, never a lost refresh.
-  let transcripts: TranscriptCount = { added: 0, silent: 0 };
-  const creatorsFailed = errors.length;
+  let transcripts: TranscriptCount = { added: 0, silent: 0, missing: 0 };
+  let transcriptsFailed = false;
   try {
     const pass = await transcribeOutliers(deps, instagram);
     transcripts = pass.count;
     usage = addUsage(usage, pass.usage);
   } catch (error) {
+    transcriptsFailed = true;
     errors.push({ creatorId: "transcripts", handle: "transcripts", message: error instanceof Error ? error.message : String(error) });
-    usage = addUsage(usage, { unreported: 1 });
+    // A mismatch still ran and was paid; any other failure lost its figure with the error.
+    usage = addUsage(usage, error instanceof TranscriptMismatch ? error.usage : { unreported: 1 });
   }
 
   // Second pass over the stored corpus: a cover that failed on an earlier run
@@ -189,7 +214,7 @@ export async function runRefresh(overrides: Partial<CollectDeps> = {}): Promise<
   const run: Run = {
     id: newRunId(startedAt),
     kind: "refresh",
-    status: runStatus(creators.length, creatorsFailed, skipped.length, errors.length > creatorsFailed),
+    status: runStatus(creators.length, errors.length - (transcriptsFailed ? 1 : 0), skipped.length, transcriptsFailed),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),

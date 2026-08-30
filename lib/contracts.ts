@@ -40,8 +40,12 @@ export type SignalRecord = {
   savedAt?: string;
   /** What is said in the reel, fetched once for reels above the threshold. Absent until fetched. */
   transcript?: string;
-  /** silent = the reel has no usable audio track; it is never tried again. ready = transcript is set. */
-  transcriptStatus?: "ready" | "silent";
+  /**
+   * ready = transcript is set. silent = the actor answered without text (no usable
+   * audio track). missing = the actor did not answer this reel although it answered
+   * others (gone or private). All three are final; the reel is never sent again.
+   */
+  transcriptStatus?: TranscriptStatus;
 };
 
 export type RankedSignal = SignalRecord & {
@@ -99,8 +103,10 @@ export type Run = {
   transcripts?: TranscriptCount;
 };
 
+export type TranscriptStatus = "ready" | "silent" | "missing";
+
 /** Outcome of one transcript pass. */
-export type TranscriptCount = { added: number; silent: number };
+export type TranscriptCount = { added: number; silent: number; missing: number };
 
 export type RefreshResult = {
   creatorsChecked: number;

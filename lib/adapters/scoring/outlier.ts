@@ -10,6 +10,11 @@ export function reach(record: SignalRecord) {
   return record.plays ?? record.views ?? 0;
 }
 
+/** plays (or views) over the creator's audience: the Outlier factor of ADR-0003. 0 without an audience. */
+export function outlierFactor(record: SignalRecord, audience: number) {
+  return audience > 0 ? reach(record) / audience : 0;
+}
+
 function median(values: number[]) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -45,7 +50,7 @@ export const outlierScorer: SignalScorer = {
         const creator = creatorsById.get(record.creatorId);
         if (!creator) return null;
         const value = reach(record);
-        const outlier = creator.audience > 0 ? value / creator.audience : 0;
+        const outlier = outlierFactor(record, creator.audience);
         const baseline = medians.get(creator.id) ?? 0;
         const channelRelative = baseline > 0 ? value / baseline : 0;
         const ageHours = Math.max(1, (now.getTime() - new Date(record.publishedAt).getTime()) / HOUR);

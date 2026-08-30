@@ -1,13 +1,13 @@
 import type { Creator, SignalRecord } from "./contracts";
 import { OUTLIER_THRESHOLD, TRANSCRIPT_LIMIT_PER_RUN } from "./config.ts";
-import { reach } from "./adapters/scoring/outlier.ts";
+import { outlierFactor } from "./adapters/scoring/outlier.ts";
 
 /** The one field pair the whole app reads a transcript from. */
 export type TranscriptFields = Pick<SignalRecord, "transcript" | "transcriptStatus">;
 
-/** True once the reel was handled: transcript stored, or marked silent. Both are final. */
+/** True once the reel has a final status: ready, silent or missing. */
 export function hasTranscriptOutcome(signal: TranscriptFields) {
-  return Boolean(signal.transcript?.trim()) || signal.transcriptStatus !== undefined;
+  return signal.transcriptStatus !== undefined;
 }
 
 export type TranscriptBatchOptions = { threshold?: number; limit?: number };
@@ -22,10 +22,7 @@ export function pickTranscriptBatch(signals: SignalRecord[], creators: Creator[]
   const threshold = options.threshold ?? OUTLIER_THRESHOLD;
   const limit = Math.max(1, Math.floor(options.limit ?? TRANSCRIPT_LIMIT_PER_RUN));
   const audience = new Map(creators.map((creator) => [creator.id, creator.audience]));
-  const outlierOf = (signal: SignalRecord) => {
-    const followers = audience.get(signal.creatorId) ?? 0;
-    return followers > 0 ? reach(signal) / followers : 0;
-  };
+  const outlierOf = (signal: SignalRecord) => outlierFactor(signal, audience.get(signal.creatorId) ?? 0);
   return signals
     .filter((signal) => signal.format === "reel" && signal.url && !hasTranscriptOutcome(signal))
     .filter((signal) => outlierOf(signal) >= threshold)

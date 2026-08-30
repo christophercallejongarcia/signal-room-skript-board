@@ -1,4 +1,5 @@
 import type { RunUsage, SignalRecord } from "../../contracts";
+import { sumUsage } from "../../run-cost.ts";
 import { runActor, type ActorResult } from "./apify-client.ts";
 
 /** The transcript actor. Pay-per-event: a start fee, one fee per result, one per audio minute. */
@@ -70,5 +71,5 @@ export async function transcribeReels(reels: SignalRecord[], run: typeof runActo
   const urls = reels.flatMap((reel) => (reel.url ? [reel.url] : []));
   if (urls.length === 0) return { results: [], usage: { unreported: 0 } };
   const { items, usage }: ActorResult<unknown> = await run(TRANSCRIPT_ACTOR, { bulkUrls: urls });
-  return { results: readTranscriptItems(items, reels), usage: { unreported: 0, ...usage } };
+  return { results: readTranscriptItems(items, reels), usage: sumUsage([usage]) };
 }

@@ -1,6 +1,6 @@
 import type { SignalRecord } from "./contracts";
 
-/** Longest spoken opening kept as a hook, in characters. */
+/** Longest spoken hook kept, in characters. */
 export const SPOKEN_HOOK_MAX = 120;
 
 /**
@@ -16,11 +16,12 @@ export function hookLine(caption: string | undefined) {
 /**
  * The first sentence of a transcript, decoration stripped, cut at a word
  * boundary past SPOKEN_HOOK_MAX. The spoken first seconds are the Hook of a
- * reel whose caption is often empty or an emoji line.
+ * reel whose caption is often empty or an emoji line. A full stop after a
+ * digit ("2. Tipp") is an ordinal, not a sentence end.
  */
 export function spokenHook(transcript: string) {
   const flat = transcript.replace(/\s+/g, " ").trim().replace(/^[^\p{L}\p{Nd}]+/u, "");
-  const sentence = flat.match(/^.*?[.!?](?=\s|$)/u)?.[0] ?? flat;
+  const sentence = flat.match(/^.*?(?:[!?]|(?<!\p{Nd})\.)(?=\s|$)/u)?.[0] ?? flat;
   if (sentence.length <= SPOKEN_HOOK_MAX) return sentence;
   const cut = sentence.slice(0, SPOKEN_HOOK_MAX);
   return `${(cut.includes(" ") ? cut.slice(0, cut.lastIndexOf(" ")) : cut).trimEnd()}…`;
@@ -30,7 +31,7 @@ export function spokenHook(transcript: string) {
 export type HookSource = Pick<SignalRecord, "transcript" | "caption" | "title">;
 
 /**
- * The Hook of a signal, decided here and nowhere else: the spoken opening when a
+ * The Hook of a signal, decided here and nowhere else: the spoken hook when a
  * transcript exists, otherwise the first caption line, otherwise the title
  * (Instagram derives the title from the first caption line anyway).
  */

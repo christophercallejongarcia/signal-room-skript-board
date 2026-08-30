@@ -47,10 +47,9 @@ export function selectEvidence(
     // Rank on the exact factor; rounding is presentation and would collapse neighbours.
     .sort((a, b) => b.outlier - a.outlier || (b.plays ?? b.views) - (a.plays ?? a.views))
     .slice(0, limit)
-    // The title is the reel's Hook. With a transcript that is the spoken opening; without one the
-    // stored title already is the first caption line, so hookOf would only re-derive it.
+    // The title of an evidence entry is the reel's Hook, read the one way the app reads it.
     .map((signal) => ({
-      title: signal.transcript ? hookOf(signal) || signal.title : signal.title,
+      title: hookOf(signal) || signal.title,
       creator: creatorMap.get(signal.creatorId)!.handle,
       caption: captionExcerpt(signal.caption),
       plays: signal.plays ?? signal.views,

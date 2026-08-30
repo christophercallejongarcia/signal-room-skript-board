@@ -3,8 +3,6 @@ import type { Creator, RankedSignal } from "./contracts";
 import { isOutlier, isOwned } from "./discover-filter.ts";
 import { hookLine, hookOf } from "./hook-source.ts";
 
-export { hookLine };
-
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
 

@@ -5,8 +5,8 @@ import {
   UNCLASSIFIED,
   buildFormatSignals,
   classifyCaption,
-  hookLine,
 } from "../lib/format-signals.ts";
+import { hookLine } from "../lib/hook-source.ts";
 
 const NOW = Date.parse("2026-08-24T12:00:00.000Z");
 const DAY = 86_400_000;

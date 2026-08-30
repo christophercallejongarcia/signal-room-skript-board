@@ -50,14 +50,48 @@ test("outlier reels get a transcript once; a reel without speech is marked silen
   assert.equal(storage.signals.get("ig-spoken").transcript, undefined);
   assert.equal(storage.signals.get("ig-quiet").transcriptStatus, undefined);
   const run = storage.runs[0];
-  assert.deepEqual(run.transcripts, { added: 1, silent: 1 });
+  assert.deepEqual(run.transcripts, { added: 1, silent: 1, missing: 0 });
   assert.equal(run.status, "ok");
   assert.equal(run.usage.costUsd, 0.1);
 
   // Second run: nothing to fetch, the actor is not called.
   await runRefresh(deps(storage, transcribe));
   assert.equal(calls.length, 1);
-  assert.deepEqual(storage.runs[1].transcripts, { added: 0, silent: 0 });
+  assert.deepEqual(storage.runs[1].transcripts, { added: 0, silent: 0, missing: 0 });
+});
+
+test("a reel the actor left out while answering others is marked missing; the saved mark is never written back", async () => {
+  const storage = fakeStorage([{ ...reel("loud", 5000), savedAt: "2026-08-01T00:00:00.000Z" }]);
+  let written = [];
+  const save = storage.saveSignals.bind(storage);
+  storage.saveSignals = async (records) => { written = written.concat(records); return save(records); };
+  const transcribe = async () => ({ results: [{ id: "ig-spoken", transcript: "Moin." }], usage: transcriptUsage });
+  await runRefresh(deps(storage, transcribe));
+  assert.equal(storage.signals.get("ig-loud").transcriptStatus, "missing");
+  assert.equal(storage.signals.get("ig-loud").savedAt, "2026-08-01T00:00:00.000Z");
+  assert.ok(written.filter((r) => r.transcriptStatus).every((r) => !("savedAt" in r)), "transcript write-back carries no savedAt");
+  assert.deepEqual(storage.runs[0].transcripts, { added: 1, silent: 0, missing: 1 });
+  // Nothing is sent twice.
+  const calls = [];
+  await runRefresh(deps(storage, async (reels) => { calls.push(reels); return { results: [], usage: transcriptUsage }; }));
+  assert.deepEqual(calls, []);
+});
+
+test("an answer that matches none of the reels leaves them open, is paid and is logged as an error", async () => {
+  const storage = fakeStorage();
+  await runRefresh(deps(storage, async () => ({ results: [{ id: "ig-unknown", transcript: "x" }], usage: transcriptUsage })));
+  const run = storage.runs[0];
+  assert.equal(storage.signals.get("ig-loud").transcriptStatus, undefined);
+  assert.equal(run.status, "partial");
+  assert.match(run.errors[0].message, /answered 1 item\(s\), none for the 2 reel\(s\)/);
+  assert.equal(run.usage.costUsd, 0.1);
+  assert.equal(run.usage.unreported, 0);
+});
+
+test("transcriptLimit 0 skips the actor", async () => {
+  const storage = fakeStorage();
+  await runRefresh(deps(storage, async () => { throw new Error("must not run"); }, { transcriptLimit: 0 }));
+  assert.equal(storage.runs[0].status, "ok");
 });
 
 test("the transcript limit bounds one run; the rest wait for the next", async () => {

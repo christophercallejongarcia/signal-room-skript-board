@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { pickTranscriptBatch } from "../lib/transcripts.ts";
-import { hookOf, spokenHook } from "../lib/hook-source.ts";
 
 const creators = [
   { id: "a", name: "Ada", handle: "@ada", network: "instagram", audience: 1000, accent: "#000" },
@@ -40,8 +39,9 @@ test("only reels at or above the threshold get a transcript", () => {
 
 test("a reel with a transcript or marked silent is never picked again", () => {
   const signals = [
-    reel("done", "a", 5000, { transcript: "Hallo." }),
+    reel("done", "a", 5000, { transcript: "Hallo.", transcriptStatus: "ready" }),
     reel("silent", "a", 5000, { transcriptStatus: "silent" }),
+    reel("missing", "a", 5000, { transcriptStatus: "missing" }),
     reel("open", "a", 5000),
   ];
   const batch = pickTranscriptBatch(signals, creators, { threshold: 2, limit: 10 });
@@ -58,18 +58,4 @@ test("strongest outlier first, cut at the limit; unknown creators and reels with
   ];
   const batch = pickTranscriptBatch(signals, creators, { threshold: 2, limit: 2 });
   assert.deepEqual(batch.map((s) => s.id), ["ten", "five"]);
-});
-
-test("hookOf reads the spoken opening when a transcript exists, else the first caption line", () => {
-  assert.equal(hookOf({ title: "t", caption: "🔥 Nie wieder Copy-Paste\nzweite Zeile" }), "Nie wieder Copy-Paste");
-  assert.equal(hookOf({ title: "Untitled reel", caption: "🔥🔥🔥", transcript: "Hör auf mit Notion! Das ist der Grund." }), "Hör auf mit Notion!");
-  assert.equal(hookOf({ title: "Reel title" }), "Reel title");
-});
-
-test("spokenHook bounds a long first sentence at a word boundary", () => {
-  const long = `${"wort ".repeat(60)}ende.`;
-  const hook = spokenHook(long);
-  assert.ok(hook.length <= 121, hook);
-  assert.ok(hook.endsWith("…"));
-  assert.equal(spokenHook("   "), "");
 });

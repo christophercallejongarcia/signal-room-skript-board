@@ -1428,7 +1428,7 @@ function FormatsView({
           <p className="hero-kicker">Pattern desk / trailing {FORMAT_WINDOW_DAYS} days</p>
           <h1>Format Signals</h1>
           <p className="hero-sub">
-            Recurring hook shapes read off the first caption line of every reel above {formatThreshold(threshold)} outlier.
+            Recurring hook shapes read off the hook of every reel above {formatThreshold(threshold)} outlier: the spoken first sentence where a transcript exists, else the first caption line.
             The list of shapes lives in lib/format-signals.ts; anything the rules miss is counted, not hidden.
           </p>
         </div>

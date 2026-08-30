@@ -27,7 +27,7 @@ function reel(id, creatorId, outlier, daysAgo, extra = {}) {
     thumbnailSeed: id,
     topic: "ai workflows",
     plays: Math.round(outlier * 1000),
-    caption: `Caption for ${id}`,
+    caption: `Reel ${id}\nCaption for ${id}`,
     format: "reel",
     score: 0,
     relativeReach: outlier,
@@ -88,7 +88,7 @@ test("carries title, creator handle, caption excerpt, plays and outlier", () => 
   const [item] = selectEvidence(signals, creators, options);
 
   assert.deepEqual(item, {
-    title: "Reel one",
+    title: "Zwei Zeilen",
     creator: "@ben",
     caption: "Zwei Zeilen Ueber Beweise",
     plays: 9000,

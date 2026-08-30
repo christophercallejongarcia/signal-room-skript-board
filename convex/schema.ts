@@ -21,7 +21,7 @@ export const runFields = {
       costUsd: v.optional(v.number()),
     }),
   ),
-  transcripts: v.optional(v.object({ added: v.number(), silent: v.number() })),
+  transcripts: v.optional(v.object({ added: v.number(), silent: v.number(), missing: v.number() })),
 };
 
 /** Short-form plan attached to an idea; shared with convex/ideas.ts. */
@@ -222,7 +222,7 @@ export default defineSchema({
     topic: v.string(),
     savedAt: v.optional(v.string()),
     transcript: v.optional(v.string()),
-    transcriptStatus: v.optional(v.union(v.literal("ready"), v.literal("silent"))),
+    transcriptStatus: v.optional(v.union(v.literal("ready"), v.literal("silent"), v.literal("missing"))),
   })
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])

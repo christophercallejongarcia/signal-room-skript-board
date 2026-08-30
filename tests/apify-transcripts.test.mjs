@@ -31,6 +31,8 @@ test("transcribeReels sends every url in one actor run and hands the usage on", 
   const out = await transcribeReels(reels, run);
   assert.deepEqual(calls, [[TRANSCRIPT_ACTOR, { bulkUrls: reels.map((r) => r.url) }]]);
   assert.deepEqual(out, { results: [{ id: "ig-AAA", transcript: "Moin." }], usage: { unreported: 0, costUsd: 0.02 } });
+  const silent = await transcribeReels(reels, async () => ({ items: [], usage: {} }));
+  assert.equal(silent.usage.unreported, 1, "an actor run without a figure counts as unreported");
 });
 
 test("no reels: no actor run, nothing to pay", async () => {
