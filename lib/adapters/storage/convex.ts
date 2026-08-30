@@ -4,7 +4,7 @@ import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
 import { ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter } from "../../contracts";
 
 /**
  * Whoever can call Convex functions: the HTTP client from the Next server, or an
@@ -17,6 +17,10 @@ export type ConvexCaller = {
 };
 
 export type ConvexCollectStorage = CollectStorage & Pick<StorageAdapter, "saveBriefing">;
+
+export type ConvexHashtagStorage = Pick<StorageAdapter, "saveHashtagPosts" | "saveRun"> & {
+  listHashtagPosts(limit?: number): Promise<HashtagPost[]>;
+};
 
 /** The slice a collection pass and the briefing after it touch. Declared once for both callers. */
 export function collectStorageOver(convex: ConvexCaller): ConvexCollectStorage {
@@ -48,12 +52,35 @@ export function collectStorageOver(convex: ConvexCaller): ConvexCollectStorage {
   };
 }
 
+/** The hashtag sweep's storage slice, shared by the HTTP client and Convex action. */
+export function hashtagStorageOver(convex: ConvexCaller): ConvexHashtagStorage {
+  return {
+    async listHashtagPosts(limit = 5000) {
+      return (await convex.query(anyApi.hashtagPosts.list, { limit })) as HashtagPost[];
+    },
+    async saveHashtagPosts(posts) {
+      const total: SaveResult = { inserted: 0, updated: 0 };
+      for (let i = 0; i < posts.length; i += 100) {
+        const part = (await convex.mutation(anyApi.hashtagPosts.bulkUpsert, { posts: posts.slice(i, i + 100) })) as SaveResult;
+        total.inserted += part.inserted;
+        total.updated += part.updated;
+      }
+      return total;
+    },
+    async saveRun(run) {
+      await convex.mutation(anyApi.runs.upsert, { run });
+    },
+  };
+}
+
 /** Uses anyApi so the adapter compiles before `npx convex dev` generates convex/_generated. */
 export function createConvexStorage(url: string): StorageAdapter & { upsertCreator(creator: Creator): Promise<void> } {
   const client = new ConvexHttpClient(url);
   const shared = collectStorageOver({ query: (ref, args) => client.query(ref, args), mutation: (ref, args) => client.mutation(ref, args) });
+  const hashtag = hashtagStorageOver({ query: (ref, args) => client.query(ref, args), mutation: (ref, args) => client.mutation(ref, args) });
   return {
     ...shared,
+    ...hashtag,
     async addCreator(creator) {
       await shared.upsertCreator(creator);
     },

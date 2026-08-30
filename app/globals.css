@@ -226,6 +226,7 @@ main {
   font-size: 13.5px;
   line-height: 1.55;
 }
+.hero-side { display: grid; justify-items: end; gap: 12px; }
 
 .stat-blocks {
   display: grid;
@@ -694,7 +695,7 @@ main {
 .radar-rows { border-top: 1px solid var(--line); }
 .radar-row {
   display: grid;
-  grid-template-columns: 34px minmax(160px, 220px) minmax(0, 1fr) repeat(3, 84px);
+  grid-template-columns: 34px minmax(170px, 220px) minmax(220px, 1fr) repeat(4, 92px);
   gap: 16px;
   align-items: center;
   padding: 16px 8px;
@@ -703,11 +704,21 @@ main {
 .radar-row .rank { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
 .radar-row h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .radar-row .tag { display: inline-flex; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 10px; }
-.radar-row p { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.radar-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.radar-proof { min-width: 0; }
+.radar-proof p { margin: 0 0 5px; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.radar-proof a { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; color: var(--ink); font-size: 10.5px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.radar-proof a:hover { color: var(--accent); }
 .radar-row .metric { text-align: right; }
 .radar-row .metric strong { display: block; font-family: var(--font-mono); font-size: 14px; font-weight: 500; }
 .radar-row .metric span { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; }
+.radar-row .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.3; }
 .radar-row .metric.lime strong { color: var(--accent); }
+
+.demo-note, .error-note { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--muted); font-size: 11px; }
+.demo-note svg { color: var(--accent); flex: none; }
+.error-note { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.error-note svg { color: var(--danger); flex: none; }
 
 /* ---------- Formats ---------- */
 
@@ -987,13 +998,14 @@ main {
   .signal-grid.cols-4, .signal-grid.cols-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .format-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .two-col { grid-template-columns: 1fr; }
-  .radar-row { grid-template-columns: 34px minmax(0, 1fr) repeat(3, 70px); }
-  .radar-row p { display: none; }
+  .radar-row { grid-template-columns: 34px minmax(0, 1fr) repeat(4, 70px); }
+  .radar-proof { display: none; }
 }
 
 @media (max-width: 760px) {
   main { width: calc(100% - 28px); }
   .hero { grid-template-columns: 1fr; }
+  .hero-side { justify-items: stretch; }
   .stat-blocks { grid-auto-flow: row; grid-template-columns: 1fr 1fr 1fr; }
   .filter-bar { grid-template-columns: 1fr 1fr; }
   .signal-grid, .signal-grid.cols-3, .signal-grid.cols-4, .signal-grid.cols-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1018,6 +1030,10 @@ main {
   .slate-row .actions { grid-column: 2; }
   .desk-table .hide-sm { display: none; }
   .spark-row { grid-template-columns: 1fr; }
+  .radar-row { grid-template-columns: 24px minmax(0, 1fr) 1fr; gap: 10px; }
+  .radar-topic, .radar-proof { grid-column: 2 / -1; }
+  .radar-proof { display: block; }
+  .radar-row .metric { text-align: left; }
 }
 .status-chip.run-partial svg { color: #ffd75c; }
 .status-chip.run-failed svg { color: #ff6546; }

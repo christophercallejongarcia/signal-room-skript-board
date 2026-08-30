@@ -18,6 +18,8 @@ Keep credentials in server-side secret storage. Validate response shapes. Bound 
 
 Downloaded covers are untrusted bytes from a provider CDN. The cover cache only stores a body whose magic bytes identify JPEG, PNG, or WebP, caps the size at 5 MB, fetches only `https:` links without following redirects, streams the body and aborts past the cap, uses a 15 s timeout and at most four downloads at a time, and serves files with the sniffed content type plus `nosniff`. Cache ids are restricted to `[A-Za-z0-9_-]`, so a record id can never become a path.
 
+The Trend-Radar adapter accepts only the configured Instagram hashtag list and the bounded `posts` actor stream. Captions are treated as untrusted public text, filtered with a deterministic German heuristic, truncated before storage, and classified by local keyword rules. There is no X input path. A hashtag sweep refuses to persist posts when Apify's cost is missing or above `INSTAGRAM_HASHTAG_COST_LIMIT_USD`, and the failed run records the reason.
+
 ### Ranking
 
 Assume public metrics can be missing, stale, manipulated, or defined differently by each network. Store provenance and display uncertainty where it matters.

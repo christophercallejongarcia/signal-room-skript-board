@@ -48,6 +48,29 @@ export type SignalRecord = {
   transcriptStatus?: TranscriptStatus;
 };
 
+/** One German Instagram post returned by the configured hashtag sweep. */
+export type HashtagPost = {
+  /** Canonical id derived from the Instagram shortcode. */
+  id: string;
+  externalId: string;
+  /** The configured hashtag that led to this post, without the leading #. */
+  hashtag: string;
+  /** All hashtags delivered with the post, normalised and bounded. */
+  hashtags: string[];
+  ownerHandle?: string;
+  title: string;
+  caption?: string;
+  publishedAt: string;
+  plays: number;
+  likes: number;
+  comments: number;
+  url?: string;
+  topic: string;
+  /** The sweep stores only posts that passed its deterministic German filter. */
+  language: "de";
+  collectedAt: string;
+};
+
 export type RankedSignal = SignalRecord & {
   score: number;
   relativeReach: number;
@@ -80,13 +103,21 @@ export type RunUsage = {
   costUsd?: number;
 };
 
+export type HashtagCollection = { posts: HashtagPost[]; usage: RunUsage };
+
+/** Source seam for bounded hashtag searches, separate from creator collection. */
+export interface HashtagConnector {
+  readonly id: string;
+  collect(hashtags?: string[]): Promise<HashtagCollection>;
+}
+
 /**
  * One logged collection pass. ok = no errors, partial = some creators failed or
  * the refresh hit REFRESH_CREATOR_LIMIT, failed = every creator failed.
  */
 export type Run = {
   id: string;
-  kind: "backfill" | "refresh";
+  kind: "backfill" | "refresh" | "hashtag-sweep";
   status: "ok" | "partial" | "failed";
   startedAt: string;
   finishedAt: string;
@@ -101,6 +132,10 @@ export type Run = {
   usage?: RunUsage;
   /** Transcript pass of a refresh: reels transcribed and reels marked silent. Absent on backfills and older runs. */
   transcripts?: TranscriptCount;
+  /** Number of configured Instagram hashtags sent to the hashtag actor. */
+  hashtagsChecked?: number;
+  /** The maximum verified dollar cost accepted for a hashtag sweep. */
+  costLimitUsd?: number;
 };
 
 export type TranscriptStatus = "ready" | "silent" | "missing";
@@ -511,6 +546,9 @@ export interface StorageAdapter {
   addCreator(creator: Creator): Promise<void>;
   listSignals(): Promise<SignalRecord[]>;
   saveSignals(records: SignalRecord[]): Promise<SaveResult>;
+  /** Newest first. Hashtag posts are kept separately from creator Signals. */
+  listHashtagPosts(limit?: number): Promise<HashtagPost[]>;
+  saveHashtagPosts(posts: HashtagPost[]): Promise<SaveResult>;
   /**
    * Sets or clears the saved mark on one signal. savedAt null clears it. Returns
    * the stored signal, or null when no signal has that id.

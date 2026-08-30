@@ -34,7 +34,7 @@ import Link from "next/link";
 import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
 import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
 import { rankCorpus, DEMO_NOW, type Ranked } from "@/lib/rank-corpus";
-import { demoCreators, demoIdeas, demoSignals } from "@/lib/demo-data";
+import { demoCreators, demoHashtagPosts, demoIdeas, demoSignals } from "@/lib/demo-data";
 import { DEMO_SCORING_NOTE } from "@/lib/demo-score";
 import {
   DEFAULT_OUTLIER_THRESHOLD,
@@ -77,6 +77,7 @@ import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput }
 import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refresh-schedule";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
+import { buildTrendRadar, type TrendRadar } from "@/lib/trend-radar";
 
 import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord, Slate } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
@@ -131,6 +132,13 @@ type SlateState = {
 type ReviewState = {
   review: FormatReview | null;
   phase: "loading" | "ready" | "running" | "error";
+};
+
+/** The stored Instagram hashtag sweep as the Trend Radar tab sees it. */
+type TrendState = {
+  radar: TrendRadar | null;
+  phase: "loading" | "ready" | "running" | "error";
+  error: string;
 };
 
 /** The strategy panel's own state. These four always travel together. */
@@ -434,6 +442,30 @@ export function SignalRoom() {
     }
   }
 
+  async function loadTrendRadar() {
+    try {
+      const response = await fetch("/api/trends", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { radar: TrendRadar };
+      setTrend({ radar: data.radar, phase: "ready", error: "" });
+    } catch {
+      setTrend((current) => ({ ...current, phase: "error", error: "Trend Radar could not be loaded." }));
+    }
+  }
+
+  async function runTrendSweep() {
+    setTrend((current) => ({ ...current, phase: "running", error: "" }));
+    try {
+      const response = await fetch("/api/trends", { method: "POST" });
+      const payload = (await response.json().catch(() => ({}))) as { radar?: TrendRadar; error?: string };
+      if (!response.ok || !payload.radar) throw new Error(payload.error || `The hashtag sweep answered with HTTP ${response.status}.`);
+      setTrend({ radar: payload.radar, phase: "ready", error: "" });
+      await loadRuns();
+    } catch (error) {
+      setTrend((current) => ({ ...current, phase: "ready", error: error instanceof Error ? error.message : "The hashtag sweep failed." }));
+    }
+  }
+
   /** The manual pass. The Convex cron runs the same computation on the first of the month. */
   async function runFormatReview() {
     setReview((current) => ({ ...current, phase: "running" }));
@@ -473,6 +505,7 @@ export function SignalRoom() {
     loadBriefings();
     loadSlates();
     loadFormatReview();
+    loadTrendRadar();
     checkBridge();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
@@ -496,10 +529,19 @@ export function SignalRoom() {
     error: "",
   });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
+  const [trend, setTrend] = useState<TrendState>({ radar: null, phase: "loading", error: "" });
   const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
   const [covers, setCovers] = useState<CoverState>({ phase: "idle", run: null, error: "" });
 
   const rankedSignals = useMemo(() => rankCorpus(signals, creators, live), [creators, signals, live]);
+
+  const demoRadar = useMemo(
+    () => buildTrendRadar(
+      { posts: demoHashtagPosts, signals: demoSignals, creators: demoCreators },
+      { now: DEMO_NOW.getTime() },
+    ),
+    [],
+  );
 
   /** Evidence is the stored corpus only. Demo fixtures never reach the Strategy-Provider. */
   const evidence = useMemo(
@@ -517,7 +559,7 @@ export function SignalRoom() {
       const response = await fetch("/api/refresh", { method: "POST" });
       if (response.ok) {
         const result = (await response.json()) as RefreshResult;
-        await Promise.all([loadStore(), loadRuns(), loadBriefings(), loadSlates()]);
+        await Promise.all([loadStore(), loadRuns(), loadBriefings(), loadSlates(), loadTrendRadar()]);
         const failed = result.errors?.length ?? 0;
         const left = result.creatorsSkipped ?? 0;
         if (failed === 0 && left === 0) setLastRefresh("Refreshed just now");
@@ -903,7 +945,7 @@ export function SignalRoom() {
             }}
           />
         )}
-        {activeTab === "radar" && <RadarView rankedSignals={research} />}
+        {activeTab === "radar" && <RadarView state={trend} demo={demoRadar} live={live} onSweep={runTrendSweep} />}
         {activeTab === "formats" && (
           <FormatsView
             rankedSignals={rankedSignals}
@@ -1530,45 +1572,70 @@ function SlateDirectionForm({ slate, disabled, onSave }: { slate: Slate; disable
   );
 }
 
-function RadarView({ rankedSignals }: { rankedSignals: Ranked[] }) {
-  const topics = Array.from(new Set(rankedSignals.map((signal) => signal.topic))).map((topic) => {
-    const signals = rankedSignals.filter((signal) => signal.topic === topic);
-    const momentum = Math.round(signals.reduce((sum, signal) => sum + signal.score, 0) / signals.length);
-    const velocity = Math.round(signals.reduce((sum, signal) => sum + signal.velocity, 0) / signals.length);
-    return { topic, count: signals.length, momentum, velocity, lead: signals[0].title };
-  }).sort((a, b) => b.momentum - a.momentum);
+function signedPercent(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function RadarView({ state, demo, live, onSweep }: { state: TrendState; demo: TrendRadar; live: boolean; onSweep: () => void }) {
+  const radar = live ? state.radar : demo;
+  const topics = radar?.topics ?? [];
+  const currentPosts = topics.reduce((sum, topic) => sum + topic.currentPosts, 0);
+  const currentPlays = topics.reduce((sum, topic) => sum + topic.currentPlays, 0);
+  const loading = live && state.phase === "loading" && !radar;
 
   return (
     <div className="view-stack">
       <section className="hero">
         <div>
-          <p className="hero-kicker">Momentum desk / whitespace finder</p>
+          <p className="hero-kicker">Instagram hashtags / daily momentum</p>
           <h1>Trend Radar</h1>
-          <p className="hero-sub">Topic clusters ranked by momentum, then checked for coverage gaps. High opportunity means the wave is forming and you have not published on it yet.</p>
+          <p className="hero-sub">German Instagram posts are grouped by keyword rules. Momentum compares posts and plays with the previous week. Opportunity rises when few tracked creators cover the topic.</p>
         </div>
-        <div className="stat-blocks">
-          <div><strong>{topics.length}</strong><span>topic clusters</span></div>
-          <div><strong>{rankedSignals.length}</strong><span>signals read</span></div>
-          <div className="lime"><strong>{topics[0]?.momentum ?? 0}</strong><span>lead momentum</span></div>
+        <div className="hero-side">
+          <div className="stat-blocks">
+            <div><strong>{topics.length}</strong><span>topic clusters</span></div>
+            <div><strong>{formatNumber(currentPosts)}</strong><span>posts this week</span></div>
+            <div className="lime"><strong>{topics[0]?.opportunity.toFixed(1) ?? "0.0"}</strong><span>lead opportunity</span></div>
+          </div>
+          {live && <button className="secondary-button" type="button" onClick={onSweep} disabled={state.phase === "running"}><InstagramLogo size={15} /> {state.phase === "running" ? "Sweeping Instagram…" : "Run Instagram sweep"}</button>}
         </div>
       </section>
 
-      <div className="section-head">
-        <div><p className="kicker">Topic opportunities</p><h2>Clusters with proof behind the momentum</h2></div>
-        <p className="note">Opportunity uses momentum against your own coverage. Nearest-coverage names the closest thing you already published.</p>
-      </div>
-      <div className="radar-rows">
-        {topics.map((topic, index) => (
-          <article className="radar-row" key={topic.topic}>
-            <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-            <div><h3>{topic.topic}</h3><span className="tag">{topic.count} signals</span></div>
-            <p>Lead: {topic.lead}</p>
-            <div className="metric lime"><strong>{topic.momentum}</strong><span>opportunity</span></div>
-            <div className="metric"><strong>{topic.velocity}</strong><span>velocity</span></div>
-            <div className="metric"><strong>{topic.count}</strong><span>channels</span></div>
-          </article>
-        ))}
-      </div>
+      {!live && <div className="demo-note"><Pulse size={16} /><span>Demo snapshot. No Instagram or X source is queried until a real store and Apify token are configured.</span></div>}
+      {state.error && live && <div className="error-note"><WarningCircle size={16} /><span>{state.error}</span></div>}
+      {loading && <div className="empty-state">Loading hashtag trends…</div>}
+
+      {!loading && (
+        <>
+          <div className="section-head">
+            <div><p className="kicker">Topic opportunities</p><h2>Clusters with proof behind the momentum</h2></div>
+            <p className="note">Source: {radar?.sourceHashtags.join(", ") || "configured Instagram hashtags"}. {formatNumber(currentPlays)} plays in the current week.</p>
+          </div>
+          {topics.length === 0 && (
+            <div className="empty-state">
+              {live ? "No German hashtag posts in the two-week window. Run the Instagram sweep or adjust the configured hashtags." : "No demo hashtag topics available."}
+            </div>
+          )}
+          {topics.length > 0 && (
+            <div className="radar-rows">
+              {topics.map((topic, index) => (
+                <article className="radar-row" key={topic.topic}>
+                  <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+                  <div className="radar-topic"><h3>{topic.label}</h3><div className="radar-tags">{topic.hashtags.slice(0, 3).map((hashtag) => <span className="tag" key={hashtag}>#{hashtag}</span>)}</div></div>
+                  <div className="radar-proof">
+                    <p>{topic.reason}</p>
+                    <a href={topic.lead.url ?? "#"} target="_blank" rel="noreferrer">Lead: {topic.lead.title} <ArrowSquareOut size={12} /></a>
+                  </div>
+                  <div className="metric"><strong>{signedPercent(topic.momentum)}</strong><span>momentum</span><small>posts {signedPercent(topic.postsMomentum)} · plays {signedPercent(topic.playsMomentum)}</small></div>
+                  <div className="metric"><strong>{formatNumber(topic.currentPosts)}</strong><span>posts vs {formatNumber(topic.previousPosts)}</span><small>{formatNumber(topic.currentPlays)} plays</small></div>
+                  <div className="metric"><strong>{Math.round(topic.coverage * 100)}%</strong><span>coverage</span><small>{topic.coveredCreators}/{topic.trackedCreators} creators</small></div>
+                  <div className="metric lime"><strong>{topic.opportunity.toFixed(1)}</strong><span>opportunity</span><small>momentum × gap</small></div>
+                </article>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -2842,12 +2909,13 @@ function ProfileView({ creators, rankedSignals, runs, runsMonth, runsState }: { 
           {runs.slice(0, 10).map((run) => {
             const cost = formatRunCost(run.usage);
             const skipped = run.creatorsSkipped ?? 0;
+            const hashtagSweep = run.kind === "hashtag-sweep";
             return (
               <tr key={run.id}>
-                <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{run.kind}</small></td>
+                <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{hashtagSweep ? "Instagram hashtag sweep" : run.kind}</small></td>
                 <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
                 <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
-                <td className="right num" title={skipped ? `${skipped} left for the next run by the creator limit` : undefined}>{run.creatorsChecked}{skipped ? <small className="muted"> +{skipped} left</small> : null}</td>
+                <td className="right num" title={skipped ? `${skipped} left for the next run by the creator limit` : undefined}>{hashtagSweep ? `${run.hashtagsChecked ?? 0} tags` : <>{run.creatorsChecked}{skipped ? <small className="muted"> +{skipped} left</small> : null}</>}</td>
                 <td className="right num">{run.recordsAdded}</td>
                 <td className="right num">{run.recordsUpdated}</td>
                 <td className={cost.label === "unknown" ? "right muted" : "right num"} title={cost.title}>{cost.label}</td>

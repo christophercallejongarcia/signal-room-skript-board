@@ -19,4 +19,7 @@ for (const slot of refreshCronSlots()) {
  */
 crons.cron("monthly format review", "0 3 1 * *", internal.formatReviews.generate, {});
 
+/** Instagram-only Trend-Radar source sweep; the cost guard lives in lib/hashtag-sweep.ts. */
+crons.cron("daily Instagram hashtag sweep", "15 7 * * *", internal.hashtagSweep.run, {});
+
 export default crons;

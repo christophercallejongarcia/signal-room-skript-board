@@ -1,14 +1,16 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
 import { mergeSignals } from "../../refresh-window.ts";
+import { mergeHashtagPosts } from "../../hashtag-posts.ts";
 
 type Store = {
   creators: Creator[];
   signals: SignalRecord[];
+  hashtagPosts: HashtagPost[];
   runs: Run[];
   ideas: Idea[];
   formatReviews: FormatReview[];
@@ -30,7 +32,7 @@ const MAX_FORMAT_REVIEWS = 24;
 const MAX_BRIEFINGS = 90;
 /** Slates kept in the file store. One per day, like the briefings. */
 const MAX_SLATES = 90;
-const EMPTY: Store = { creators: [], signals: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
+const EMPTY: Store = { creators: [], signals: [], hashtagPosts: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
 
 async function load(): Promise<Store> {
   try {
@@ -39,6 +41,7 @@ async function load(): Promise<Store> {
     return {
       creators: parsed.creators ?? [],
       signals: parsed.signals ?? [],
+      hashtagPosts: parsed.hashtagPosts ?? [],
       runs: parsed.runs ?? [],
       // Ideas written before the six stages land on the matching stage; nothing else changes.
       ideas: (parsed.ideas ?? []).map((idea) => ({ ...idea, status: legacyStage(idea.status) ?? idea.status })),
@@ -98,6 +101,19 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.signals = signals;
       await save(store);
       return { inserted, updated };
+    });
+  },
+  async listHashtagPosts(limit = 5000) {
+    const posts = (await load()).hashtagPosts;
+    return [...posts].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, limit);
+  },
+  async saveHashtagPosts(posts) {
+    return serialized(async () => {
+      const store = await load();
+      const merged = mergeHashtagPosts(store.hashtagPosts, posts);
+      store.hashtagPosts = merged.posts;
+      await save(store);
+      return { inserted: merged.inserted, updated: merged.updated };
     });
   },
   async markSignal(id, savedAt) {

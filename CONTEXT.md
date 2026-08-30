@@ -45,6 +45,14 @@ Der Delta-Refresh ohne Knopfdruck: Convex-Cron in `convex/crons.ts`, täglich 10
 Der Folgelauf über `/api/refresh`, der pro Creator das Fenster seit `lastCheckedAt` minus `OVERLAP_DAYS` (1) holt (`lib/refresh-window.ts`); bekannte Signale bekommen frische Plays/Likes/Kommentare, Felder ohne neuen Wert (z. B. `coverUrl`) bleiben. `lastCheckedAt` rückt nur vor, wenn beide Actor-Streams erfolgreich waren und das Speichern durch ist.
 Nicht: "Delta-Sync", "Update", "Incremental Scrape".
 
+**Hashtag-Sweep**
+Der tägliche, eigene Run-Typ für die konfigurierte Instagram-Hashtag-Liste. `collectHashtagPosts` zieht ausschließlich `resultsType: "posts"` über den Apify-Instagram-Scraper, filtert deutsche Captions, ordnet per Schlüsselwörtern ein Thema zu und schreibt deduplizierte `HashtagPost`-Zeilen. `runHashtagSweep` speichert nur innerhalb von `INSTAGRAM_HASHTAG_COST_LIMIT_USD`; fehlende oder zu hohe Kosten werden als fehlgeschlagener `Run` protokolliert. X gehört nicht zu diesem Datenfluss.
+Nicht: "Social-Sweep", "X-Sweep", "Creator-Refresh".
+
+**Trend Radar**
+Die UI für den Hashtag-Korpus. `buildTrendRadar` vergleicht Posts und Plays der letzten sieben Tage mit den sieben Tagen davor. Momentum ist die gemittelte, symmetrische Bewegung beider Werte; Coverage zählt getrackte, nicht eigene Instagram-Creators, deren Signals dasselbe regelbasierte Thema tragen. Opportunity ist positives Momentum mal Coverage-Gap. Jede Zahl hat im Tab die beiden Vergleichswerte und einen Beleg-Text.
+Nicht: "Format Signal", "Velocity", "Trend aus X".
+
 **Run**
 Ein protokollierter Durchlauf von Backfill (`lib/collect.ts` `runBackfill`, aus `POST /api/creators`) oder Delta-Refresh (`runRefresh`): Art, Status (`ok`/`partial`/`failed`), Start, Ende, Dauer, geprüfte und übersprungene Creators, neue und aktualisierte Signale, Fehler pro Creator und die Apify-Nutzung (`usage`). Tabelle `runs` (Convex) bzw. `runs` in `data/store.json`; `GET /api/runs` liefert die letzten zehn plus die Monatssumme für den Profile-Tab. `partial` heißt: mindestens ein Creator ist fehlgeschlagen oder das Creator-Limit hat den Lauf beendet.
 Nicht: "Job", "Execution", "Sync".

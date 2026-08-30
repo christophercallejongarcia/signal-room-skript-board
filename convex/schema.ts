@@ -4,7 +4,7 @@ import { v } from "convex/values";
 /** Shape of one logged collection pass; shared with convex/runs.ts so the validator is declared once. */
 export const runFields = {
   id: v.string(),
-  kind: v.union(v.literal("backfill"), v.literal("refresh")),
+  kind: v.union(v.literal("backfill"), v.literal("refresh"), v.literal("hashtag-sweep")),
   status: v.union(v.literal("ok"), v.literal("partial"), v.literal("failed")),
   startedAt: v.string(),
   finishedAt: v.string(),
@@ -22,6 +22,27 @@ export const runFields = {
     }),
   ),
   transcripts: v.optional(v.object({ added: v.number(), silent: v.number(), missing: v.number() })),
+  hashtagsChecked: v.optional(v.number()),
+  costLimitUsd: v.optional(v.number()),
+};
+
+/** One German post collected from an Instagram hashtag search. */
+export const hashtagPostFields = {
+  id: v.string(),
+  externalId: v.string(),
+  hashtag: v.string(),
+  hashtags: v.array(v.string()),
+  ownerHandle: v.optional(v.string()),
+  title: v.string(),
+  caption: v.optional(v.string()),
+  publishedAt: v.string(),
+  plays: v.number(),
+  likes: v.number(),
+  comments: v.number(),
+  url: v.optional(v.string()),
+  topic: v.string(),
+  language: v.literal("de"),
+  collectedAt: v.string(),
 };
 
 /** Short-form plan attached to an idea; shared with convex/ideas.ts. */
@@ -279,6 +300,9 @@ export default defineSchema({
   })
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])
+    .index("by_published", ["publishedAt"]),
+  hashtagPosts: defineTable(hashtagPostFields)
+    .index("by_external_id", ["id"])
     .index("by_published", ["publishedAt"]),
   ideas: defineTable(ideaFields)
     .index("by_external_id", ["id"])

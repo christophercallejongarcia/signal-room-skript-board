@@ -15,6 +15,16 @@ export const REFRESH_CREATOR_LIMIT = positiveEnv("REFRESH_CREATOR_LIMIT", 25);
  * APIFY_USD_PER_COMPUTE_UNIT to match your plan.
  */
 export const APIFY_USD_PER_COMPUTE_UNIT = positiveEnv("APIFY_USD_PER_COMPUTE_UNIT", 0.4);
+/** Hashtags the daily Instagram Trend-Radar sweep sends to Apify. */
+export const INSTAGRAM_HASHTAGS = ["#kitools", "#claude", "#kiagenten", "#vibecoding"] as const;
+/** Maximum result budget per configured hashtag. */
+export const INSTAGRAM_HASHTAG_RESULTS_PER_TAG = positiveEnv("INSTAGRAM_HASHTAG_RESULTS_PER_TAG", 50);
+/** The sweep refuses a run whose verified Apify cost exceeds this amount. */
+export const INSTAGRAM_HASHTAG_COST_LIMIT_USD = positiveEnv("INSTAGRAM_HASHTAG_COST_LIMIT_USD", 1);
+/** Current plus previous week are needed for the Radar comparison. */
+export const INSTAGRAM_HASHTAG_WINDOW_DAYS = 14;
+/** Hard cap for an environment-provided hashtag list. */
+export const INSTAGRAM_HASHTAG_MAX_TAGS = 20;
 /**
  * Reels one Delta-Refresh may send to the transcript actor. Strongest outliers
  * first; the rest wait for the next run. Override with TRANSCRIPT_LIMIT_PER_RUN.

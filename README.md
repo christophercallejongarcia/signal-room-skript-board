@@ -26,7 +26,7 @@ Signal Room collects public creator signals, ranks what deserves attention, turn
 | Discover | Synthetic feed, relative-reach context, ranked signal cards | Source connector and ranking method |
 | Briefing | Daily document after every refresh: the ten strongest reels of the last 24 hours, one angle each, older days pickable | Your ranking weights, angle prompt, and editorial rubric |
 | Production slate | Under the briefing: ten short-form starting points read from the same reels, each with a topic and its source reel; regenerate one, keep the rest; a direction for the next run; one click makes an idea | Your slate prompt, the direction you type, the size of the slate |
-| Trend Radar | Topic grouping and momentum view | Trend detection and time-window logic |
+| Trend Radar | Daily Instagram hashtag sweep, German topic grouping, momentum and opportunity | Topic vocabulary and scoring window |
 | Format Signals | Reusable content-format library | Your format taxonomy and performance evidence |
 | Tracked Channels | Add-channel flow and daily-watch model | Validation, scheduling, collection, persistence |
 | Ideas | Idea workspace and local strategy request | Your strategy prompt, model policy, approval flow |
@@ -144,6 +144,8 @@ Choose one seam at a time.
 3. Store a per-channel cursor.
 4. Normalize every item into `SignalRecord`.
 5. Keep provider payloads out of UI components.
+
+Trend Radar uses a separate Instagram hashtag adapter at `lib/adapters/sources/apify-instagram-hashtags.ts`. It normalizes Apify posts, keeps only German captions, assigns topics with keyword rules, and writes the bounded result to `hashtagPosts`. The Convex cron and `POST /api/trends` share the cost-guarded `runHashtagSweep`; X is not a source for this feature.
 
 ### Replace the ranker
 

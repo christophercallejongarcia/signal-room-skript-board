@@ -30,6 +30,8 @@ export type ApifyRun = {
 
 export type RunActorOptions = {
   timeoutMs?: number;
+  /** Apify-side maximum charge for providers that support run cost limits. */
+  maxTotalChargeUsd?: number;
   /** Test seam: the fetch the client uses for every call. */
   fetch?: typeof fetch;
 };
@@ -59,7 +61,7 @@ async function readRun(actorId: string, response: Response): Promise<ApifyRun> {
 export async function runActor<T = Record<string, unknown>>(
   actorId: string,
   input: Record<string, unknown>,
-  { timeoutMs = DEFAULT_TIMEOUT_MS, fetch: fetchImpl = fetch }: RunActorOptions = {},
+  { timeoutMs = DEFAULT_TIMEOUT_MS, maxTotalChargeUsd, fetch: fetchImpl = fetch }: RunActorOptions = {},
 ): Promise<ActorResult<T>> {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error("APIFY_TOKEN is not configured");
@@ -68,10 +70,13 @@ export async function runActor<T = Record<string, unknown>>(
   const timer = setTimeout(() => controller.abort(), timeoutMs + GRACE_MS);
   const auth = `token=${encodeURIComponent(token)}`;
   const wait = `waitForFinish=${WAIT_FOR_FINISH_S}`;
+  const maxCharge = typeof maxTotalChargeUsd === "number" && Number.isFinite(maxTotalChargeUsd) && maxTotalChargeUsd > 0
+    ? `&maxTotalChargeUsd=${encodeURIComponent(String(maxTotalChargeUsd))}`
+    : "";
   const id = actorId.replace("/", "~");
 
   try {
-    const started = await fetchImpl(`${APIFY_BASE}/acts/${id}/runs?${auth}&timeout=${Math.floor(timeoutMs / 1000)}&${wait}`, {
+    const started = await fetchImpl(`${APIFY_BASE}/acts/${id}/runs?${auth}&timeout=${Math.floor(timeoutMs / 1000)}&${wait}${maxCharge}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),

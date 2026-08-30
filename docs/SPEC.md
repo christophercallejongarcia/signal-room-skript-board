@@ -182,9 +182,10 @@ Definition: ADR-0003.
 - Abschnitt "Production slate" unter der Briefing-Liste, ältere Tage über den Day-Picker; Demo-Modus zeigt nur den Hinweis, weil das Paket nie aus Fixtures kommt.
 - AK: `tests/slate.test.mjs` (reine Logik), `tests/slate-run.test.mjs` (Idempotenz, Richtung, Einzel-Neuerzeugung, Bridge-Ausfall), `tests/bridge-slate.test.mjs` (Bridge-Vertrag).
 
-### T6.3 Trend Radar (später)
-- Quellen: Instagram-Hashtag-Suche via Apify, optional GitHub Trending. Opportunity-Score = Momentum × Coverage-Gap.
-- AK: Mindestens eine Quelle liefert täglich Topics.
+### T6.3 Trend Radar — erledigt
+- Quelle: ausschließlich Instagram-Hashtag-Suche via Apify. Deutsche Posts werden regelbasiert Topics zugeordnet; GitHub Trending und X sind nicht Teil dieses Tickets.
+- Momentum vergleicht Posts und Plays mit der Vorwoche. Opportunity = positives Momentum × Coverage-Gap der getrackten Instagram-Creators.
+- AK: Eigener `hashtag-sweep`-Run mit Kostenlimit, deduplizierter Hashtag-Korpus und täglicher Convex-Cron; die UI zeigt Momentum, Coverage, Opportunity und Beleg.
 
 ### T6.4 Monatlicher Self-Review — erledigt
 - Convex-Cron am 1. jedes Monats 03:00 UTC (`convex/crons.ts` → `internal.formatReviews.generate`): Format-Muster der letzten 90 Tage neu berechnen und gegen das Review davor diffen. Ein Dokument je Lauftag in der Tabelle `formatReviews`.
