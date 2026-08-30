@@ -12,6 +12,8 @@ import type * as briefings from "../briefings.js";
 import type * as creators from "../creators.js";
 import type * as crons from "../crons.js";
 import type * as formatReviews from "../formatReviews.js";
+import type * as hashtagPosts from "../hashtagPosts.js";
+import type * as hashtagSweep from "../hashtagSweep.js";
 import type * as hookRuns from "../hookRuns.js";
 import type * as ideas from "../ideas.js";
 import type * as refresh from "../refresh.js";
@@ -30,6 +32,8 @@ declare const fullApi: ApiFromModules<{
   creators: typeof creators;
   crons: typeof crons;
   formatReviews: typeof formatReviews;
+  hashtagPosts: typeof hashtagPosts;
+  hashtagSweep: typeof hashtagSweep;
   hookRuns: typeof hookRuns;
   ideas: typeof ideas;
   refresh: typeof refresh;
