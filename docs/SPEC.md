@@ -47,7 +47,7 @@ Design-Tokens (aus den Frames abgeleitet):
 - Tabelle mit Spalten Creator / Status / Corpus / Latest video / Controls.
 - AK: Wie `cue_0006.jpg` und `cue_0008.jpg`.
 
-### T1.6 Formular-Panels (Ideas, Hooks, Thumbnail Lab)
+### T1.6 Formular-Panels (Ideas, Hooks, Cover Lab)
 - Dunkle Panels mit Lime-Border-Glow beim aktiven Panel, Primary-Button Lime mit dunklem Text.
 - AK: Wie `cue_0013.jpg`.
 
@@ -155,9 +155,9 @@ Definition: ADR-0003.
 - AK: 10 Hooks pro Run, History gespeichert.
 - Gebaut wie in Ticket 09: Eingabe bis 20.000 Zeichen, Anzahl wählbar (5, 10, 15), jeder Lauf eine eigene Zeile in `hookRuns`, History-Rail lädt einen Lauf wieder auf.
 
-### T5.4 Thumbnail Lab → Cover-Lab
-- Cover-Prompt-Template (4:5), Faceless/Face-Toggle, Generierung über Codex (GPT Image) oder Gemini Image. Provider-Switch.
-- AK: 3 Packages pro Idee, gerenderte Bilder lokal unter `data/covers/`.
+### T5.4 Thumbnail Lab → Cover-Lab `[done]`
+- Cover-Prompt-Template pro Format: 4:5 für Instagram-Reels, 16:9 für YouTube, mit Faceless/Face-Toggle und formatabhängiger Safe Zone. Generierung über den lokalen Codex-Bridge mit GPT Image.
+- AK: 3 Packages pro Lauf, gerenderte Bilder lokal unter `data/covers/ideas/`, beide Formate koexistieren an derselben Idee, Einzel-Re-Render bleibt möglich.
 
 ---
 

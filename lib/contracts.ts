@@ -150,6 +150,34 @@ export type StrategyResponse = {
   cautions: string[];
 };
 
+export type CoverFormat = "reel" | "youtube";
+export type CoverAspectRatio = "4:5" | "16:9";
+export type CoverTreatment = "faceless" | "face";
+
+/** One generated cover package. A board keeps exactly three of these per format. */
+export type CoverPackage = {
+  id: string;
+  label: string;
+  textOverlay: string;
+  imageIdea: string;
+  colorWorld: string;
+  imagePrompt: string;
+  /** Relative path below the gitignored data directory. */
+  imagePath?: string;
+  /** Local app route for the generated image. */
+  imageUrl?: string;
+  renderedAt?: string;
+};
+
+/** The latest three-package Cover-Lab run for one format. At most two boards live on an Idea. */
+export type CoverBoard = {
+  format: CoverFormat;
+  aspectRatio: CoverAspectRatio;
+  treatment: CoverTreatment;
+  generatedAt: string;
+  packages: CoverPackage[];
+};
+
 /** Where an Idea stands. captured = only the working title, developed = a storyboard hangs on it. */
 /**
  * The six production stages of an Idea in order, plus dropped as the exit
@@ -207,6 +235,8 @@ export type Idea = {
   storyboard?: Storyboard;
   /** Written with the storyboard; absent when the Bridge answered without one. */
   forecast?: Forecast;
+  /** Latest Cover-Lab board per format. Kept bounded to reel + youtube so both formats coexist. */
+  coverBoards?: CoverBoard[];
   /** Set while a develop run is in flight. Only the run holding it may write back. */
   developRunId?: string;
   developedAt?: string;

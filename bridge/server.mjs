@@ -1,18 +1,25 @@
 import http from "node:http";
 import { Codex } from "@openai/codex-sdk";
 import { codexAuthState } from "./auth.mjs";
+import { renderCoverWithCodex } from "./image.mjs";
+import { COVER_FORMATS } from "../lib/cover-formats.mjs";
 import {
   briefingOutputSchema,
   buildBriefingPrompt,
+  buildCoverImagePrompt,
+  buildCoverPrompt,
   buildHooksPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
   buildSlatePrompt,
+  coverOutputSchema,
   hooksOutputSchema,
+  normalizeCoverPackages,
   slateOutputSchema,
   storyboardOutputSchema,
   strategyOutputSchema,
   validateBriefingRequest,
+  validateCoverRequest,
   validateHooksRequest,
   validateSlateRequest,
   validateStoryboardRequest,
@@ -148,6 +155,31 @@ const routes = new Map([
         // The answer schema is built from the validated count, so a run comes back with exactly that many.
         const request = validateHooksRequest(input);
         return runCodex(buildHooksPrompt(request), hooksOutputSchema(request.count));
+      },
+    },
+  ],
+  [
+    "/v1/covers",
+    {
+      label: "Covers",
+      failure: "The local Codex cover run failed.",
+      run: async (input) => {
+        const request = validateCoverRequest(input);
+        const descriptions = normalizeCoverPackages(
+          await runCodex(buildCoverPrompt(request), coverOutputSchema(request.count)),
+          request,
+        );
+        const packages = [];
+        for (const description of descriptions) {
+          const image = await renderCoverWithCodex(buildCoverImagePrompt(request, description));
+          packages.push({ ...description, image });
+        }
+        return {
+          format: request.format,
+          aspectRatio: COVER_FORMATS[request.format].aspectRatio,
+          treatment: request.treatment,
+          packages,
+        };
       },
     },
   ],

@@ -42,6 +42,28 @@ export const forecastFields = {
   tension: v.string(),
 };
 
+/** One generated Cover-Lab package; image bytes stay in the local gitignored cache. */
+const coverPackageFields = {
+  id: v.string(),
+  label: v.string(),
+  textOverlay: v.string(),
+  imageIdea: v.string(),
+  colorWorld: v.string(),
+  imagePrompt: v.string(),
+  imagePath: v.optional(v.string()),
+  imageUrl: v.optional(v.string()),
+  renderedAt: v.optional(v.string()),
+};
+
+/** One latest Cover-Lab board. Ideas keep at most one board per format. */
+const coverBoardFields = {
+  format: v.union(v.literal("reel"), v.literal("youtube")),
+  aspectRatio: v.union(v.literal("4:5"), v.literal("16:9")),
+  treatment: v.union(v.literal("faceless"), v.literal("face")),
+  generatedAt: v.string(),
+  packages: v.array(v.object(coverPackageFields)),
+};
+
 /** One saved content approach. developRunId is set only while a develop run is in flight. */
 export const ideaFields = {
   id: v.string(),
@@ -62,6 +84,8 @@ export const ideaFields = {
   sourceUrl: v.optional(v.string()),
   storyboard: v.optional(v.object(storyboardFields)),
   forecast: v.optional(v.object(forecastFields)),
+  /** Bounded by lib/cover-lab.ts to one current board per format. */
+  coverBoards: v.optional(v.array(v.object(coverBoardFields))),
   developRunId: v.optional(v.string()),
   developedAt: v.optional(v.string()),
   evidenceCount: v.optional(v.number()),

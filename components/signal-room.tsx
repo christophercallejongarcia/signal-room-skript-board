@@ -72,12 +72,13 @@ import {
   STRATEGY_GOAL,
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
+import { COVER_FORMATS, type CoverFormat, type CoverTreatment } from "@/lib/cover-lab";
 import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
 import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refresh-schedule";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 
-import type { Briefing, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord, Slate } from "@/lib/contracts";
+import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord, Slate } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
 
@@ -140,6 +141,9 @@ type StrategyState = {
   evidence: StrategyEvidenceItem[];
 };
 
+type CoverRun = { ideaId: string; format: CoverFormat; treatment: CoverTreatment; packageId?: string };
+type CoverState = { phase: "idle" | "loading" | "error"; run: CoverRun | null; error: string };
+
 const navItems = [
   { id: "discover", label: "Discover", icon: House },
   { id: "briefing", label: "Briefing", icon: NewspaperClipping },
@@ -147,7 +151,7 @@ const navItems = [
   { id: "formats", label: "Format Signals", icon: Shapes },
   { id: "channels", label: "Tracked Channels", icon: Binoculars },
   { id: "ideas", label: "Ideas", icon: Lightbulb },
-  { id: "thumbnails", label: "Thumbnail Lab", icon: ImageSquare },
+  { id: "thumbnails", label: "Cover Lab", icon: ImageSquare },
   { id: "hooks", label: "Hooks", icon: TextAa },
   { id: "profile", label: "Profile", icon: UserCircle },
 ] as const;
@@ -493,6 +497,7 @@ export function SignalRoom() {
   });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
   const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
+  const [covers, setCovers] = useState<CoverState>({ phase: "idle", run: null, error: "" });
 
   const rankedSignals = useMemo(() => rankCorpus(signals, creators, live), [creators, signals, live]);
 
@@ -745,6 +750,29 @@ export function SignalRoom() {
     }
   }
 
+  /** Creates a format-specific board or replaces one package while the other format stays attached. */
+  async function renderCovers(input: CoverRun) {
+    if (covers.run) return;
+    setCovers({ phase: "loading", run: input, error: "" });
+    try {
+      const response = await fetch(input.packageId ? "/api/covers/regenerate" : "/api/covers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { idea?: Idea; error?: string };
+      if (!response.ok || !payload.idea) throw new Error(payload.error || `The cover run answered with HTTP ${response.status}.`);
+      setIdeas((current) => ({
+        ...current,
+        items: current.items.map((idea) => (idea.id === payload.idea?.id ? payload.idea : idea)),
+      }));
+      setCovers({ phase: "idle", run: null, error: "" });
+    } catch (error) {
+      setCovers({ phase: "error", run: null, error: error instanceof Error ? error.message : "The cover run failed." });
+      checkBridge();
+    }
+  }
+
   /**
    * One Hooks-Board run. Each start posts on its own and lands as its own entry,
    * so two runs kicked off in parallel both keep their board.
@@ -912,7 +940,15 @@ export function SignalRoom() {
             onReloadIdeas={loadIdeas}
           />
         )}
-        {activeTab === "thumbnails" && <ThumbnailsView />}
+        {activeTab === "thumbnails" && (
+          <ThumbnailsView
+            ideas={ideas.items}
+            bridge={bridge}
+            covers={covers}
+            onGenerate={renderCovers}
+            onRecheckBridge={checkBridge}
+          />
+        )}
         {activeTab === "hooks" && (
           <HooksView
             hooks={hooks}
@@ -1968,6 +2004,35 @@ function forecastLine(forecast: Forecast | undefined) {
   return `${formatNumber(forecast.range.low)}–${formatNumber(forecast.range.high)} plays · ${potentialCopy[forecast.potential]} · ${forecast.comparableCount} comparable reels`;
 }
 
+function coverFormatLabel(board: CoverBoard) {
+  return board.format === "reel" ? `Instagram Reel · ${board.aspectRatio}` : `YouTube · ${board.aspectRatio}`;
+}
+
+/** The Idea row shows both format slots together, so a new run cannot hide the other board. */
+function CoverBoardsPreview({ boards }: { boards?: CoverBoard[] }) {
+  if (!boards || boards.length === 0) return null;
+  return (
+    <div className="idea-covers">
+      <div className="idea-covers-head"><span>Cover Lab</span><span>{boards.length}/2 formats</span></div>
+      <div className="idea-covers-grid">
+        {boards.map((board) => (
+          <section key={board.format}>
+            <header><strong>{coverFormatLabel(board)}</strong><span>{board.treatment === "face" ? "with face" : "faceless"}</span></header>
+            <div className="idea-cover-strip">
+              {board.packages.map((pkg) => (
+                <div className="idea-cover-thumb" key={pkg.id}>
+                  {pkg.imageUrl ? <img src={pkg.imageUrl} alt={`${coverFormatLabel(board)}: ${pkg.textOverlay}`} /> : <span />}
+                  <small>{pkg.textOverlay}</small>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** One stored idea with its storyboard folded away until it is wanted. */
 function IdeaRow({
   idea,
@@ -2079,6 +2144,7 @@ function IdeaRow({
           </dl>
         </details>
       )}
+      <CoverBoardsPreview boards={idea.coverBoards} />
     </div>
   );
 }
@@ -2301,65 +2367,171 @@ function IdeasView({
   );
 }
 
-function ThumbnailsView() {
-  const [treatment, setTreatment] = useState<"faceless" | "face">("faceless");
-  const [idea, setIdea] = useState("");
-  const packages = [
-    ["Claude Code Won't Save You Without This System", "A dark faceless control panel with three connected job cards, a bright approval checkpoint, and one red blocked handoff."],
-    ["Claude Code Ran My Workday. Here Is What Broke", "A charcoal-black scoreboard labeled with three simple icons for research, content, and reporting."],
-    ["One Object, One Contrast", "A single inspectable object on a near-black field, four words or fewer, no interface collage."],
-  ];
+function CoverBoardPanel({
+  format,
+  board,
+  running,
+  onRegenerate,
+}: {
+  format: CoverFormat;
+  board?: CoverBoard;
+  running: boolean;
+  onRegenerate: (input: CoverRun) => void;
+}) {
+  const spec = COVER_FORMATS[format];
+  return (
+    <section className="cover-board-panel">
+      <header>
+        <div>
+          <p className="kicker">{spec.label}</p>
+          <h3>{spec.aspectRatio} <span>{board ? (board.treatment === "face" ? "with face" : "faceless") : "not rendered"}</span></h3>
+        </div>
+        <span className="cover-safe-zone">{spec.safeZone}</span>
+      </header>
+      {!board && <div className="cover-board-empty">No {spec.label} board yet. Run this format beside the other one.</div>}
+      {board && (
+        <div className="cover-package-grid">
+          {board.packages.map((pkg, index) => (
+            <article className="cover-package" key={pkg.id}>
+              <div className={`cover-art ${format}`}>
+                {pkg.imageUrl ? <img src={pkg.imageUrl} alt={`${spec.label} cover ${index + 1}: ${pkg.textOverlay}`} /> : <span>Image not available</span>}
+              </div>
+              <div className="cover-package-body">
+                <div className="cover-package-heading"><span className="rank">{String(index + 1).padStart(2, "0")}</span><h4>{pkg.label}</h4></div>
+                <p className="cover-overlay">“{pkg.textOverlay}”</p>
+                <dl>
+                  <dt>Image idea</dt><dd>{pkg.imageIdea}</dd>
+                  <dt>Color world</dt><dd>{pkg.colorWorld}</dd>
+                </dl>
+                <details className="cover-prompt">
+                  <summary>Image prompt</summary>
+                  <p>{pkg.imagePrompt}</p>
+                </details>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => onRegenerate({ ideaId: "", format, treatment: board.treatment, packageId: pkg.id })}
+                  disabled={running}
+                >
+                  <ArrowCounterClockwise className={running ? "spin" : ""} size={14} /> {running ? "Rendering…" : "Render again"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ThumbnailsView({
+  ideas,
+  bridge,
+  covers,
+  onGenerate,
+  onRecheckBridge,
+}: {
+  ideas: Idea[];
+  bridge: BridgeHealth;
+  covers: CoverState;
+  onGenerate: (input: CoverRun) => void;
+  onRecheckBridge: () => void;
+}) {
+  const developedIdeas = ideas.filter((idea) => Boolean(idea.storyboard));
+  const [selectedId, setSelectedId] = useState("");
+  const [format, setFormat] = useState<CoverFormat>("reel");
+  const [treatment, setTreatment] = useState<CoverTreatment>("faceless");
+  const selectedIdea = developedIdeas.find((idea) => idea.id === selectedId) ?? developedIdeas[0];
+  const packageCount = ideas.reduce((sum, idea) => sum + (idea.coverBoards?.reduce((boards, board) => boards + board.packages.length, 0) ?? 0), 0);
+  const renderedCount = ideas.reduce((sum, idea) => sum + (idea.coverBoards?.reduce((rendered, board) => rendered + board.packages.filter((pkg) => pkg.imageUrl).length, 0) ?? 0), 0);
+  const status = bridgeCopy[bridge];
+  const blocked = !selectedIdea || bridge === "offline" || bridge === "logged-out" || covers.phase === "loading";
+
+  useEffect(() => {
+    if (!selectedId || !developedIdeas.some((idea) => idea.id === selectedId)) setSelectedId(developedIdeas[0]?.id ?? "");
+  }, [developedIdeas, selectedId]);
+
+  function regenerate(input: CoverRun) {
+    if (!selectedIdea) return;
+    onGenerate({ ...input, ideaId: selectedIdea.id });
+  }
+
   return (
     <div className="view-stack">
       <section className="hero">
         <div>
-          <p className="hero-kicker">Thumbnail lab / visual direction</p>
-          <h1>Thumbnail Lab</h1>
-          <p className="hero-sub">Turn an idea into a traceable visual asset. Three packages per idea, each with a prompt you can read before anything is rendered.</p>
+          <p className="hero-kicker">Cover Lab / visual direction</p>
+          <h1>Cover Lab</h1>
+          <p className="hero-sub">Build three readable cover packages from a developed Idea. Reel and YouTube layouts stay side by side, each with its own safe zone.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{packages.length}</strong><span>packages</span></div>
-          <div><strong>0</strong><span>rendered</span></div>
-          <div className="lime"><strong>4:5</strong><span>reel cover ratio</span></div>
+          <div><strong>{packageCount}</strong><span>packages on Ideas</span></div>
+          <div><strong>{renderedCount}</strong><span>images rendered</span></div>
+          <div className="lime"><strong>4:5 + 16:9</strong><span>format slots</span></div>
         </div>
       </section>
 
       <section className="panel glow">
         <div className="panel-head">
-          <div><p className="kicker">Idea</p><h2>What should the cover promise?</h2><p>Keep it to one thought. The lab adds the constraints.</p></div>
-          <div className="next-refresh"><span>No separate API key</span><strong>Uses the saved local sign-in and included usage limits.</strong></div>
+          <div><p className="kicker">Developed Idea</p><h2>What should this cover promise?</h2><p>The Bridge receives the Idea's storyboard, then creates one focused visual direction per package.</p></div>
+          <div className="next-refresh"><span>No separate API key</span><strong>Uses the local Codex sign-in and writes images to the ignored cover cache.</strong></div>
         </div>
-        <div className="panel-body">
+        <div className="bridge-status-row">
+          <div className={`bridge-status ${status.tone}`}>
+            <span className="dot" aria-hidden="true" />
+            <div><strong>{status.label}</strong><p>{status.hint}</p></div>
+            <button className="ghost-button" type="button" onClick={onRecheckBridge}><ArrowsClockwise size={13} /> Check again</button>
+          </div>
+        </div>
+        <div className="panel-body cover-controls">
           <div>
-            <label htmlFor="thumb-idea">Idea</label>
-            <textarea id="thumb-idea" placeholder="Make an image of me pointing at Claude Code. Very dark themed." value={idea} onChange={(e) => setIdea(e.target.value)} />
+            <label htmlFor="cover-idea">Idea</label>
+            {developedIdeas.length > 0 ? (
+              <select id="cover-idea" value={selectedIdea?.id ?? ""} onChange={(event) => setSelectedId(event.target.value)}>
+                {developedIdeas.map((idea) => <option key={idea.id} value={idea.id}>{idea.title}</option>)}
+              </select>
+            ) : (
+              <div className="cover-board-empty">Develop an Idea first. Cover Lab needs its storyboard as the visual brief.</div>
+            )}
+            {selectedIdea?.goal && <p className="cover-context">Goal: {selectedIdea.goal}</p>}
+          </div>
+          <div>
+            <label>Format</label>
+            <div className="option-tiles">
+              {(Object.keys(COVER_FORMATS) as CoverFormat[]).map((option) => {
+                const spec = COVER_FORMATS[option];
+                return <button type="button" className={format === option ? "option-tile active" : "option-tile"} key={option} onClick={() => setFormat(option)}><strong>{spec.label} · {spec.aspectRatio}</strong><span>{spec.safeZone}</span></button>;
+              })}
+            </div>
           </div>
           <div>
             <label>Visual treatment</label>
             <div className="option-tiles">
-              <button type="button" className={treatment === "faceless" ? "option-tile active" : "option-tile"} onClick={() => setTreatment("faceless")}><strong>Faceless</strong><span>Default · let the proof object carry the click</span></button>
-              <button type="button" className={treatment === "face" ? "option-tile active" : "option-tile"} onClick={() => setTreatment("face")}><strong>Use my face</strong><span>Only when expression adds essential meaning</span></button>
+              <button type="button" className={treatment === "faceless" ? "option-tile active" : "option-tile"} onClick={() => setTreatment("faceless")}><strong>Faceless</strong><span>One proof object carries the click.</span></button>
+              <button type="button" className={treatment === "face" ? "option-tile active" : "option-tile"} onClick={() => setTreatment("face")}><strong>With face</strong><span>Use an expression when it adds meaning.</span></button>
             </div>
           </div>
         </div>
         <div className="panel-foot">
-          <span>Constraints: one object, high figure-ground contrast, four words or fewer, no interface collage.</span>
-          <button className="primary-button" type="button"><Plus size={15} weight="bold" /> Create thumbnail project</button>
+          <span>One focus · max. four overlay words · high contrast · format safe zone.</span>
+          <button className="primary-button" type="button" onClick={() => selectedIdea && onGenerate({ ideaId: selectedIdea.id, format, treatment })} disabled={blocked}><ImageSquare size={15} /> {covers.phase === "loading" ? "Rendering covers…" : `Create ${formatSpecLabel(format)} packages`}</button>
         </div>
+        {covers.phase === "error" && <div className="strategy-error"><WarningCircle size={20} weight="fill" /><h3>No cover</h3><p>{covers.error}</p></div>}
       </section>
 
-      <div className="section-head"><div><p className="kicker">Thumbnail lab · {packages.length} packages · 0 rendered</p><h2>Packages</h2></div></div>
-      <div className="panel">
-        {packages.map(([title, prompt], index) => (
-          <div className="idea-row" key={title}>
-            <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-            <div><h3>{title}</h3><p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 11.5, lineHeight: 1.5 }}>{prompt}</p></div>
-            <button className="secondary-button" type="button"><ImageSquare size={14} /> Generate thumbnail</button>
-          </div>
-        ))}
-      </div>
+      <div className="section-head"><div><p className="kicker">{selectedIdea ? selectedIdea.title : "Cover Lab"} · latest boards</p><h2>Both formats on one Idea</h2></div><p className="note">A new 16:9 run updates the YouTube slot only. The 4:5 Reel slot remains attached to this Idea.</p></div>
+      {selectedIdea ? (
+        <div className="cover-board-columns">
+          <CoverBoardPanel format="reel" board={selectedIdea.coverBoards?.find((board) => board.format === "reel")} running={Boolean(covers.run?.ideaId === selectedIdea.id && covers.run.format === "reel")} onRegenerate={regenerate} />
+          <CoverBoardPanel format="youtube" board={selectedIdea.coverBoards?.find((board) => board.format === "youtube")} running={Boolean(covers.run?.ideaId === selectedIdea.id && covers.run.format === "youtube")} onRegenerate={regenerate} />
+        </div>
+      ) : <div className="empty-state">No developed Idea has a Cover-Lab board yet.</div>}
     </div>
   );
+}
+
+function formatSpecLabel(format: CoverFormat) {
+  return format === "reel" ? "Reel 4:5" : "YouTube 16:9";
 }
 
 /**

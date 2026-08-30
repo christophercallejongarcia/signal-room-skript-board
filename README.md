@@ -30,7 +30,7 @@ Signal Room collects public creator signals, ranks what deserves attention, turn
 | Format Signals | Reusable content-format library | Your format taxonomy and performance evidence |
 | Tracked Channels | Add-channel flow and daily-watch model | Validation, scheduling, collection, persistence |
 | Ideas | Idea workspace and local strategy request | Your strategy prompt, model policy, approval flow |
-| Thumbnail Lab | Visual direction and constraint checklist | Image generation, testing data, brand system |
+| Cover Lab | Three cover packages for Reels and YouTube per developed Idea | Image testing data, brand system |
 | Hooks | Hooks board: source material in, first-three-second variants grouped by hypothesis, run history | Your hook corpus, hypothesis set, and scoring rules |
 | Profile | Adapter status and private-boundary reminder | Authentication, accounts, billing, team settings |
 
@@ -101,7 +101,7 @@ Then use **Generate angle** in Ideas. It sends the strongest outlier reels of th
 - treats evidence text as untrusted input
 - disables network search
 - runs Codex with read-only sandboxing and no approvals
-- requires a structured response schema
+- requires a structured response schema, including the Cover-Lab route for format-specific packages and local image renders
 - does not place auth material in client code
 - refuses a run when Codex is not logged in, instead of spawning it
 
