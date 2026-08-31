@@ -28,4 +28,4 @@ Die Release-Checkliste in `docs/SECURITY.md` gilt nicht mehr, weil dieses Repo n
 
 ## Nachtrag 2026-08-31
 
-Das private Remote existiert: `origin` zeigt auf `github.com/christophercallejongarcia/signal-room-starter` (privat). Das öffentliche Starter-Repo hängt als `upstream` mit weiter deaktivierter Push-URL. Gitignored bleibt, was gitignored war: `.scratch/` (Specs und Tickets), `data/`, `.env.local`, `reviews/`.
+Das private Remote existiert: `origin` zeigt auf `github.com/christophercallejongarcia/signal-room-starter` (privat). Das öffentliche Starter-Repo hängt als `upstream` mit weiter deaktivierter Push-URL. Specs und Tickets unter `.scratch/` werden seit dem privaten Remote committet; gitignored bleiben `.scratch/afk-logs/`, `data/`, `.env.local`, `reviews/`.

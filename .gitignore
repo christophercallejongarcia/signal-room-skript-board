@@ -11,9 +11,9 @@ coverage
 data/store.json
 data/covers
 
-# local issue tracker (mattpocock/skills)
-.scratch/
+# afk logs of the local issue tracker (mattpocock/skills); tickets and specs are committed
+.scratch/afk-logs/
 
 # review output and claudex loop state
 reviews/
-.claude/claudex/
+**/.claude/claudex/
