@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, ArrowSquareOut, ArrowUp, Globe, Pulse, UserCircle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowSquareOut, ArrowRight, ArrowUp, Globe, Pulse, UserCircle } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
+import { ReelDetailPanel, TranscriptStatusBadge } from "@/components/reel-detail";
 import type { Creator, SignalRecord } from "@/lib/contracts";
 import {
   CREATOR_SORTS,
@@ -45,6 +46,7 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
   const [order, setOrder] = useState<CreatorSortState>(DEFAULT_SORT);
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
   const [threshold, setThreshold] = useState<OutlierThreshold>(DEFAULT_OUTLIER_THRESHOLD);
+  const [selectedReel, setSelectedReel] = useState<ReturnType<typeof rankCorpus>[number] | null>(null);
 
   // The link that opened this page carries where it came from and what the desk was
   // liming at, so Back returns to that list and the outlier column agrees with it.
@@ -189,7 +191,10 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
                     <td>
                       <div className="thumb-cell">
                         <CoverImage signal={signal} index={index} className={signal.format === "reel" ? "mini portrait" : "mini"} lazy />
-                        <div><strong>{signal.title}</strong><small>{signal.format ?? "video"} · {signal.topic}</small></div>
+                        <div>
+                          <strong>{signal.title}</strong>
+                          <span className="thumb-subline"><small>{signal.format ?? "video"} · {signal.topic}</small><TranscriptStatusBadge signal={signal} compact /></span>
+                        </div>
                       </div>
                     </td>
                     <td className="hide-sm muted">
@@ -198,6 +203,9 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
                     <td className="right num">{formatNumber(signalReach(signal))}</td>
                     <td className={isOutlier(signal, threshold) ? "right lime" : "right num"}>{(signal.outlier ?? 0).toFixed(2)}x</td>
                     <td className="right">
+                      <button className="icon-button" type="button" onClick={() => setSelectedReel(signal)} aria-label={`Open Reel view for ${signal.title}`} title="Open Reel view">
+                        <ArrowRight size={14} />
+                      </button>
                       {signal.url ? (
                         <a className="icon-button" href={signal.url} target="_blank" rel="noreferrer" aria-label={`Open ${signal.title} on ${networkName(creator.network)}`}>
                           <ArrowSquareOut size={14} />
@@ -216,6 +224,9 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
           </div>
         )}
       </main>
+      {selectedReel && (
+        <ReelDetailPanel signal={selectedReel} creator={creator!} onClose={() => setSelectedReel(null)} />
+      )}
     </div>
   );
 }

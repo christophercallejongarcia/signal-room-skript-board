@@ -71,6 +71,17 @@ export const demoSignals: SignalRecord[] = [
     durationSeconds: 74,
     thumbnailSeed: "quiet-thumbnail",
     topic: "packaging",
+    format: "reel",
+    url: "https://www.instagram.com/reel/demo-quiet-thumbnail/",
+    caption: "Warum ruhige Thumbnails wieder funktionieren.",
+    transcript: "Laute Gestaltung gewinnt nicht automatisch Aufmerksamkeit. Manchmal macht ein ruhiges Thumbnail den Inhalt glaubwürdiger.",
+    transcriptSegments: [
+      { start: 0, end: 3.8, text: "Laute Gestaltung gewinnt nicht automatisch Aufmerksamkeit." },
+      { start: 3.8, end: 8.6, text: "Manchmal macht ein ruhiges Thumbnail den Inhalt glaubwürdiger." },
+    ],
+    transcriptAttempts: 1,
+    transcriptUpdatedAt: "2026-08-21T08:30:00.000Z",
+    transcriptStatus: "ready",
   },
   {
     id: "signal-memory",
