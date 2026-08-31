@@ -25,3 +25,7 @@ Die Release-Checkliste in `docs/SECURITY.md` gilt nicht mehr, weil dieses Repo n
 - `origin` zeigt weiter auf das öffentliche Repo. Ein `git push` würde das ganze Produkt veröffentlichen. Bis ein privates Remote eingerichtet ist, ist die Push-URL von `origin` bewusst auf einen ungültigen Wert gesetzt, damit ein Push laut fehlschlägt statt still durchzugehen.
 - Echte Handles, echte Screenshots und die eigene Positionierung dürfen ab jetzt im Repo liegen. Was weiter draußen bleibt: Tokens, Cookies, Session-Material und alles aus `.env.local`. Diese Regeln stehen unverändert in `AGENTS.md`.
 - Ein Auskoppeln generischer Teile in den öffentlichen Starter ist weiter möglich, aber dann bewusst als Cherry-Pick und mit der Release-Checkliste, nicht als Nebenwirkung eines Pushes.
+
+## Nachtrag 2026-08-31
+
+Das private Remote existiert: `origin` zeigt auf `github.com/christophercallejongarcia/signal-room-starter` (privat). Das öffentliche Starter-Repo hängt als `upstream` mit weiter deaktivierter Push-URL. Gitignored bleibt, was gitignored war: `.scratch/` (Specs und Tickets), `data/`, `.env.local`, `reviews/`.
