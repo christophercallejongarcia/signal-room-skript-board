@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 /** Optional fields arrive as null from JSON sources; the schema wants them absent. */
@@ -53,5 +53,21 @@ export const mark = mutation({
     if (!row) return null;
     const { _id, _creationTime, ...signal } = row;
     return signal;
+  },
+});
+
+/** One-time repair for the old parser's false final outcomes. Safe to run again. */
+export const resetLegacyTranscriptStatuses = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("signals").take(10_000);
+    let reset = 0;
+    for (const row of rows) {
+      const hasTranscript = typeof row.transcript === "string" && row.transcript.trim().length > 0;
+      if (hasTranscript || (row.transcriptStatus !== "silent" && row.transcriptStatus !== "missing")) continue;
+      await ctx.db.patch(row._id, { transcriptStatus: undefined });
+      reset += 1;
+    }
+    return { seen: rows.length, reset };
   },
 });

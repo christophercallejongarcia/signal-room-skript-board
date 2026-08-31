@@ -15,6 +15,12 @@ export type Creator = {
   lastCheckedAt?: string;
 };
 
+export type TranscriptSegment = {
+  start: number;
+  end: number;
+  text: string;
+};
+
 export type SignalRecord = {
   id: string;
   creatorId: string;
@@ -40,10 +46,20 @@ export type SignalRecord = {
   savedAt?: string;
   /** What is said in the reel, fetched once for reels above the threshold. Absent until fetched. */
   transcript?: string;
+  /** Timecoded transcript segments, only when the actor returned usable timestamps. */
+  transcriptSegments?: TranscriptSegment[];
+  /** Number of actor attempts, including the current pending attempt. */
+  transcriptAttempts?: number;
+  /** When the last transcript attempt changed state. */
+  transcriptUpdatedAt?: string;
+  /** Bounded actor error, present only while the signal is failed. */
+  transcriptError?: string;
   /**
    * ready = transcript is set. silent = the actor answered without text (no usable
    * audio track). missing = the actor did not answer this reel although it answered
-   * others (gone or private). All three are final; the reel is never sent again.
+   * others (gone or private). pending = an actor attempt is in flight. failed = the
+   * actor attempt failed and carries transcriptError. The first three are final for
+   * the automatic pass; pending and failed are left for a manual retry.
    */
   transcriptStatus?: TranscriptStatus;
 };
@@ -138,10 +154,10 @@ export type Run = {
   costLimitUsd?: number;
 };
 
-export type TranscriptStatus = "ready" | "silent" | "missing";
+export type TranscriptStatus = "ready" | "silent" | "missing" | "pending" | "failed";
 
 /** Outcome of one transcript pass. */
-export type TranscriptCount = { added: number; silent: number; missing: number };
+export type TranscriptCount = { added: number; silent: number; missing: number; failed: number };
 
 export type RefreshResult = {
   creatorsChecked: number;

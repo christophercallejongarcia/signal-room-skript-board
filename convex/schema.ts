@@ -21,7 +21,8 @@ export const runFields = {
       costUsd: v.optional(v.number()),
     }),
   ),
-  transcripts: v.optional(v.object({ added: v.number(), silent: v.number(), missing: v.number() })),
+  // failed is optional for Run rows written before the status-model change.
+  transcripts: v.optional(v.object({ added: v.number(), silent: v.number(), missing: v.number(), failed: v.optional(v.number()) })),
   hashtagsChecked: v.optional(v.number()),
   costLimitUsd: v.optional(v.number()),
 };
@@ -296,7 +297,13 @@ export default defineSchema({
     topic: v.string(),
     savedAt: v.optional(v.string()),
     transcript: v.optional(v.string()),
-    transcriptStatus: v.optional(v.union(v.literal("ready"), v.literal("silent"), v.literal("missing"))),
+    transcriptSegments: v.optional(v.array(v.object({ start: v.number(), end: v.number(), text: v.string() }))),
+    transcriptAttempts: v.optional(v.number()),
+    transcriptUpdatedAt: v.optional(v.string()),
+    transcriptError: v.optional(v.string()),
+    transcriptStatus: v.optional(
+      v.union(v.literal("ready"), v.literal("silent"), v.literal("missing"), v.literal("pending"), v.literal("failed")),
+    ),
   })
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])

@@ -32,6 +32,7 @@ import {
 import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
+import { ReelDetailPanel, TranscriptStatusBadge } from "@/components/reel-detail";
 import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
 import { rankCorpus, DEMO_NOW, type Ranked } from "@/lib/rank-corpus";
 import { demoCreators, demoHashtagPosts, demoIdeas, demoSignals } from "@/lib/demo-data";
@@ -231,7 +232,10 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
         {isNew(signal.publishedAt, now) && <span className="badge lime">NEW</span>}
       </div>
       {(reel || signal.format === "short") && (
-        <div className="badge-bottom"><span className="badge format">Short form</span></div>
+      <div className="badge-bottom">
+        <span className="badge format">Short form</span>
+        <TranscriptStatusBadge signal={signal} compact />
+      </div>
       )}
     </div>
   );
@@ -532,8 +536,15 @@ export function SignalRoom() {
   const [trend, setTrend] = useState<TrendState>({ radar: null, phase: "loading", error: "" });
   const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
   const [covers, setCovers] = useState<CoverState>({ phase: "idle", run: null, error: "" });
+  const [selectedReel, setSelectedReel] = useState<{ signal: Ranked; creator: Creator } | null>(null);
 
   const rankedSignals = useMemo(() => rankCorpus(signals, creators, live), [creators, signals, live]);
+
+  function openReel(signalId: string) {
+    const signal = rankedSignals.find((item) => item.id === signalId);
+    const creator = signal ? creators.find((item) => item.id === signal.creatorId) : undefined;
+    if (signal && creator) setSelectedReel({ signal, creator });
+  }
 
   const demoRadar = useMemo(
     () => buildTrendRadar(
@@ -924,6 +935,7 @@ export function SignalRoom() {
             onThreshold={setThreshold}
             onCreateIdea={captureIdea}
             onToggleSaved={toggleSaved}
+            onOpenReel={openReel}
           />
         )}
         {activeTab === "briefing" && (
@@ -935,6 +947,8 @@ export function SignalRoom() {
             onCompose={composeBriefingNow}
             onSelect={(id) => setBriefings((current) => ({ ...current, selected: id }))}
             onCreateIdea={captureIdea}
+            rankedSignals={rankedSignals}
+            onOpenReel={openReel}
             slate={{
               state: slates,
               onCompose: composeSlate,
@@ -1007,6 +1021,13 @@ export function SignalRoom() {
       </main>
 
       {showAddCreator && <AddCreatorDialog onClose={() => setShowAddCreator(false)} onSubmit={addCreator} state={addState} />}
+      {selectedReel && (
+        <ReelDetailPanel
+          signal={selectedReel.signal}
+          creator={selectedReel.creator}
+          onClose={() => setSelectedReel(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1035,6 +1056,7 @@ function DiscoverView({
   onThreshold,
   onCreateIdea,
   onToggleSaved,
+  onOpenReel,
 }: {
   rankedSignals: Ranked[];
   creators: Creator[];
@@ -1046,6 +1068,7 @@ function DiscoverView({
   onThreshold: (threshold: OutlierThreshold) => void;
   onCreateIdea: (input: IdeaInput) => void;
   onToggleSaved: (signal: SignalRecord) => void;
+  onOpenReel: (signalId: string) => void;
 }) {
   const [view, setView] = useState<DiscoverViewMode>("all");
   const [published, setPublished] = useState<PublishedWindow>("90");
@@ -1207,6 +1230,9 @@ function DiscoverView({
                   </div>
                   <div className="signal-actions">
                     <span className="signal-buttons">
+                      <button className="ghost-button" type="button" onClick={() => onOpenReel(signal.id)}>
+                        <ArrowRight size={13} /> View Reel
+                      </button>
                       <button
                         className={isSaved(signal) ? "ghost-button active" : "ghost-button"}
                         type="button"
@@ -1265,6 +1291,8 @@ function BriefingView({
   onCompose,
   onSelect,
   onCreateIdea,
+  rankedSignals,
+  onOpenReel,
   slate,
 }: {
   state: BriefingState;
@@ -1274,6 +1302,8 @@ function BriefingView({
   onCompose: () => void;
   onSelect: (id: string) => void;
   onCreateIdea: (input: IdeaInput) => void;
+  rankedSignals: Ranked[];
+  onOpenReel: (signalId: string) => void;
   slate: SlateSectionProps;
 }) {
   const stored = state.selected
@@ -1288,6 +1318,7 @@ function BriefingView({
   const running = state.phase === "running";
   const items = briefing?.items ?? [];
   const day = briefing ? new Date(`${briefing.day}T12:00:00.000Z`) : new Date();
+  const signalMap = new Map(rankedSignals.map((signal) => [signal.id, signal]));
 
   return (
     <div className="view-stack">
@@ -1359,6 +1390,7 @@ function BriefingView({
               <div>
                 <div className="meta">
                   <span>{item.creator}</span>
+                  {signalMap.get(item.signalId) && <TranscriptStatusBadge signal={signalMap.get(item.signalId)!} compact />}
                   <strong>{item.score.toFixed(2)} score</strong>
                   <span>{formatOutlier(item.outlier)} outlier</span>
                   <span>{formatNumber(item.plays)} plays</span>
@@ -1372,6 +1404,11 @@ function BriefingView({
                 </div>
               </div>
               <div className="actions">
+                {signalMap.get(item.signalId) && (
+                  <button className="ghost-button" type="button" onClick={() => onOpenReel(item.signalId)}>
+                    <ArrowRight size={13} /> View Reel
+                  </button>
+                )}
                 <button
                   className="ghost-button"
                   type="button"

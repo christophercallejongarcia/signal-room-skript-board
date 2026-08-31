@@ -68,3 +68,10 @@ test("pickRefreshBatch under the limit keeps everyone", () => {
   assert.equal(batch.length, 2);
   assert.equal(skipped.length, 0);
 });
+
+test("pickRefreshBatch accepts zero for a transcript-only probe without collecting creators", () => {
+  const creators = [{ id: "a" }, { id: "b" }];
+  const { batch, skipped } = pickRefreshBatch(creators, 0);
+  assert.deepEqual(batch, []);
+  assert.deepEqual(skipped.map((creator) => creator.id), ["a", "b"]);
+});

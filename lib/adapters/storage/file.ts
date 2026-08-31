@@ -4,6 +4,7 @@ import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, 
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
+import { resetLegacyTranscriptStatuses } from "../../transcripts.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 import { mergeHashtagPosts } from "../../hashtag-posts.ts";
 
@@ -35,24 +36,34 @@ const MAX_SLATES = 90;
 const EMPTY: Store = { creators: [], signals: [], hashtagPosts: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
 
 async function load(): Promise<Store> {
+  let parsed: Partial<Store>;
   try {
     const raw = await readFile(STORE_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Partial<Store>;
-    return {
-      creators: parsed.creators ?? [],
-      signals: parsed.signals ?? [],
-      hashtagPosts: parsed.hashtagPosts ?? [],
-      runs: parsed.runs ?? [],
-      // Ideas written before the six stages land on the matching stage; nothing else changes.
-      ideas: (parsed.ideas ?? []).map((idea) => ({ ...idea, status: legacyStage(idea.status) ?? idea.status })),
-      formatReviews: parsed.formatReviews ?? [],
-      hookRuns: parsed.hookRuns ?? [],
-      briefings: parsed.briefings ?? [],
-      slates: parsed.slates ?? [],
-    };
+    parsed = JSON.parse(raw) as Partial<Store>;
   } catch {
     return { ...EMPTY };
   }
+  // The old parser marked these as final even though it had not read the actor's
+  // current response shape. Persist the repair on first load; later loads are no-ops.
+  const migrated = resetLegacyTranscriptStatuses(parsed.signals ?? []);
+  const store: Store = {
+    creators: parsed.creators ?? [],
+    signals: migrated.signals,
+    hashtagPosts: parsed.hashtagPosts ?? [],
+    runs: (parsed.runs ?? []).map((run) =>
+      run.transcripts && run.transcripts.failed === undefined
+        ? { ...run, transcripts: { ...run.transcripts, failed: 0 } }
+        : run,
+    ),
+    // Ideas written before the six stages land on the matching stage; nothing else changes.
+    ideas: (parsed.ideas ?? []).map((idea) => ({ ...idea, status: legacyStage(idea.status) ?? idea.status })),
+    formatReviews: parsed.formatReviews ?? [],
+    hookRuns: parsed.hookRuns ?? [],
+    briefings: parsed.briefings ?? [],
+    slates: parsed.slates ?? [],
+  };
+  if (migrated.reset > 0) await save(store);
+  return store;
 }
 
 async function save(store: Store) {

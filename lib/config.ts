@@ -25,11 +25,15 @@ export const INSTAGRAM_HASHTAG_COST_LIMIT_USD = positiveEnv("INSTAGRAM_HASHTAG_C
 export const INSTAGRAM_HASHTAG_WINDOW_DAYS = 14;
 /** Hard cap for an environment-provided hashtag list. */
 export const INSTAGRAM_HASHTAG_MAX_TAGS = 20;
-/**
- * Reels one Delta-Refresh may send to the transcript actor. Strongest outliers
- * first; the rest wait for the next run. Override with TRANSCRIPT_LIMIT_PER_RUN.
- */
+/** Reels one Delta-Refresh may send to the transcript actor. Override with TRANSCRIPT_LIMIT_PER_RUN. */
 export const TRANSCRIPT_LIMIT_PER_RUN = positiveEnv("TRANSCRIPT_LIMIT_PER_RUN", 20);
+/** Minimum combined Outlier-Scorer score for automatic transcript selection. 20 is the Outlier 2 contribution. */
+export const TRANSCRIPT_SCORE_THRESHOLD = positiveEnv("TRANSCRIPT_SCORE_THRESHOLD", 20);
+/** How long a pending transcript attempt blocks a manual retry. */
+export const TRANSCRIPT_PENDING_TIMEOUT_MINUTES = positiveEnv("TRANSCRIPT_PENDING_TIMEOUT_MINUTES", 10);
+export const TRANSCRIPT_PENDING_TIMEOUT_MS = TRANSCRIPT_PENDING_TIMEOUT_MINUTES * 60_000;
+/** Maximum actor error text kept on a Signal. */
+export const TRANSCRIPT_ERROR_MAX = 300;
 
 function positiveEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);

@@ -1,31 +1,71 @@
 import type { Creator, SignalRecord } from "./contracts";
-import { OUTLIER_THRESHOLD, TRANSCRIPT_LIMIT_PER_RUN } from "./config.ts";
-import { outlierFactor } from "./adapters/scoring/outlier.ts";
+import { TRANSCRIPT_ERROR_MAX, TRANSCRIPT_LIMIT_PER_RUN, TRANSCRIPT_PENDING_TIMEOUT_MS, TRANSCRIPT_SCORE_THRESHOLD } from "./config.ts";
+import { outlierScorer, reach } from "./adapters/scoring/outlier.ts";
 
-/** The one field pair the whole app reads a transcript from. */
-export type TranscriptFields = Pick<SignalRecord, "transcript" | "transcriptStatus">;
+/** The transcript fields used by the refresh and the manual transcript flow. */
+export type TranscriptFields = Pick<SignalRecord, "transcript" | "transcriptStatus" | "transcriptUpdatedAt">;
 
-/** True once the reel has a final status: ready, silent or missing. */
+/** True once the reel has any assigned status, including an in-flight or failed attempt. */
 export function hasTranscriptOutcome(signal: TranscriptFields) {
   return signal.transcriptStatus !== undefined;
 }
 
-export type TranscriptBatchOptions = { threshold?: number; limit?: number };
+/** True when a pending attempt is old enough that a manual retry may take it over. */
+export function isPendingTranscriptExpired(
+  signal: TranscriptFields,
+  now: Date | number = new Date(),
+  timeoutMs = TRANSCRIPT_PENDING_TIMEOUT_MS,
+) {
+  if (signal.transcriptStatus !== "pending") return false;
+  const updatedAt = Date.parse(signal.transcriptUpdatedAt ?? "");
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  // A pending row without a timestamp cannot be proven to be fresh, so it is recoverable.
+  return !Number.isFinite(updatedAt) || nowMs - updatedAt > timeoutMs;
+}
+
+/** Short alias for callers that only need the pending-state predicate. */
+export const isPendingExpired = isPendingTranscriptExpired;
+
+/** Keeps provider errors useful without allowing an actor response to grow a Signal indefinitely. */
+export function boundedTranscriptError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, " ").trim().slice(0, TRANSCRIPT_ERROR_MAX) || "Transcript actor failed";
+}
+
+/** One-time repair for the old parser's false final outcomes. */
+export function resetLegacyTranscriptStatuses(signals: SignalRecord[]) {
+  let reset = 0;
+  const cleaned = signals.map((signal) => {
+    if ((signal.transcriptStatus === "silent" || signal.transcriptStatus === "missing") && !signal.transcript?.trim()) {
+      const { transcriptStatus, ...withoutStatus } = signal;
+      void transcriptStatus;
+      reset += 1;
+      return withoutStatus;
+    }
+    return signal;
+  });
+  return { signals: cleaned, reset };
+}
+
+export type TranscriptBatchOptions = { scoreThreshold?: number; limit?: number; now?: Date };
 
 /**
- * The reels one refresh sends to the transcript actor: reels at or above the
- * outlier threshold (plays over audience, same factor as everywhere else) that
- * carry no outcome yet, strongest first, at most limit. A reel without a url
- * cannot be fetched and is left alone.
+ * The reels one refresh sends to the transcript actor: reels whose combined
+ * Outlier-Scorer score is at or above the configured threshold, carry no outcome
+ * yet, and have a URL. The same scorer calculates Outlier, Channel-Relative and
+ * Velocity; strongest score first, at most limit. A reel without a URL or known
+ * Creator is left alone.
  */
 export function pickTranscriptBatch(signals: SignalRecord[], creators: Creator[], options: TranscriptBatchOptions = {}): SignalRecord[] {
-  const threshold = options.threshold ?? OUTLIER_THRESHOLD;
-  const limit = Math.max(1, Math.floor(options.limit ?? TRANSCRIPT_LIMIT_PER_RUN));
-  const audience = new Map(creators.map((creator) => [creator.id, creator.audience]));
-  const outlierOf = (signal: SignalRecord) => outlierFactor(signal, audience.get(signal.creatorId) ?? 0);
-  return signals
+  const threshold = options.scoreThreshold ?? TRANSCRIPT_SCORE_THRESHOLD;
+  const limit = Math.max(0, Math.floor(options.limit ?? TRANSCRIPT_LIMIT_PER_RUN));
+  const originalById = new Map(signals.map((signal) => [signal.id, signal]));
+  return outlierScorer
+    .rank(signals, creators, options.now)
     .filter((signal) => signal.format === "reel" && signal.url && !hasTranscriptOutcome(signal))
-    .filter((signal) => outlierOf(signal) >= threshold)
-    .sort((a, b) => outlierOf(b) - outlierOf(a))
-    .slice(0, limit);
+    .filter((signal) => signal.score >= threshold)
+    .sort((a, b) => b.score - a.score || b.outlier - a.outlier || reach(b) - reach(a))
+    .slice(0, limit)
+    .map((signal) => originalById.get(signal.id)!)
+    .filter((signal): signal is SignalRecord => signal !== undefined);
 }

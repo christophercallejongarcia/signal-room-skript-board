@@ -87,7 +87,7 @@ export function monthUsage(runs: Pick<Run, "startedAt" | "usage">[], now: Date):
  * on the next run, so a limited refresh walks the whole list over time.
  */
 export function pickRefreshBatch<T extends Pick<Creator, "lastCheckedAt">>(creators: T[], limit: number): { batch: T[]; skipped: T[] } {
-  const cap = Math.max(1, Math.floor(limit));
+  const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
   const ordered = [...creators].sort((a, b) => (a.lastCheckedAt ?? "").localeCompare(b.lastCheckedAt ?? ""));
   return { batch: ordered.slice(0, cap), skipped: ordered.slice(cap) };
 }

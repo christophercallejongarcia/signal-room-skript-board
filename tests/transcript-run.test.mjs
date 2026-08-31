@@ -40,24 +40,33 @@ test("outlier reels get a transcript once; a reel without speech is marked silen
   const calls = [];
   const transcribe = async (reels) => {
     calls.push(reels.map((r) => r.id));
-    return { results: [{ id: "ig-loud", transcript: "Hör auf mit Notion. Wirklich." }, { id: "ig-spoken", transcript: null }], usage: transcriptUsage };
+    return {
+      results: [
+        { id: "ig-loud", transcript: "Hör auf mit Notion. Wirklich.", segments: [{ start: 0, end: 2.5, text: "Hör auf" }] },
+        { id: "ig-spoken", transcript: null },
+      ],
+      usage: transcriptUsage,
+    };
   };
   await runRefresh(deps(storage, transcribe));
   assert.deepEqual(calls, [["ig-loud", "ig-spoken"]]);
   assert.equal(storage.signals.get("ig-loud").transcript, "Hör auf mit Notion. Wirklich.");
   assert.equal(storage.signals.get("ig-loud").transcriptStatus, "ready");
+  assert.equal(storage.signals.get("ig-loud").transcriptAttempts, 1);
+  assert.equal(storage.signals.get("ig-loud").transcriptUpdatedAt, NOW.toISOString());
+  assert.deepEqual(storage.signals.get("ig-loud").transcriptSegments, [{ start: 0, end: 2.5, text: "Hör auf" }]);
   assert.equal(storage.signals.get("ig-spoken").transcriptStatus, "silent");
   assert.equal(storage.signals.get("ig-spoken").transcript, undefined);
   assert.equal(storage.signals.get("ig-quiet").transcriptStatus, undefined);
   const run = storage.runs[0];
-  assert.deepEqual(run.transcripts, { added: 1, silent: 1, missing: 0 });
+  assert.deepEqual(run.transcripts, { added: 1, silent: 1, missing: 0, failed: 0 });
   assert.equal(run.status, "ok");
   assert.equal(run.usage.costUsd, 0.1);
 
   // Second run: nothing to fetch, the actor is not called.
   await runRefresh(deps(storage, transcribe));
   assert.equal(calls.length, 1);
-  assert.deepEqual(storage.runs[1].transcripts, { added: 0, silent: 0, missing: 0 });
+  assert.deepEqual(storage.runs[1].transcripts, { added: 0, silent: 0, missing: 0, failed: 0 });
 });
 
 test("a reel the actor left out while answering others is marked missing; the saved mark is never written back", async () => {
@@ -70,20 +79,25 @@ test("a reel the actor left out while answering others is marked missing; the sa
   assert.equal(storage.signals.get("ig-loud").transcriptStatus, "missing");
   assert.equal(storage.signals.get("ig-loud").savedAt, "2026-08-01T00:00:00.000Z");
   assert.ok(written.filter((r) => r.transcriptStatus).every((r) => !("savedAt" in r)), "transcript write-back carries no savedAt");
-  assert.deepEqual(storage.runs[0].transcripts, { added: 1, silent: 0, missing: 1 });
+  assert.deepEqual(storage.runs[0].transcripts, { added: 1, silent: 0, missing: 1, failed: 0 });
   // Nothing is sent twice.
   const calls = [];
   await runRefresh(deps(storage, async (reels) => { calls.push(reels); return { results: [], usage: transcriptUsage }; }));
   assert.deepEqual(calls, []);
 });
 
-test("an answer that matches none of the reels leaves them open, is paid and is logged as an error", async () => {
+test("an answer that matches none of the reels fails every sent reel, is paid and is logged as an error", async () => {
   const storage = fakeStorage();
   await runRefresh(deps(storage, async () => ({ results: [{ id: "ig-unknown", transcript: "x" }], usage: transcriptUsage })));
   const run = storage.runs[0];
-  assert.equal(storage.signals.get("ig-loud").transcriptStatus, undefined);
+  assert.equal(storage.signals.get("ig-loud").transcriptStatus, "failed");
+  assert.equal(storage.signals.get("ig-loud").transcriptAttempts, 1);
+  assert.equal(storage.signals.get("ig-loud").transcriptUpdatedAt, NOW.toISOString());
+  assert.match(storage.signals.get("ig-loud").transcriptError, /answered 1 item/);
+  assert.equal(storage.signals.get("ig-spoken").transcriptStatus, "failed");
   assert.equal(run.status, "partial");
   assert.match(run.errors[0].message, /answered 1 item\(s\), none for the 2 reel\(s\)/);
+  assert.deepEqual(run.transcripts, { added: 0, silent: 0, missing: 0, failed: 2 });
   assert.equal(run.usage.costUsd, 0.1);
   assert.equal(run.usage.unreported, 0);
 });
@@ -103,13 +117,22 @@ test("the transcript limit bounds one run; the rest wait for the next", async ()
   assert.deepEqual(calls, [["ig-loud"], ["ig-spoken"]]);
 });
 
-test("a failing transcript actor is logged on the run, the corpus stays and the collection counts", async () => {
+test("a failing transcript actor marks the sent reels failed, counts them and keeps the collection", async () => {
   const storage = fakeStorage();
-  const result = await runRefresh(deps(storage, async () => { throw new Error("transcript actor down"); }));
+  let pendingSeen;
+  const result = await runRefresh(deps(storage, async () => {
+    pendingSeen = (await storage.listSignals()).filter((signal) => signal.transcriptStatus === "pending");
+    throw new Error("transcript actor down");
+  }));
   assert.equal(result.recordsAdded, 3);
   const run = storage.runs[0];
   assert.equal(run.status, "partial");
   assert.deepEqual(run.errors, [{ creatorId: "transcripts", handle: "transcripts", message: "transcript actor down" }]);
+  assert.deepEqual(pendingSeen.map((signal) => signal.id), ["ig-loud", "ig-spoken"]);
+  assert.deepEqual(run.transcripts, { added: 0, silent: 0, missing: 0, failed: 2 });
   assert.equal(run.usage.unreported, 1);
-  assert.equal(storage.signals.get("ig-loud").transcriptStatus, undefined);
+  assert.equal(storage.signals.get("ig-loud").transcriptStatus, "failed");
+  assert.equal(storage.signals.get("ig-spoken").transcriptStatus, "failed");
+  assert.equal(storage.signals.get("ig-loud").transcriptAttempts, 1);
+  assert.equal(storage.signals.get("ig-loud").transcriptError, "transcript actor down");
 });

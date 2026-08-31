@@ -11,7 +11,11 @@ export const list = query({
       .withIndex("by_startedAt")
       .order("desc")
       .take(Math.min(Math.max(limit ?? 10, 1), 100));
-    return rows.map(({ _id, _creationTime, ...run }) => run);
+    return rows.map(({ _id, _creationTime, ...run }) =>
+      run.transcripts && run.transcripts.failed === undefined
+        ? { ...run, transcripts: { ...run.transcripts, failed: 0 } }
+        : run,
+    );
   },
 });
 

@@ -1,4 +1,4 @@
-import type { RunUsage, SignalRecord } from "../../contracts";
+import type { RunUsage, SignalRecord, TranscriptSegment } from "../../contracts";
 import { sumUsage } from "../../run-cost.ts";
 import { runActor, type ActorResult } from "./apify-client.ts";
 
@@ -6,7 +6,7 @@ import { runActor, type ActorResult } from "./apify-client.ts";
 export const TRANSCRIPT_ACTOR = "apple_yang~instagram-transcripts-scraper";
 
 /** One reel's outcome: the text, or null when the reel has no usable audio track. */
-export type TranscriptResult = { id: string; transcript: string | null };
+export type TranscriptResult = { id: string; transcript: string | null; segments?: TranscriptSegment[] };
 
 /** What one transcript pass returns to the refresh. */
 export type TranscribeResult = { results: TranscriptResult[]; usage: RunUsage };
@@ -19,28 +19,59 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Reads the shortcode from the actor's current response shape. */
+function currentShortCodeOf(item: Record<string, unknown>) {
+  const code = text(item.code);
+  if (code) return code;
+  return text(item.url).match(SHORTCODE_IN_URL)?.[1];
+}
+
 /**
- * Reads the shortcode of one dataset item. The actor documents no output schema,
- * so every string field that looks like a post url is tried, then the usual code fields.
+ * Reads the shortcode of one dataset item. The current fields are preferred;
+ * the tolerant field search remains a fallback for older actor responses.
  */
 function shortCodeOf(item: Record<string, unknown>) {
+  const current = currentShortCodeOf(item);
+  if (current) return current;
   for (const value of Object.values(item)) {
     const match = typeof value === "string" ? value.match(SHORTCODE_IN_URL) : null;
     if (match) return match[1];
   }
-  return text(item.shortCode) || text(item.shortcode) || text(item.code) || undefined;
+  return text(item.shortCode) || text(item.shortcode) || undefined;
 }
 
-/** The transcript text of one dataset item: a flat text field first, else the joined segments. */
+function joinedSegments(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((segment) => (segment && typeof segment === "object" ? text((segment as { text?: unknown }).text) : ""))
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+    : "";
+}
+
+/** Keeps only segments with the timestamps needed by the Reel view. */
+function timedSegments(value: unknown): TranscriptSegment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const segments = value.flatMap((segment) => {
+    if (!segment || typeof segment !== "object") return [];
+    const raw = segment as { start?: unknown; end?: unknown; text?: unknown };
+    const start = typeof raw.start === "number" && Number.isFinite(raw.start) ? raw.start : undefined;
+    const end = typeof raw.end === "number" && Number.isFinite(raw.end) ? raw.end : undefined;
+    const segmentText = text(raw.text);
+    return start !== undefined && end !== undefined && segmentText ? [{ start, end, text: segmentText }] : [];
+  });
+  return segments.length ? segments : undefined;
+}
+
+/** The transcript text of one dataset item in the actor's current response shape. */
 function transcriptOf(item: Record<string, unknown>) {
-  const flat = text(item.transcript) || text(item.text) || text(item.transcription);
-  if (flat) return flat;
-  const segments = Array.isArray(item.segments) ? item.segments : Array.isArray(item.transcriptSegments) ? item.transcriptSegments : [];
-  return segments
-    .map((segment) => (segment && typeof segment === "object" ? text((segment as { text?: unknown }).text) : ""))
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const current = text(item.text);
+  if (current) return current;
+  const segments = joinedSegments(item.segments);
+  if (segments) return segments;
+  // Fallback for older or undocumented actor response variants.
+  return text(item.transcript) || text(item.transcription) || joinedSegments(item.transcriptSegments);
 }
 
 /**
@@ -61,7 +92,8 @@ export function readTranscriptItems(items: unknown[], reels: Pick<SignalRecord, 
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const transcript = transcriptOf(item);
-    results.push({ id, transcript: transcript || null });
+    const segments = timedSegments(item.segments) ?? timedSegments(item.transcriptSegments);
+    results.push({ id, transcript: transcript || null, ...(segments ? { segments } : {}) });
   }
   return results;
 }
