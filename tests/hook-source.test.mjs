@@ -8,6 +8,17 @@ test("hookOf reads the spoken opening when a transcript exists, else the first c
   assert.equal(hookOf({ title: "Reel title" }), "Reel title");
 });
 
+test("hookOf prefers the corrected working copy over the original transcript", () => {
+  assert.equal(
+    hookOf({
+      title: "Untitled reel",
+      transcript: "Das ist ein Thumnail.",
+      transcriptWorkingCopy: "Das ist ein Thumbnail.",
+    }),
+    "Das ist ein Thumbnail.",
+  );
+});
+
 test("spokenHook bounds a long first sentence at a word boundary", () => {
   const long = `${"wort ".repeat(60)}ende.`;
   const hook = spokenHook(long);

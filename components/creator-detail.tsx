@@ -88,6 +88,11 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
   const nowMs = Date.now();
   const back = { href: tabPath(origin), label: `Back to ${ORIGINS[origin]}` };
 
+  function updateSignal(updated: SignalRecord) {
+    setSignals((current) => current.map((signal) => (signal.id === updated.id ? { ...signal, ...updated } : signal)));
+    setSelectedReel((current) => current && current.id === updated.id ? { ...current, ...updated } : current);
+  }
+
   /** Clicking the active column flips it; a new column opens at its default direction. */
   function sortBy(sort: CreatorSort) {
     setOrder((current) =>
@@ -193,7 +198,10 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
                         <CoverImage signal={signal} index={index} className={signal.format === "reel" ? "mini portrait" : "mini"} lazy />
                         <div>
                           <strong>{signal.title}</strong>
-                          <span className="thumb-subline"><small>{signal.format ?? "video"} · {signal.topic}</small><TranscriptStatusBadge signal={signal} compact /></span>
+                          <span className="thumb-subline">
+                            <small>{signal.format ?? "video"} · {signal.topic}</small>
+                            {signal.format === "reel" && <TranscriptStatusBadge signal={signal} compact />}
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -203,9 +211,11 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
                     <td className="right num">{formatNumber(signalReach(signal))}</td>
                     <td className={isOutlier(signal, threshold) ? "right lime" : "right num"}>{(signal.outlier ?? 0).toFixed(2)}x</td>
                     <td className="right">
-                      <button className="icon-button" type="button" onClick={() => setSelectedReel(signal)} aria-label={`Open Reel view for ${signal.title}`} title="Open Reel view">
-                        <ArrowRight size={14} />
-                      </button>
+                      {signal.format === "reel" && (
+                        <button className="icon-button" type="button" onClick={() => setSelectedReel(signal)} aria-label={`Open Reel view for ${signal.title}`} title="Open Reel view">
+                          <ArrowRight size={14} />
+                        </button>
+                      )}
                       {signal.url ? (
                         <a className="icon-button" href={signal.url} target="_blank" rel="noreferrer" aria-label={`Open ${signal.title} on ${networkName(creator.network)}`}>
                           <ArrowSquareOut size={14} />
@@ -225,7 +235,7 @@ export function CreatorDetail({ creatorId }: { creatorId: string }) {
         )}
       </main>
       {selectedReel && (
-        <ReelDetailPanel signal={selectedReel} creator={creator!} onClose={() => setSelectedReel(null)} />
+        <ReelDetailPanel signal={selectedReel} creator={creator!} onClose={() => setSelectedReel(null)} onSignalUpdated={updateSignal} demo={!live} />
       )}
     </div>
   );

@@ -27,15 +27,16 @@ export function spokenHook(transcript: string) {
   return `${(cut.includes(" ") ? cut.slice(0, cut.lastIndexOf(" ")) : cut).trimEnd()}…`;
 }
 
-/** What hookOf reads: the transcript when there is one, else caption, else title. */
-export type HookSource = Pick<SignalRecord, "transcript" | "caption" | "title">;
+/** What hookOf reads: the working copy, then original transcript, then caption, then title. */
+export type HookSource = Pick<SignalRecord, "transcript" | "transcriptWorkingCopy" | "caption" | "title">;
 
 /**
- * The Hook of a signal, decided here and nowhere else: the spoken hook when a
- * transcript exists, otherwise the first caption line, otherwise the title
- * (Instagram derives the title from the first caption line anyway).
+ * The Hook of a signal, decided here and nowhere else: the spoken hook from the
+ * working copy when one exists, otherwise the original transcript, then the
+ * first caption line and finally the title.
  */
 export function hookOf(signal: HookSource) {
-  const spoken = signal.transcript ? spokenHook(signal.transcript) : "";
+  const transcript = signal.transcriptWorkingCopy?.trim() || signal.transcript;
+  const spoken = transcript ? spokenHook(transcript) : "";
   return spoken || hookLine(signal.caption ?? signal.title);
 }

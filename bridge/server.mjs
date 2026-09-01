@@ -9,6 +9,7 @@ import {
   buildCoverImagePrompt,
   buildCoverPrompt,
   buildHooksPrompt,
+  buildTranscriptCorrectionsPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
   buildSlatePrompt,
@@ -18,9 +19,11 @@ import {
   slateOutputSchema,
   storyboardOutputSchema,
   strategyOutputSchema,
+  transcriptCorrectionsOutputSchema,
   validateBriefingRequest,
   validateCoverRequest,
   validateHooksRequest,
+  validateTranscriptCorrectionsRequest,
   validateSlateRequest,
   validateStoryboardRequest,
   validateStrategyRequest,
@@ -155,6 +158,17 @@ const routes = new Map([
         // The answer schema is built from the validated count, so a run comes back with exactly that many.
         const request = validateHooksRequest(input);
         return runCodex(buildHooksPrompt(request), hooksOutputSchema(request.count));
+      },
+    },
+  ],
+  [
+    "/v1/transcript-corrections",
+    {
+      label: "Transcript corrections",
+      failure: "The local Codex correction run failed.",
+      run: (input) => {
+        const request = validateTranscriptCorrectionsRequest(input);
+        return runCodex(buildTranscriptCorrectionsPrompt(request), transcriptCorrectionsOutputSchema);
       },
     },
   ],

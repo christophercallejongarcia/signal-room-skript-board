@@ -1,5 +1,7 @@
 import { internalMutation, mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { isPendingTranscriptExpired } from "../lib/transcripts";
+import { transcriptPatchFields } from "./schema";
 
 /** Optional fields arrive as null from JSON sources; the schema wants them absent. */
 function clean<T extends Record<string, unknown>>(doc: T): T {
@@ -49,6 +51,64 @@ export const mark = mutation({
       .unique();
     if (!existing) return null;
     await ctx.db.patch(existing._id, { savedAt: savedAt ?? undefined });
+    const row = await ctx.db.get(existing._id);
+    if (!row) return null;
+    const { _id, _creationTime, ...signal } = row;
+    return signal;
+  },
+});
+
+/** Atomically claims a Signal for one manual transcript attempt. */
+export const claimTranscript = mutation({
+  args: { id: v.string(), now: v.string() },
+  handler: async (ctx, { id, now }) => {
+    const existing = await ctx.db
+      .query("signals")
+      .withIndex("by_external_id", (q) => q.eq("id", id))
+      .unique();
+    if (!existing) return null;
+    if (existing.transcriptStatus === "pending" && !isPendingTranscriptExpired(existing, new Date(now))) {
+      throw new ConvexError({ kind: "transcript-conflict", reason: "pending", message: "A transcript attempt is already in progress." });
+    }
+    if (existing.transcriptStatus === "ready" || (existing.transcript?.trim() ?? "")) {
+      throw new ConvexError({ kind: "transcript-conflict", reason: "ready", message: "This Reel already has a transcript." });
+    }
+    await ctx.db.patch(existing._id, {
+      transcriptStatus: "pending",
+      transcriptAttempts: Math.max(0, Math.floor(existing.transcriptAttempts ?? 0)) + 1,
+      transcriptUpdatedAt: now,
+      transcriptError: undefined,
+      // A new actor answer starts a new review chain. The original transcript remains.
+      transcriptWorkingCopy: undefined,
+      transcriptCorrections: undefined,
+    });
+    const row = await ctx.db.get(existing._id);
+    if (!row) return null;
+    const { _id, _creationTime, ...signal } = row;
+    return signal;
+  },
+});
+
+/** Patches only transcript fields; metrics, captions and saved marks stay untouched. */
+export const patchTranscript = mutation({
+  args: { id: v.string(), patch: v.object(transcriptPatchFields) },
+  handler: async (ctx, { id, patch }) => {
+    const existing = await ctx.db
+      .query("signals")
+      .withIndex("by_external_id", (q) => q.eq("id", id))
+      .unique();
+    if (!existing) return null;
+    const updates = {
+      ...(patch.transcript === null ? { transcript: undefined } : patch.transcript === undefined ? {} : { transcript: patch.transcript }),
+      ...(patch.transcriptSegments === null ? { transcriptSegments: undefined } : patch.transcriptSegments === undefined ? {} : { transcriptSegments: patch.transcriptSegments }),
+      ...(patch.transcriptAttempts === undefined ? {} : { transcriptAttempts: patch.transcriptAttempts }),
+      ...(patch.transcriptUpdatedAt === undefined ? {} : { transcriptUpdatedAt: patch.transcriptUpdatedAt }),
+      ...(patch.transcriptError === null ? { transcriptError: undefined } : patch.transcriptError === undefined ? {} : { transcriptError: patch.transcriptError }),
+      ...(patch.transcriptStatus === null ? { transcriptStatus: undefined } : patch.transcriptStatus === undefined ? {} : { transcriptStatus: patch.transcriptStatus }),
+      ...(patch.transcriptWorkingCopy === null ? { transcriptWorkingCopy: undefined } : patch.transcriptWorkingCopy === undefined ? {} : { transcriptWorkingCopy: patch.transcriptWorkingCopy }),
+      ...(patch.transcriptCorrections === null ? { transcriptCorrections: undefined } : patch.transcriptCorrections === undefined ? {} : { transcriptCorrections: patch.transcriptCorrections }),
+    };
+    await ctx.db.patch(existing._id, updates);
     const row = await ctx.db.get(existing._id);
     if (!row) return null;
     const { _id, _creationTime, ...signal } = row;

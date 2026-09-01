@@ -216,6 +216,12 @@ function formatRunCost(usage: RunUsage | undefined) {
   return { label: formatUsd(usage.costUsd), title: units || "Apify total" };
 }
 
+function formatTranscriptCounts(run: Run) {
+  if (!run.transcripts) return "—";
+  const { added, silent, missing, failed = 0 } = run.transcripts;
+  return `+${added} / S${silent} / M${missing} / F${failed}`;
+}
+
 function formatStamp(iso: string) {
   return new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
@@ -231,11 +237,11 @@ function SignalMedia({ signal, index, threshold }: { signal: Ranked; index: numb
         <span>{isOutlier(signal, threshold) && <span className="badge outlier">{outlier.toFixed(1)}x</span>}</span>
         {isNew(signal.publishedAt, now) && <span className="badge lime">NEW</span>}
       </div>
-      {(reel || signal.format === "short") && (
-      <div className="badge-bottom">
-        <span className="badge format">Short form</span>
-        <TranscriptStatusBadge signal={signal} compact />
-      </div>
+      {reel && (
+        <div className="badge-bottom">
+          <span className="badge format">Short form</span>
+          <TranscriptStatusBadge signal={signal} compact />
+        </div>
       )}
     </div>
   );
@@ -544,6 +550,13 @@ export function SignalRoom() {
     const signal = rankedSignals.find((item) => item.id === signalId);
     const creator = signal ? creators.find((item) => item.id === signal.creatorId) : undefined;
     if (signal && creator) setSelectedReel({ signal, creator });
+  }
+
+  function updateSignal(updated: SignalRecord) {
+    setSignals((current) => current.map((signal) => (signal.id === updated.id ? { ...signal, ...updated } : signal)));
+    setSelectedReel((current) => current && current.signal.id === updated.id
+      ? { ...current, signal: { ...current.signal, ...updated } }
+      : current);
   }
 
   const demoRadar = useMemo(
@@ -1026,6 +1039,9 @@ export function SignalRoom() {
           signal={selectedReel.signal}
           creator={selectedReel.creator}
           onClose={() => setSelectedReel(null)}
+          onSignalUpdated={updateSignal}
+          onRunCreated={() => void loadRuns()}
+          demo={!live}
         />
       )}
     </div>
@@ -1230,9 +1246,11 @@ function DiscoverView({
                   </div>
                   <div className="signal-actions">
                     <span className="signal-buttons">
-                      <button className="ghost-button" type="button" onClick={() => onOpenReel(signal.id)}>
-                        <ArrowRight size={13} /> View Reel
-                      </button>
+                      {signal.format === "reel" && (
+                        <button className="ghost-button" type="button" onClick={() => onOpenReel(signal.id)}>
+                          <ArrowRight size={13} /> View Reel
+                        </button>
+                      )}
                       <button
                         className={isSaved(signal) ? "ghost-button active" : "ghost-button"}
                         type="button"
@@ -1390,7 +1408,7 @@ function BriefingView({
               <div>
                 <div className="meta">
                   <span>{item.creator}</span>
-                  {signalMap.get(item.signalId) && <TranscriptStatusBadge signal={signalMap.get(item.signalId)!} compact />}
+                  {signalMap.get(item.signalId)?.format === "reel" && <TranscriptStatusBadge signal={signalMap.get(item.signalId)!} compact />}
                   <strong>{item.score.toFixed(2)} score</strong>
                   <span>{formatOutlier(item.outlier)} outlier</span>
                   <span>{formatNumber(item.plays)} plays</span>
@@ -1404,7 +1422,7 @@ function BriefingView({
                 </div>
               </div>
               <div className="actions">
-                {signalMap.get(item.signalId) && (
+                {signalMap.get(item.signalId)?.format === "reel" && (
                   <button className="ghost-button" type="button" onClick={() => onOpenReel(item.signalId)}>
                     <ArrowRight size={13} /> View Reel
                   </button>
@@ -2941,7 +2959,7 @@ function ProfileView({ creators, rankedSignals, runs, runsMonth, runsState }: { 
         </div>
       )}
       <table className="desk-table">
-        <thead><tr><th>Started</th><th>Status</th><th className="hide-sm">Duration</th><th className="right">Creators</th><th className="right">New</th><th className="right">Updated</th><th className="right">Cost</th><th className="hide-sm">Errors</th></tr></thead>
+        <thead><tr><th>Started</th><th>Status</th><th className="hide-sm">Duration</th><th className="right">Creators</th><th className="right">New</th><th className="right">Updated</th><th className="right">Transcripts</th><th className="right">Cost</th><th className="hide-sm">Errors</th></tr></thead>
         <tbody>
           {runs.slice(0, 10).map((run) => {
             const cost = formatRunCost(run.usage);
@@ -2949,20 +2967,21 @@ function ProfileView({ creators, rankedSignals, runs, runsMonth, runsState }: { 
             const hashtagSweep = run.kind === "hashtag-sweep";
             return (
               <tr key={run.id}>
-                <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{hashtagSweep ? "Instagram hashtag sweep" : run.kind}</small></td>
+                <td><strong>{formatStamp(run.startedAt)}</strong><br /><small className="muted">{hashtagSweep ? "Instagram hashtag sweep" : run.kind}{run.transcriptSignalId ? ` · Reel ${run.transcriptSignalId}` : ""}</small></td>
                 <td><span className={`status-chip run-${run.status}`}>{run.status === "ok" ? <CheckCircle size={14} weight="fill" /> : <WarningCircle size={14} weight="fill" />} {run.status}</span></td>
                 <td className="hide-sm muted">{formatDuration(run.durationMs)}</td>
                 <td className="right num" title={skipped ? `${skipped} left for the next run by the creator limit` : undefined}>{hashtagSweep ? `${run.hashtagsChecked ?? 0} tags` : <>{run.creatorsChecked}{skipped ? <small className="muted"> +{skipped} left</small> : null}</>}</td>
                 <td className="right num">{run.recordsAdded}</td>
                 <td className="right num">{run.recordsUpdated}</td>
+                <td className="right num" title={`${run.transcriptSignalId ? `Reel ${run.transcriptSignalId} · ` : ""}Added / Silent / Missing / Failed`}>{formatTranscriptCounts(run)}</td>
                 <td className={cost.label === "unknown" ? "right muted" : "right num"} title={cost.title}>{cost.label}</td>
                 <td className="hide-sm muted">{run.errors.length === 0 ? "—" : run.errors.map((e) => `${e.handle}: ${e.message}`).join(" · ")}</td>
               </tr>
             );
           })}
-          {runsState === "loading" && runs.length === 0 && <tr><td colSpan={8}><div className="empty-state">Loading runs…</div></td></tr>}
-          {runsState === "error" && <tr><td colSpan={8}><div className="empty-state">Run log unavailable. Reload to try again.</div></td></tr>}
-          {runsState === "ready" && runs.length === 0 && <tr><td colSpan={8}><div className="empty-state">No runs yet. Hit refresh to log the first one.</div></td></tr>}
+          {runsState === "loading" && runs.length === 0 && <tr><td colSpan={9}><div className="empty-state">Loading runs…</div></td></tr>}
+          {runsState === "error" && <tr><td colSpan={9}><div className="empty-state">Run log unavailable. Reload to try again.</div></td></tr>}
+          {runsState === "ready" && runs.length === 0 && <tr><td colSpan={9}><div className="empty-state">No runs yet. Hit refresh to log the first one.</div></td></tr>}
         </tbody>
       </table>
 

@@ -21,6 +21,18 @@ export type TranscriptSegment = {
   text: string;
 };
 
+/** One human-reviewable correction to the original transcript. */
+export type TranscriptCorrection = {
+  id: string;
+  /** The exact text found in the original transcript. */
+  original: string;
+  replacement: string;
+  reason: string;
+  source: "bridge" | "dictionary";
+  status: "proposed" | "accepted" | "rejected";
+  createdAt: string;
+};
+
 export type SignalRecord = {
   id: string;
   creatorId: string;
@@ -48,6 +60,10 @@ export type SignalRecord = {
   transcript?: string;
   /** Timecoded transcript segments, only when the actor returned usable timestamps. */
   transcriptSegments?: TranscriptSegment[];
+  /** Materialized text made from the original and accepted corrections. */
+  transcriptWorkingCopy?: string;
+  /** Suggestions and decisions stay linked to the unchanged original transcript. */
+  transcriptCorrections?: TranscriptCorrection[];
   /** Number of actor attempts, including the current pending attempt. */
   transcriptAttempts?: number;
   /** When the last transcript attempt changed state. */
@@ -133,7 +149,7 @@ export interface HashtagConnector {
  */
 export type Run = {
   id: string;
-  kind: "backfill" | "refresh" | "hashtag-sweep";
+  kind: "backfill" | "refresh" | "hashtag-sweep" | "transcript";
   status: "ok" | "partial" | "failed";
   startedAt: string;
   finishedAt: string;
@@ -146,6 +162,8 @@ export type Run = {
   errors: RunError[];
   /** Absent on runs logged before the cost guard. */
   usage?: RunUsage;
+  /** The one Reel a manual transcript run attempted. Absent on collection runs. */
+  transcriptSignalId?: string;
   /** Transcript pass of a refresh: reels transcribed and reels marked silent. Absent on backfills and older runs. */
   transcripts?: TranscriptCount;
   /** Number of configured Instagram hashtags sent to the hashtag actor. */
@@ -158,6 +176,22 @@ export type TranscriptStatus = "ready" | "silent" | "missing" | "pending" | "fai
 
 /** Outcome of one transcript pass. */
 export type TranscriptCount = { added: number; silent: number; missing: number; failed: number };
+
+/** The only Signal fields a transcript flow may write. Null removes an optional field. */
+export type TranscriptPatch = {
+  transcript?: string | null;
+  transcriptSegments?: TranscriptSegment[] | null;
+  transcriptAttempts?: number;
+  transcriptUpdatedAt?: string;
+  transcriptError?: string | null;
+  transcriptStatus?: TranscriptStatus | null;
+  /** A fresh actor answer clears the derived correction layer. */
+  transcriptWorkingCopy?: string | null;
+  transcriptCorrections?: TranscriptCorrection[] | null;
+};
+
+/** Readable alias for callers that emphasize the Signal boundary. */
+export type TranscriptSignalPatch = TranscriptPatch;
 
 export type RefreshResult = {
   creatorsChecked: number;
@@ -570,6 +604,10 @@ export interface StorageAdapter {
    * the stored signal, or null when no signal has that id.
    */
   markSignal(id: string, savedAt: string | null): Promise<SignalRecord | null>;
+  /** Atomically claims one Signal for a manual transcript attempt. */
+  claimTranscript(id: string, now: string): Promise<SignalRecord | null>;
+  /** Patches only transcript fields on one Signal. Null removes an optional field. */
+  patchTranscript(id: string, patch: TranscriptSignalPatch): Promise<SignalRecord | null>;
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;

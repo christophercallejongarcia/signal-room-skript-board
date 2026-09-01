@@ -1,10 +1,10 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter, TranscriptSignalPatch } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
-import { resetLegacyTranscriptStatuses } from "../../transcripts.ts";
+import { resetLegacyTranscriptStatuses, transcriptConflictReason, TranscriptConflictError } from "../../transcripts.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 import { mergeHashtagPosts } from "../../hashtag-posts.ts";
 
@@ -86,6 +86,44 @@ function serialized<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** Applies the narrow transcript port without letting it overwrite metrics or savedAt. */
+function applyTranscriptPatch(signal: SignalRecord, patch: TranscriptSignalPatch): SignalRecord {
+  const next = { ...signal };
+  if ("transcript" in patch) {
+    if (patch.transcript === null || patch.transcript === undefined) delete next.transcript;
+    else next.transcript = patch.transcript;
+  }
+  if ("transcriptSegments" in patch) {
+    if (patch.transcriptSegments === null || patch.transcriptSegments === undefined) delete next.transcriptSegments;
+    else next.transcriptSegments = patch.transcriptSegments;
+  }
+  if ("transcriptAttempts" in patch) {
+    if (patch.transcriptAttempts === undefined) delete next.transcriptAttempts;
+    else next.transcriptAttempts = patch.transcriptAttempts;
+  }
+  if ("transcriptUpdatedAt" in patch) {
+    if (patch.transcriptUpdatedAt === undefined) delete next.transcriptUpdatedAt;
+    else next.transcriptUpdatedAt = patch.transcriptUpdatedAt;
+  }
+  if ("transcriptError" in patch) {
+    if (patch.transcriptError === null || patch.transcriptError === undefined) delete next.transcriptError;
+    else next.transcriptError = patch.transcriptError;
+  }
+  if ("transcriptStatus" in patch) {
+    if (patch.transcriptStatus === null || patch.transcriptStatus === undefined) delete next.transcriptStatus;
+    else next.transcriptStatus = patch.transcriptStatus;
+  }
+  if ("transcriptWorkingCopy" in patch) {
+    if (patch.transcriptWorkingCopy === null || patch.transcriptWorkingCopy === undefined) delete next.transcriptWorkingCopy;
+    else next.transcriptWorkingCopy = patch.transcriptWorkingCopy;
+  }
+  if ("transcriptCorrections" in patch) {
+    if (patch.transcriptCorrections === null || patch.transcriptCorrections === undefined) delete next.transcriptCorrections;
+    else next.transcriptCorrections = patch.transcriptCorrections;
+  }
+  return next;
+}
+
 export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Promise<void> } = {
   async listCreators() {
     return (await load()).creators;
@@ -136,6 +174,40 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.signals[index] = marked;
       await save(store);
       return marked;
+    });
+  },
+  async claimTranscript(id, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.signals.findIndex((signal) => signal.id === id);
+      if (index < 0) return null;
+      const signal = store.signals[index];
+      const blocked = transcriptConflictReason(signal, new Date(now));
+      if (blocked === "pending") throw new TranscriptConflictError("pending", "A transcript attempt is already in progress.");
+      if (blocked === "ready") throw new TranscriptConflictError("ready", "This Reel already has a transcript.");
+      const claimed = applyTranscriptPatch(signal, {
+        transcriptStatus: "pending",
+        transcriptAttempts: Math.max(0, Math.floor(signal.transcriptAttempts ?? 0)) + 1,
+        transcriptUpdatedAt: now,
+        transcriptError: null,
+        // A new actor answer starts a new review chain. The original transcript remains.
+        transcriptWorkingCopy: null,
+        transcriptCorrections: null,
+      });
+      store.signals[index] = claimed;
+      await save(store);
+      return claimed;
+    });
+  },
+  async patchTranscript(id, patch) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.signals.findIndex((signal) => signal.id === id);
+      if (index < 0) return null;
+      const patched = applyTranscriptPatch(store.signals[index], patch);
+      store.signals[index] = patched;
+      await save(store);
+      return patched;
     });
   },
   async saveRun(run) {

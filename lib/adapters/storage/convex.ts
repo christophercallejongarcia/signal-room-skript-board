@@ -4,7 +4,8 @@ import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
 import { ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter, TranscriptSignalPatch } from "../../contracts";
+import { TranscriptConflictError } from "../../transcripts.ts";
 
 /**
  * Whoever can call Convex functions: the HTTP client from the Next server, or an
@@ -42,6 +43,9 @@ export function collectStorageOver(convex: ConvexCaller): ConvexCollectStorage {
         total.updated += part.updated;
       }
       return total;
+    },
+    async patchTranscript(id, patch: TranscriptSignalPatch) {
+      return (await convex.mutation(anyApi.signals.patchTranscript, { id, patch })) as SignalRecord | null;
     },
     async saveRun(run) {
       await convex.mutation(anyApi.runs.upsert, { run });
@@ -86,6 +90,20 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     },
     async markSignal(id, savedAt) {
       return (await client.mutation(anyApi.signals.mark, { id, savedAt })) as SignalRecord | null;
+    },
+    async claimTranscript(id, now) {
+      try {
+        return (await client.mutation(anyApi.signals.claimTranscript, { id, now })) as SignalRecord | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; reason?: string; message?: string }) : null;
+        if (data?.kind === "transcript-conflict" && (data.reason === "pending" || data.reason === "ready")) {
+          throw new TranscriptConflictError(data.reason, data.message ?? "This Reel cannot be transcribed right now.");
+        }
+        throw error;
+      }
+    },
+    async patchTranscript(id, patch: TranscriptSignalPatch) {
+      return (await client.mutation(anyApi.signals.patchTranscript, { id, patch })) as SignalRecord | null;
     },
     async listRuns(limit = 10) {
       return (await client.query(anyApi.runs.list, { limit })) as Run[];

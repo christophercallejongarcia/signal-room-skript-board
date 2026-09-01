@@ -4,7 +4,7 @@ import { v } from "convex/values";
 /** Shape of one logged collection pass; shared with convex/runs.ts so the validator is declared once. */
 export const runFields = {
   id: v.string(),
-  kind: v.union(v.literal("backfill"), v.literal("refresh"), v.literal("hashtag-sweep")),
+  kind: v.union(v.literal("backfill"), v.literal("refresh"), v.literal("hashtag-sweep"), v.literal("transcript")),
   status: v.union(v.literal("ok"), v.literal("partial"), v.literal("failed")),
   startedAt: v.string(),
   finishedAt: v.string(),
@@ -21,10 +21,38 @@ export const runFields = {
       costUsd: v.optional(v.number()),
     }),
   ),
+  transcriptSignalId: v.optional(v.string()),
   // failed is optional for Run rows written before the status-model change.
   transcripts: v.optional(v.object({ added: v.number(), silent: v.number(), missing: v.number(), failed: v.optional(v.number()) })),
   hashtagsChecked: v.optional(v.number()),
   costLimitUsd: v.optional(v.number()),
+};
+
+/** Patch contract for a manual transcript flow. Null removes an optional Signal field. */
+export const transcriptPatchFields = {
+  transcript: v.optional(v.union(v.string(), v.null())),
+  transcriptSegments: v.optional(
+    v.union(v.array(v.object({ start: v.number(), end: v.number(), text: v.string() })), v.null()),
+  ),
+  transcriptAttempts: v.optional(v.number()),
+  transcriptUpdatedAt: v.optional(v.string()),
+  transcriptError: v.optional(v.union(v.string(), v.null())),
+  transcriptStatus: v.optional(
+    v.union(v.literal("ready"), v.literal("silent"), v.literal("missing"), v.literal("pending"), v.literal("failed"), v.null()),
+  ),
+  transcriptWorkingCopy: v.optional(v.union(v.string(), v.null())),
+  transcriptCorrections: v.optional(v.union(
+    v.array(v.object({
+      id: v.string(),
+      original: v.string(),
+      replacement: v.string(),
+      reason: v.string(),
+      source: v.union(v.literal("bridge"), v.literal("dictionary")),
+      status: v.union(v.literal("proposed"), v.literal("accepted"), v.literal("rejected")),
+      createdAt: v.string(),
+    })),
+    v.null(),
+  )),
 };
 
 /** One German post collected from an Instagram hashtag search. */
@@ -298,6 +326,16 @@ export default defineSchema({
     savedAt: v.optional(v.string()),
     transcript: v.optional(v.string()),
     transcriptSegments: v.optional(v.array(v.object({ start: v.number(), end: v.number(), text: v.string() }))),
+    transcriptWorkingCopy: v.optional(v.string()),
+    transcriptCorrections: v.optional(v.array(v.object({
+      id: v.string(),
+      original: v.string(),
+      replacement: v.string(),
+      reason: v.string(),
+      source: v.union(v.literal("bridge"), v.literal("dictionary")),
+      status: v.union(v.literal("proposed"), v.literal("accepted"), v.literal("rejected")),
+      createdAt: v.string(),
+    }))),
     transcriptAttempts: v.optional(v.number()),
     transcriptUpdatedAt: v.optional(v.string()),
     transcriptError: v.optional(v.string()),

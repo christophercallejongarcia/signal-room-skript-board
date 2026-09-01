@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { runRefresh } from "../lib/collect.ts";
+import { runTranscript, TranscriptRunError } from "../lib/transcript-run.ts";
+import { isPendingTranscriptExpired, TranscriptConflictError } from "../lib/transcripts.ts";
+import { monthUsage } from "../lib/run-cost.ts";
 
 const creator = { id: "instagram-a", name: "A", handle: "@a", network: "instagram", audience: 1000, accent: "#fff", lastCheckedAt: "2026-08-20T00:00:00.000Z" };
 function reel(id, plays, extra = {}) {
@@ -21,6 +24,33 @@ function fakeStorage(seed = []) {
       let inserted = 0;
       for (const r of records) { if (!signals.has(r.id)) inserted += 1; signals.set(r.id, { ...(signals.get(r.id) ?? {}), ...r }); }
       return { inserted, updated: records.length - inserted };
+    },
+    async claimTranscript(id, now) {
+      const current = signals.get(id);
+      if (!current) return null;
+      if (current.transcriptStatus === "pending" && !isPendingTranscriptExpired(current, new Date(now))) {
+        throw new TranscriptConflictError("pending", "A transcript attempt is already in progress.");
+      }
+      if (current.transcriptStatus === "ready" || current.transcript) {
+        throw new TranscriptConflictError("ready", "This Reel already has a transcript.");
+      }
+      const claimed = { ...current, transcriptStatus: "pending", transcriptAttempts: (current.transcriptAttempts ?? 0) + 1, transcriptUpdatedAt: now };
+      delete claimed.transcriptError;
+      delete claimed.transcriptWorkingCopy;
+      delete claimed.transcriptCorrections;
+      signals.set(id, claimed);
+      return claimed;
+    },
+    async patchTranscript(id, patch) {
+      const current = signals.get(id);
+      if (!current) return null;
+      const next = { ...current };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === null || value === undefined) delete next[key];
+        else next[key] = value;
+      }
+      signals.set(id, next);
+      return next;
     },
     async saveRun(run) { runs.push(run); },
   };
@@ -135,4 +165,86 @@ test("a failing transcript actor marks the sent reels failed, counts them and ke
   assert.equal(storage.signals.get("ig-spoken").transcriptStatus, "failed");
   assert.equal(storage.signals.get("ig-loud").transcriptAttempts, 1);
   assert.equal(storage.signals.get("ig-loud").transcriptError, "transcript actor down");
+});
+
+test("a manual run claims exactly one Reel, stores the transcript and logs its own usage", async () => {
+  const storage = fakeStorage([reel("manual", 5000, {
+    savedAt: "2026-08-01T00:00:00.000Z",
+    transcriptWorkingCopy: "Alte Arbeitsfassung",
+    transcriptCorrections: [{ id: "old", original: "alt", replacement: "neu", reason: "old", source: "bridge", status: "accepted", createdAt: "old" }],
+  })]);
+  const calls = [];
+  const result = await runTranscript("ig-manual", {
+    storage,
+    now: () => NOW,
+    transcribe: async (reels) => {
+      calls.push(reels.map((item) => item.id));
+      return { results: [{ id: "ig-manual", transcript: "Nur dieses Reel." }], usage: transcriptUsage };
+    },
+  });
+
+  assert.deepEqual(calls, [["ig-manual"]]);
+  assert.equal(result.signal.transcript, "Nur dieses Reel.");
+  assert.equal(result.signal.transcriptStatus, "ready");
+  assert.equal(result.signal.transcriptAttempts, 1);
+  assert.equal(result.signal.savedAt, "2026-08-01T00:00:00.000Z");
+  assert.equal(result.signal.plays, 5000);
+  assert.equal(result.signal.transcriptWorkingCopy, undefined);
+  assert.equal(result.signal.transcriptCorrections, undefined);
+  assert.equal(result.run.kind, "transcript");
+  assert.equal(result.run.transcriptSignalId, "ig-manual");
+  assert.deepEqual(result.run.transcripts, { added: 1, silent: 0, missing: 0, failed: 0 });
+  assert.deepEqual(result.run.usage, transcriptUsage);
+  assert.equal(monthUsage([result.run], NOW).costUsd, transcriptUsage.costUsd);
+  assert.equal(storage.runs.length, 1);
+});
+
+test("a fresh pending Reel is a conflict and does not start or log a second run", async () => {
+  const storage = fakeStorage([reel("locked", 5000, { transcriptStatus: "pending", transcriptUpdatedAt: NOW.toISOString(), transcriptAttempts: 1 })]);
+  let called = false;
+  await assert.rejects(
+    runTranscript("ig-locked", { storage, now: () => NOW, transcribe: async () => { called = true; throw new Error("must not run"); } }),
+    (error) => error instanceof TranscriptConflictError && error.reason === "pending",
+  );
+  assert.equal(called, false);
+  assert.equal(storage.runs.length, 0);
+  assert.equal(storage.signals.get("ig-locked").transcriptStatus, "pending");
+});
+
+test("an expired pending Reel can be claimed again and increments its attempt", async () => {
+  const storage = fakeStorage([reel("expired", 5000, { transcriptStatus: "pending", transcriptUpdatedAt: "2026-08-24T11:00:00.000Z", transcriptAttempts: 2 })]);
+  const result = await runTranscript("ig-expired", {
+    storage,
+    now: () => NOW,
+    transcribe: async () => ({ results: [{ id: "ig-expired", transcript: "Jetzt erneut." }], usage: transcriptUsage }),
+  });
+  assert.equal(result.signal.transcriptStatus, "ready");
+  assert.equal(result.signal.transcriptAttempts, 3);
+});
+
+test("silent, missing and failed Reels can each be started manually", async () => {
+  for (const status of ["silent", "missing", "failed"]) {
+    const storage = fakeStorage([reel(status, 5000, { transcriptStatus: status, transcriptError: status === "failed" ? "previous error" : undefined })]);
+    const result = await runTranscript(`ig-${status}`, {
+      storage,
+      now: () => NOW,
+      transcribe: async () => ({ results: [{ id: `ig-${status}`, transcript: `${status} erneut.` }], usage: transcriptUsage }),
+    });
+    assert.equal(result.signal.transcriptStatus, "ready");
+    assert.equal(result.signal.transcriptAttempts, 1);
+    assert.equal(result.run.transcriptSignalId, `ig-${status}`);
+  }
+});
+
+test("a manual actor failure stores its bounded cause, failed count and failed Run", async () => {
+  const storage = fakeStorage([reel("error", 5000)]);
+  await assert.rejects(
+    runTranscript("ig-error", { storage, now: () => NOW, transcribe: async () => { throw new Error("manual actor down"); } }),
+    (error) => error instanceof TranscriptRunError && error.signal.transcriptStatus === "failed" && error.signal.transcriptError === "manual actor down",
+  );
+  assert.equal(storage.signals.get("ig-error").transcriptStatus, "failed");
+  assert.equal(storage.signals.get("ig-error").transcriptAttempts, 1);
+  assert.deepEqual(storage.runs[0].transcripts, { added: 0, silent: 0, missing: 0, failed: 1 });
+  assert.equal(storage.runs[0].status, "failed");
+  assert.deepEqual(storage.runs[0].usage, { unreported: 1 });
 });

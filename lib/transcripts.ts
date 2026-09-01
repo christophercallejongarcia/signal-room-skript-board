@@ -5,6 +5,30 @@ import { outlierScorer, reach } from "./adapters/scoring/outlier.ts";
 /** The transcript fields used by the refresh and the manual transcript flow. */
 export type TranscriptFields = Pick<SignalRecord, "transcript" | "transcriptStatus" | "transcriptUpdatedAt">;
 
+export type TranscriptConflictReason = "pending" | "ready";
+
+/** A second manual attempt is refused when the first one still owns the Reel. */
+export class TranscriptConflictError extends Error {
+  readonly reason: TranscriptConflictReason;
+
+  constructor(reason: TranscriptConflictReason, message: string) {
+    super(message);
+    this.name = "TranscriptConflictError";
+    this.reason = reason;
+  }
+}
+
+export type TranscriptRequest = { id: string };
+
+/** Bounds and rejects the body of POST /api/signals/transcribe. */
+export function parseTranscriptRequest(body: unknown): TranscriptRequest {
+  const input = (body ?? {}) as Record<string, unknown>;
+  const id = typeof input.id === "string" ? input.id.trim() : "";
+  if (!id) throw new Error("id required");
+  if (id.length > 200) throw new Error("id is too long");
+  return { id };
+}
+
 /** True once the reel has any assigned status, including an in-flight or failed attempt. */
 export function hasTranscriptOutcome(signal: TranscriptFields) {
   return signal.transcriptStatus !== undefined;
@@ -25,6 +49,16 @@ export function isPendingTranscriptExpired(
 
 /** Short alias for callers that only need the pending-state predicate. */
 export const isPendingExpired = isPendingTranscriptExpired;
+
+/** Returns why a manual attempt is blocked, or null when the Reel may be claimed. */
+export function transcriptConflictReason(
+  signal: Pick<SignalRecord, "transcript" | "transcriptStatus" | "transcriptUpdatedAt">,
+  now: Date | number = new Date(),
+): TranscriptConflictReason | null {
+  if (signal.transcriptStatus === "pending" && !isPendingTranscriptExpired(signal, now)) return "pending";
+  if (signal.transcriptStatus === "ready" || signal.transcript?.trim()) return "ready";
+  return null;
+}
 
 /** Keeps provider errors useful without allowing an actor response to grow a Signal indefinitely. */
 export function boundedTranscriptError(error: unknown) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, RunUsage, SignalRecord, TranscriptCount } from "./contracts";
+import type { Creator, CoverCacheResult, RefreshResult, Run, RunError, RunUsage, SignalRecord, TranscriptCount, TranscriptSignalPatch } from "./contracts";
 import { collectForCreator, type CollectResult } from "./adapters/sources/apify-instagram.ts";
 import { transcribeReels, type Transcriber } from "./adapters/sources/apify-transcripts.ts";
 import { getStorage, type Storage } from "./adapters/storage/index.ts";
@@ -9,7 +9,8 @@ import { addUsage, pickRefreshBatch } from "./run-cost.ts";
 import { boundedTranscriptError, pickTranscriptBatch } from "./transcripts.ts";
 
 /** The slice of Storage a collection pass touches; the cron hands in one built over a Convex action context. */
-export type CollectStorage = Pick<Storage, "listCreators" | "upsertCreator" | "listSignals" | "saveSignals" | "saveRun">;
+export type CollectStorage = Pick<Storage, "listCreators" | "upsertCreator" | "listSignals" | "saveSignals" | "saveRun"> &
+  Partial<Pick<Storage, "patchTranscript">>;
 
 export type CollectDeps = {
   storage: CollectStorage;
@@ -41,6 +42,26 @@ function defaultDeps(overrides: Partial<CollectDeps>): CollectDeps {
 export type CollectStep = { recordsAdded: number; recordsUpdated: number; covers: CoverCacheResult; usage: RunUsage };
 
 const NO_USAGE: RunUsage = { unreported: 0 };
+
+/** Keeps the automatic pass compatible with the small fake stores used in tests. */
+async function saveTranscriptBatch(deps: CollectDeps, records: SignalRecord[]) {
+  if (!deps.storage.patchTranscript) return deps.storage.saveSignals(records);
+  for (const record of records) {
+    const patch: TranscriptSignalPatch = {
+      ...(record.transcript !== undefined ? { transcript: record.transcript } : {}),
+      ...(record.transcriptSegments !== undefined ? { transcriptSegments: record.transcriptSegments } : {}),
+      ...(record.transcriptAttempts !== undefined ? { transcriptAttempts: record.transcriptAttempts } : {}),
+      ...(record.transcriptUpdatedAt !== undefined ? { transcriptUpdatedAt: record.transcriptUpdatedAt } : {}),
+      ...(record.transcriptError !== undefined ? { transcriptError: record.transcriptError } : {}),
+      ...(record.transcriptStatus !== undefined ? { transcriptStatus: record.transcriptStatus } : {}),
+      // A new actor response always starts a fresh review chain.
+      transcriptWorkingCopy: null,
+      transcriptCorrections: null,
+    };
+    await deps.storage.patchTranscript(record.id, patch);
+  }
+  return { inserted: 0, updated: records.length };
+}
 
 /**
  * One collection step for a creator: pull signals (backfill or delta-refresh
@@ -85,7 +106,7 @@ async function transcribeOutliers(deps: CollectDeps, creators: Creator[]): Promi
     };
   });
   const attempts = new Map(pending.map((reel) => [reel.id, reel.transcriptAttempts]));
-  await deps.storage.saveSignals(pending);
+  await saveTranscriptBatch(deps, pending);
 
   let results: Awaited<ReturnType<Transcriber>>["results"] = [];
   let usage: RunUsage = NO_USAGE;
@@ -137,7 +158,7 @@ async function transcribeOutliers(deps: CollectDeps, creators: Creator[]): Promi
       count.silent += 1;
     }
   }
-  await deps.storage.saveSignals(patched);
+  await saveTranscriptBatch(deps, patched);
   return { count, usage };
 }
 
@@ -167,7 +188,7 @@ async function failTranscriptBatch(deps: CollectDeps, batch: SignalRecord[], err
       transcriptError: message,
     };
   });
-  await deps.storage.saveSignals(failed);
+  await saveTranscriptBatch(deps, failed);
   throw new TranscriptPassError(message, batch.length, usage);
 }
 
