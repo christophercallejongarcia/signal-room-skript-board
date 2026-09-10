@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, Script, ScriptPatch, ScriptRunClaimOptions, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Pattern, PatternComparisonRun, PatternEvidence, Run, SavePatternComparison, Script, ScriptPatch, ScriptRunClaimOptions, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, attachStoryboard, claimDevelop, DevelopConflictError, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
@@ -25,6 +25,9 @@ type Store = {
   briefings: Briefing[];
   slates: Slate[];
   transcriptAnalyses: TranscriptAnalysis[];
+  patterns: Pattern[];
+  patternEvidence: PatternEvidence[];
+  patternComparisonRuns: PatternComparisonRun[];
 };
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 /** Runs kept in the file store; Convex keeps everything. */
@@ -41,7 +44,10 @@ const MAX_FORMAT_REVIEWS = 24;
 const MAX_BRIEFINGS = 90;
 /** Slates kept in the file store. One per day, like the briefings. */
 const MAX_SLATES = 90;
-const EMPTY: Store = { creators: [], signals: [], transcriptDictionary: [], hashtagPosts: [], runs: [], ideas: [], scripts: [], formatReviews: [], hookRuns: [], briefings: [], slates: [], transcriptAnalyses: [] };
+const MAX_PATTERNS = 200;
+const MAX_PATTERN_EVIDENCE = 2_000;
+const MAX_PATTERN_RUNS = 20;
+const EMPTY: Store = { creators: [], signals: [], transcriptDictionary: [], hashtagPosts: [], runs: [], ideas: [], scripts: [], formatReviews: [], hookRuns: [], briefings: [], slates: [], transcriptAnalyses: [], patterns: [], patternEvidence: [], patternComparisonRuns: [] };
 
 function signalKey(signal: Pick<SignalRecord, "id" | "externalId">) {
   return signal.externalId ?? signal.id;
@@ -83,6 +89,9 @@ async function load(): Promise<Store> {
     briefings: parsed.briefings ?? [],
     slates: parsed.slates ?? [],
     transcriptAnalyses: parsed.transcriptAnalyses ?? [],
+    patterns: parsed.patterns ?? [],
+    patternEvidence: parsed.patternEvidence ?? [],
+    patternComparisonRuns: parsed.patternComparisonRuns ?? [],
   };
   if (migrated.reset > 0) await save(store);
   return store;
@@ -338,6 +347,43 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       store.transcriptAnalyses[index] = { ...current, status: "queued", error: undefined, createdAt: now, claimedAt: undefined, claimExpiresAt: undefined, claimId: undefined };
       await save(store);
       return store.transcriptAnalyses[index];
+    });
+  },
+  async listPatternComparisons(limit = 20) {
+    const store = await load();
+    return [...store.patternComparisonRuns]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.min(Math.max(Math.floor(limit), 1), 100))
+      .flatMap((run) => {
+        const pattern = store.patterns.find((item) => item.id === run.patternId);
+        if (!pattern) return [];
+        const ids = new Set([...run.positiveEvidenceIds, ...run.negativeEvidenceIds, ...run.unknownEvidenceIds]);
+        return [{ pattern, run, evidence: store.patternEvidence.filter((item) => ids.has(item.id)) }];
+      });
+  },
+  async savePatternComparison(result: SavePatternComparison) {
+    return serialized(async () => {
+      const store = await load();
+      const existingRun = store.patternComparisonRuns.find((item) => item.id === result.run.id);
+      if (existingRun) {
+        const pattern = store.patterns.find((item) => item.id === existingRun.patternId) ?? result.pattern;
+        const ids = new Set([...existingRun.positiveEvidenceIds, ...existingRun.negativeEvidenceIds, ...existingRun.unknownEvidenceIds]);
+        return { pattern, run: existingRun, evidence: store.patternEvidence.filter((item) => ids.has(item.id)) };
+      }
+      const patternIndex = store.patterns.findIndex((item) => item.id === result.pattern.id);
+      if (patternIndex >= 0) {
+        const existing = store.patterns[patternIndex];
+        store.patterns[patternIndex] = { ...existing, ...result.pattern, status: existing.status === "candidate" && result.pattern.status === "hypothesis" ? "candidate" : result.pattern.status, createdAt: existing.createdAt };
+      }
+      else store.patterns.push(result.pattern);
+      const evidenceIds = new Set(store.patternEvidence.map((item) => item.id));
+      store.patternEvidence.push(...result.evidence.filter((item) => !evidenceIds.has(item.id)));
+      store.patternComparisonRuns.push(result.run);
+      store.patterns = store.patterns.slice(-MAX_PATTERNS);
+      store.patternEvidence = store.patternEvidence.slice(-MAX_PATTERN_EVIDENCE);
+      store.patternComparisonRuns = store.patternComparisonRuns.slice(-MAX_PATTERN_RUNS);
+      await save(store);
+      return result;
     });
   },
   async listTranscriptDictionary() {

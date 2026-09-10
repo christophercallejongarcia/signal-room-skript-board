@@ -162,6 +162,12 @@ Collection, normalization, ranking, and strategy are separate failure domains. R
 
 Recommended job states: `queued`, `resolving`, `collecting`, `normalizing`, `ranking`, `complete`, and `failed`.
 
+## Pattern discovery and comparison
+
+`POST /api/patterns` starts a deliberate two-stage local flow. `lib/pattern-discovery-run.ts` loads current complete `TranscriptAnalysis` results, asks `/v1/pattern-discovery` to formulate one operational definition from the selected Reels, then checks that unchanged definition for every Reel in the comparison cell. The cell is fixed by Instagram Reel, language market, niche class, topic, publication-age bucket, and owned status. Without a current complete analysis the verdict is `unknown`; a missing model label is never treated as absence.
+
+The use case computes Outlier medians only with a finite positive follower base. Zero plays remain valid. It stores `Pattern`, `PatternEvidence`, and `PatternComparisonRun` separately under deterministic definition/data-basis IDs. The file store and Convex treat a repeated run as a no-op. Convex writes the definition, bounded evidence, and run atomically. The UI shows both samples, quotes, scope, collection time, exclusions, and selection-bias caution. Unknown Reels open the existing manual transcript action.
+
 ## Deployment note
 
 The included Codex bridge is a local development bridge. Before deploying an AI endpoint, add real authentication, authorization, rate limiting, per-user isolation, audit logging, abuse controls, and a deployment-specific sandbox policy.

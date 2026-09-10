@@ -242,3 +242,11 @@ Nicht: "Kontext", "Prompt-Daten", "Sample".
 **Bridge**
 Der lokale Prozess `bridge/server.mjs`, der Strategy-Anfragen der Web-App entgegennimmt und ans Codex SDK weiterreicht.
 Nicht: "Proxy", "Gateway", "API".
+
+**Pattern**
+Eine gespeicherte, operational prüfbare Strukturhypothese aus vollständigen Reel-Transkripten. Ein Pattern-Vergleich lässt den lokalen Bridge dieselbe Definition je aktueller, vollständiger Inhaltsanalyse ausdrücklich als `present` oder `absent` prüfen; fehlende, unvollständige oder veraltete Analysen bleiben `unknown`. Ein Kandidat braucht die konfigurierte Basis von fünf vorhandenen Reels aus drei Creators, fünf abwesenden Reels und eine positive Outlier-Median-Differenz innerhalb derselben Vergleichszelle. Das ist ein beobachteter Zusammenhang ohne Kausalitätsversprechen.
+Nicht: "Format Signal" (regelbasierte Hook-Form), "Framework" (PAS/BBB/none), "Erfolgsrezept".
+
+**Pattern-Vergleichslauf**
+Der gespeicherte, idempotente Stand einer Pattern-Definition gegen eine konkrete Datenbasis. Definition, Lauf und begrenzte Reel-Belege liegen getrennt. Der Lauf speichert Markt, Nischenklasse, Topic, Veröffentlichungsaltersgruppe, Owned-Gruppe, 90-Tage-Fenster, Stichproben, Mediane, Differenz, unbekannte und ausgeschlossene Daten. Fehlende Gegenbelege werden nur nach bewusster Reel-Auswahl über die bestehende manuelle Transkriptaktion ergänzt.
+Nicht: "A/B-Test", "Signifikanztest", "automatischer Backfill".

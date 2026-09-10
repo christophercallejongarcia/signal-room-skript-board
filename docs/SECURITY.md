@@ -102,6 +102,12 @@ Before making a derived repository public:
 - review prompts, tests, snapshots, logs, and issue templates
 - clone the repository into an empty directory and run the documented setup
 
+## Local Pattern discovery
+
+Pattern hypotheses and explicit presence/absence checks run only through the localhost Codex Bridge. The Next route sends bounded transcript text and a bounded saved definition. The Bridge treats both as untrusted source text, disables network access, and uses structured output. A `present` quote is accepted only when its character range exactly resolves in the supplied transcript. Convex Pattern writes use the server-held `TRANSCRIPT_ANALYSIS_WORKER_TOKEN` boundary. Browser clients never receive that token and cannot call the protected mutation directly.
+
+Pattern discovery never invokes Apify or another paid provider. Reels without a current complete analysis stay visible as unknown. A paid transcript attempt starts only from the existing manual Reel action after Chris selects that Reel.
+
 ## Reporting a vulnerability
 
 Do not open a public issue containing sensitive details. Use the private vulnerability-reporting channel configured for the GitHub repository.

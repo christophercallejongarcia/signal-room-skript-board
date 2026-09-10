@@ -251,6 +251,72 @@ export type SettleTranscriptAnalysis = {
   error?: string;
 };
 
+export type PatternScope = {
+  market: "de" | "en";
+  niche: "core" | "foreign";
+  topic: string;
+  ageBucket: "0-7" | "8-30" | "31-90";
+  owned: boolean;
+};
+export type PatternThresholds = { positiveReels: number; positiveCreators: number; negativeReels: number };
+export type Pattern = {
+  id: string;
+  name: string;
+  definition: string;
+  structure: string[];
+  status: "hypothesis" | "candidate" | "confirmed" | "rejected" | "merged";
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PatternVerdict = "present" | "absent" | "unknown";
+export type PatternEvidence = {
+  id: string;
+  patternId: string;
+  runId: string;
+  signalId: string;
+  analysisId?: string;
+  verdict: PatternVerdict;
+  explanation: string;
+  quote?: string;
+  start?: number;
+  end?: number;
+  evaluatedAt: string;
+  outlier?: number;
+};
+export type PatternExclusions = {
+  duplicate: number;
+  market: number;
+  niche: number;
+  topic: number;
+  age: number;
+  owned: number;
+  incompleteAnalysis: number;
+  invalidOutlier: number;
+};
+export type PatternComparisonRun = {
+  id: string;
+  patternId: string;
+  createdAt: string;
+  windowDays: 90;
+  scope: PatternScope;
+  thresholds: PatternThresholds;
+  status: "candidate" | "insufficient" | "non-positive";
+  positiveEvidenceIds: string[];
+  negativeEvidenceIds: string[];
+  unknownEvidenceIds: string[];
+  positiveCount: number;
+  negativeCount: number;
+  unknownCount: number;
+  positiveCreatorCount: number;
+  positiveMedian?: number;
+  negativeMedian?: number;
+  medianDelta?: number;
+  excluded: PatternExclusions;
+  caution: string;
+};
+export type SavePatternComparison = { pattern: Pattern; evidence: PatternEvidence[]; run: PatternComparisonRun };
+
 export type RefreshResult = {
   creatorsChecked: number;
   /** Creators left for the next refresh because the limit was reached. */
@@ -850,6 +916,10 @@ export interface StorageAdapter {
   settleTranscriptAnalysis(id: string, claimId: string, result: SettleTranscriptAnalysis): Promise<TranscriptAnalysis | null>;
   /** Explicitly requeues a failed analysis when its attempt budget allows it. */
   retryTranscriptAnalysis(id: string, now: string): Promise<TranscriptAnalysis | null>;
+  /** Bounded Pattern definitions, newest comparison runs and their separate Reel evidence. */
+  listPatternComparisons(limit?: number): Promise<SavePatternComparison[]>;
+  /** Atomically saves one idempotent definition/data-basis comparison. */
+  savePatternComparison(result: SavePatternComparison): Promise<SavePatternComparison>;
   /** Newest first. Personal transcript mappings are shared across Reels. */
   listTranscriptDictionary(): Promise<TranscriptDictionaryEntry[]>;
   /** Adds or updates one mapping. Duplicate mappings are merged. */

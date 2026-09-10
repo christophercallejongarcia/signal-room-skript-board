@@ -166,6 +166,23 @@ export const demoSignals: SignalRecord[] = [
   },
 ];
 
+/** Extra synthetic Reels make both Pattern evidence states inspectable without accounts. */
+for (let index = 1; index <= 10; index += 1) {
+  const present = index <= 5;
+  demoSignals.push({
+    id: `signal-pattern-${present ? "present" : "absent"}-${present ? index : index - 5}`,
+    creatorId: demoCreators[(index - 1) % demoCreators.length].id,
+    title: present ? `Beweis vor CTA · Beispiel ${index}` : `Direkter Tipp · Vergleich ${index - 5}`,
+    publishedAt: `2026-08-${String(18 + index).padStart(2, "0")}T10:00:00.000Z`,
+    views: present ? 80_000 + index * 10_000 : 20_000 + index * 2_000,
+    plays: present ? 80_000 + index * 10_000 : 20_000 + index * 2_000,
+    likes: 1_000, comments: 50, durationSeconds: 35, thumbnailSeed: `pattern-${index}`,
+    topic: "agent workflows", format: "reel", url: `https://www.instagram.com/reel/demo-pattern-${index}/`,
+    transcript: present ? "Ich zeige dir das Ergebnis im Dashboard. Speichere den Ablauf." : "Drei Schritte für deinen nächsten Workflow.",
+    transcriptStatus: "ready",
+  });
+}
+
 /** Synthetic Trend-Radar corpus used only while the real store is empty. */
 export const demoHashtagPosts: HashtagPost[] = [
   {

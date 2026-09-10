@@ -8,6 +8,7 @@ import {
   transcriptAnalysisOutputSchema,
   validateTranscriptAnalysisRequest,
 } from "./transcript-analysis.mjs";
+import { buildPatternDiscoveryPrompt, patternEvaluationOutputSchema, patternHypothesisOutputSchema, validatePatternDiscoveryRequest } from "./pattern-discovery.mjs";
 import {
   briefingOutputSchema,
   buildBriefingPrompt,
@@ -123,6 +124,17 @@ async function runCodex(prompt, outputSchema) {
 
 /** Every POST route: validate, run, and report the same way. A Map so no path resolves through Object.prototype. */
 const routes = new Map([
+  [
+    "/v1/pattern-discovery",
+    {
+      label: "Pattern discovery",
+      failure: "The local Codex Pattern discovery failed.",
+      run: (input) => {
+        const request = validatePatternDiscoveryRequest(input);
+        return runCodex(buildPatternDiscoveryPrompt(request), request.action === "hypothesize" ? patternHypothesisOutputSchema : patternEvaluationOutputSchema);
+      },
+    },
+  ],
   [
     "/v1/transcript-analysis",
     {

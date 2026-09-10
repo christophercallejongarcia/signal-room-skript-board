@@ -112,6 +112,34 @@ export const transcriptAnalysisFields = {
   complete: v.boolean(),
 };
 
+const patternScopeFields = {
+  market: v.union(v.literal("de"), v.literal("en")),
+  niche: v.union(v.literal("core"), v.literal("foreign")),
+  topic: v.string(),
+  ageBucket: v.union(v.literal("0-7"), v.literal("8-30"), v.literal("31-90")),
+  owned: v.boolean(),
+};
+export const patternFields = {
+  id: v.string(), name: v.string(), definition: v.string(), structure: v.array(v.string()),
+  status: v.union(v.literal("hypothesis"), v.literal("candidate"), v.literal("confirmed"), v.literal("rejected"), v.literal("merged")),
+  revision: v.number(), createdAt: v.string(), updatedAt: v.string(),
+};
+export const patternEvidenceFields = {
+  id: v.string(), patternId: v.string(), runId: v.string(), signalId: v.string(), analysisId: v.optional(v.string()),
+  verdict: v.union(v.literal("present"), v.literal("absent"), v.literal("unknown")), explanation: v.string(),
+  quote: v.optional(v.string()), start: v.optional(v.number()), end: v.optional(v.number()), evaluatedAt: v.string(), outlier: v.optional(v.number()),
+};
+export const patternRunFields = {
+  id: v.string(), patternId: v.string(), createdAt: v.string(), windowDays: v.literal(90), scope: v.object(patternScopeFields),
+  thresholds: v.object({ positiveReels: v.number(), positiveCreators: v.number(), negativeReels: v.number() }),
+  status: v.union(v.literal("candidate"), v.literal("insufficient"), v.literal("non-positive")),
+  positiveEvidenceIds: v.array(v.string()), negativeEvidenceIds: v.array(v.string()), unknownEvidenceIds: v.array(v.string()),
+  positiveCount: v.number(), negativeCount: v.number(), unknownCount: v.number(), positiveCreatorCount: v.number(),
+  positiveMedian: v.optional(v.number()), negativeMedian: v.optional(v.number()), medianDelta: v.optional(v.number()),
+  excluded: v.object({ duplicate: v.number(), market: v.number(), niche: v.number(), topic: v.number(), age: v.number(), owned: v.number(), incompleteAnalysis: v.number(), invalidOutlier: v.number() }),
+  caution: v.string(),
+};
+
 /** One German post collected from an Instagram hashtag search. */
 export const hashtagPostFields = {
   id: v.string(),
@@ -476,6 +504,9 @@ export default defineSchema({
     .index("by_signal_createdAt", ["signalId", "createdAt"])
     .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_createdAt", ["createdAt"]),
+  patterns: defineTable(patternFields).index("by_external_id", ["id"]).index("by_updatedAt", ["updatedAt"]),
+  patternEvidence: defineTable(patternEvidenceFields).index("by_external_id", ["id"]).index("by_run", ["runId"]),
+  patternComparisonRuns: defineTable(patternRunFields).index("by_external_id", ["id"]).index("by_createdAt", ["createdAt"]),
   hashtagPosts: defineTable(hashtagPostFields)
     .index("by_external_id", ["id"])
     .index("by_published", ["publishedAt"]),

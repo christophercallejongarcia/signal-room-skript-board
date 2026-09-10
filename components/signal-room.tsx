@@ -85,8 +85,10 @@ import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refr
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 import { buildTrendRadar, type TrendRadar } from "@/lib/trend-radar";
+import { PatternComparisons, type PatternComparisonState } from "@/components/pattern-comparisons";
+import { demoPatternComparisons } from "@/lib/demo-patterns";
 
-import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, Script, ScriptStatus, SignalRecord, Slate, TranscriptDictionaryEntry } from "@/lib/contracts";
+import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SavePatternComparison, Script, ScriptStatus, SignalRecord, Slate, TranscriptDictionaryEntry } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
 import type { Creator, Network, StrategyEvidenceItem } from "@/lib/contracts";
 
@@ -471,6 +473,29 @@ export function SignalRoom() {
     }
   }
 
+  async function loadPatternComparisons() {
+    try {
+      const response = await fetch("/api/patterns", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { comparisons: SavePatternComparison[] };
+      setPatternComparisons({ items: data.comparisons, phase: "ready", error: "" });
+    } catch {
+      setPatternComparisons((current) => ({ ...current, phase: "error", error: "Pattern-Vergleiche konnten nicht geladen werden." }));
+    }
+  }
+
+  async function runPatternDiscovery(sourceSignalIds: string[], scope: { market: "de" | "en"; niche: "core" | "foreign"; topic: string; ageBucket: "0-7" | "8-30" | "31-90"; owned: boolean }) {
+    setPatternComparisons((current) => ({ ...current, phase: "running", error: "" }));
+    try {
+      const response = await fetch("/api/patterns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sourceSignalIds, ...scope }) });
+      const payload = (await response.json().catch(() => ({}))) as SavePatternComparison & { error?: string };
+      if (!response.ok || !payload.run) throw new Error(payload.error || `HTTP ${response.status}`);
+      setPatternComparisons((current) => ({ items: [payload, ...current.items.filter((item) => item.run.id !== payload.run.id)], phase: "ready", error: "" }));
+    } catch (error) {
+      setPatternComparisons((current) => ({ ...current, phase: "ready", error: error instanceof Error ? error.message : "Pattern-Lauf fehlgeschlagen." }));
+    }
+  }
+
   async function loadTrendRadar() {
     try {
       const response = await fetch("/api/trends", { cache: "no-store" });
@@ -535,6 +560,7 @@ export function SignalRoom() {
     loadBriefings();
     loadSlates();
     loadFormatReview();
+    loadPatternComparisons();
     loadTrendRadar();
     checkBridge();
   }, []);
@@ -557,6 +583,7 @@ export function SignalRoom() {
     error: "",
   });
   const [review, setReview] = useState<ReviewState>({ review: null, phase: "loading" });
+  const [patternComparisons, setPatternComparisons] = useState<PatternComparisonState>({ items: [], phase: "loading", error: "" });
   const [trend, setTrend] = useState<TrendState>({ radar: null, phase: "loading", error: "" });
   const [hooks, setHooks] = useState<HooksState>({ runs: [], phase: "loading", running: 0, error: "", selected: null });
   const [covers, setCovers] = useState<CoverState>({ phase: "idle", run: null, error: "" });
@@ -966,6 +993,11 @@ export function SignalRoom() {
             threshold={threshold}
             review={review}
             onRunReview={runFormatReview}
+            patternComparisons={patternComparisons}
+            signals={signals}
+            live={live}
+            onDiscoverPattern={runPatternDiscovery}
+            onOpenReel={openReel}
           />
         )}
         {activeTab === "channels" && (
@@ -1876,12 +1908,22 @@ function FormatsView({
   threshold,
   review,
   onRunReview,
+  patternComparisons,
+  signals,
+  live,
+  onDiscoverPattern,
+  onOpenReel,
 }: {
   rankedSignals: Ranked[];
   creators: Creator[];
   threshold: number;
   review: ReviewState;
   onRunReview: () => void;
+  patternComparisons: PatternComparisonState;
+  signals: SignalRecord[];
+  live: boolean;
+  onDiscoverPattern: (sourceSignalIds: string[], scope: { market: "de" | "en"; niche: "core" | "foreign"; topic: string; ageBucket: "0-7" | "8-30" | "31-90"; owned: boolean }) => void;
+  onOpenReel: (id: string) => void;
 }) {
   const { own, foreign, en } = useMemo(
     () => buildFormatSignals(rankedSignals, creators, { now: Date.now(), threshold }),
@@ -1909,6 +1951,8 @@ function FormatsView({
       </section>
 
       <FormatReviewPanel state={review} onRun={onRunReview} />
+
+      <PatternComparisons state={patternComparisons} signals={signals} creators={creators} demo={live ? [] : demoPatternComparisons} onDiscover={onDiscoverPattern} onOpenReel={onOpenReel} />
 
       {own.total === 0 && (
         <div className="empty-state">

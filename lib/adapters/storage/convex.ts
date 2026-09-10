@@ -4,7 +4,7 @@ import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
 import { DevelopConflictError, ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, Script, ScriptPatch, ScriptRunClaimOptions, SettleScriptRun, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SavePatternComparison, SaveResult, Script, ScriptPatch, ScriptRunClaimOptions, SettleScriptRun, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
 import { ScriptRunConflictError } from "../../scripts.ts";
 import { TranscriptConflictError } from "../../transcripts.ts";
 
@@ -154,6 +154,12 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
         const data = error instanceof ConvexError ? (error.data as { message?: string }) : null;
         throw new Error(data?.message ?? (error instanceof Error ? error.message : "Transcript analysis retry failed."));
       }
+    },
+    async listPatternComparisons(limit = 20) {
+      return (await client.query(anyApi.patterns.list, { limit })) as SavePatternComparison[];
+    },
+    async savePatternComparison(result) {
+      return (await client.mutation(anyApi.patterns.save, { ...result, workerToken: transcriptAnalysisWorkerToken() })) as SavePatternComparison;
     },
     async listTranscriptDictionary() {
       try {
