@@ -22,6 +22,7 @@ import type * as scripts from "../scripts.js";
 import type * as signals from "../signals.js";
 import type * as slates from "../slates.js";
 import type * as transcriptDictionary from "../transcriptDictionary.js";
+import type * as transcriptAnalyses from "../transcriptAnalyses.js";
 
 import type {
   ApiFromModules,
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   signals: typeof signals;
   slates: typeof slates;
   transcriptDictionary: typeof transcriptDictionary;
+  transcriptAnalyses: typeof transcriptAnalyses;
 }>;
 
 /**

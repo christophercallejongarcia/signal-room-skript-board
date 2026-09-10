@@ -4,6 +4,11 @@ import { codexAuthState } from "./auth.mjs";
 import { renderCoverWithCodex } from "./image.mjs";
 import { COVER_FORMATS } from "../lib/cover-formats.mjs";
 import {
+  buildTranscriptAnalysisPrompt,
+  transcriptAnalysisOutputSchema,
+  validateTranscriptAnalysisRequest,
+} from "./transcript-analysis.mjs";
+import {
   briefingOutputSchema,
   buildBriefingPrompt,
   buildCoverImagePrompt,
@@ -118,6 +123,14 @@ async function runCodex(prompt, outputSchema) {
 
 /** Every POST route: validate, run, and report the same way. A Map so no path resolves through Object.prototype. */
 const routes = new Map([
+  [
+    "/v1/transcript-analysis",
+    {
+      label: "Transcript analysis",
+      failure: "The local Codex transcript analysis failed.",
+      run: (input) => runCodex(buildTranscriptAnalysisPrompt(validateTranscriptAnalysisRequest(input)), transcriptAnalysisOutputSchema),
+    },
+  ],
   [
     "/v1/strategy",
     {

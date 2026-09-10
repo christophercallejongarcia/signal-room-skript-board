@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, Script, ScriptPatch, ScriptRunClaimOptions, SignalRecord, Slate, StorageAdapter, TranscriptDictionaryEntry, TranscriptSignalPatch } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, Script, ScriptPatch, ScriptRunClaimOptions, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
 import { applyStoryboard, attachStoryboard, claimDevelop, DevelopConflictError, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
@@ -10,6 +10,7 @@ import { mergeSignals } from "../../refresh-window.ts";
 import { mergeHashtagPosts } from "../../hashtag-posts.ts";
 import { mergeTranscriptDictionaryEntries, normalizeTranscriptDictionary, removeTranscriptDictionaryEntry } from "../../transcript-dictionary.ts";
 import { applyCoverUpdate } from "../../cover-lab.ts";
+import { analysisText, createTranscriptAnalysis, hashTranscriptText, validateTranscriptAnalysisSettlement, TRANSCRIPT_ANALYSIS_CLAIM_TIMEOUT_MS, TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS, type TranscriptAnalysisChunkState } from "../../transcript-analysis.ts";
 
 type Store = {
   creators: Creator[];
@@ -23,8 +24,8 @@ type Store = {
   hookRuns: HookRun[];
   briefings: Briefing[];
   slates: Slate[];
+  transcriptAnalyses: TranscriptAnalysis[];
 };
-
 const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 /** Runs kept in the file store; Convex keeps everything. */
 const MAX_RUNS = 100;
@@ -40,7 +41,18 @@ const MAX_FORMAT_REVIEWS = 24;
 const MAX_BRIEFINGS = 90;
 /** Slates kept in the file store. One per day, like the briefings. */
 const MAX_SLATES = 90;
-const EMPTY: Store = { creators: [], signals: [], transcriptDictionary: [], hashtagPosts: [], runs: [], ideas: [], scripts: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
+const EMPTY: Store = { creators: [], signals: [], transcriptDictionary: [], hashtagPosts: [], runs: [], ideas: [], scripts: [], formatReviews: [], hookRuns: [], briefings: [], slates: [], transcriptAnalyses: [] };
+
+function signalKey(signal: Pick<SignalRecord, "id" | "externalId">) {
+  return signal.externalId ?? signal.id;
+}
+
+function queueForSignal(store: Store, signal: SignalRecord, now: string) {
+  if (signal.format !== "reel" || !signal.transcript?.trim() || (signal.transcriptStatus !== undefined && signal.transcriptStatus !== "ready")) return;
+  const analysis = createTranscriptAnalysis(signal, now);
+  if (!analysis || store.transcriptAnalyses.some((existing) => existing.id === analysis.id)) return;
+  store.transcriptAnalyses.push(analysis);
+}
 
 async function load(): Promise<Store> {
   let parsed: Partial<Store>;
@@ -70,6 +82,7 @@ async function load(): Promise<Store> {
     hookRuns: parsed.hookRuns ?? [],
     briefings: parsed.briefings ?? [],
     slates: parsed.slates ?? [],
+    transcriptAnalyses: parsed.transcriptAnalyses ?? [],
   };
   if (migrated.reset > 0) await save(store);
   return store;
@@ -157,6 +170,11 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       const store = await load();
       const { signals, inserted, updated } = mergeSignals(store.signals, records);
       store.signals = signals;
+      const storedByKey = new Map(store.signals.map((signal) => [signalKey(signal), signal]));
+      for (const record of records) {
+        const stored = storedByKey.get(signalKey(record));
+        if (stored) queueForSignal(store, stored, new Date().toISOString());
+      }
       await save(store);
       return { inserted, updated };
     });
@@ -215,8 +233,109 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       if (index < 0) return null;
       const patched = applyTranscriptPatch(store.signals[index], patch);
       store.signals[index] = patched;
+      queueForSignal(store, patched, patch.transcriptUpdatedAt ?? new Date().toISOString());
       await save(store);
       return patched;
+    });
+  },
+  async listTranscriptAnalyses(options = {}) {
+    const analyses = (await load()).transcriptAnalyses;
+    return [...analyses]
+      .filter((analysis) => !options.signalId || analysis.signalId === options.signalId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.min(Math.max(Math.floor(options.limit ?? 100), 1), 500));
+  },
+  async enqueueTranscriptAnalysis(signalId, now) {
+    return serialized(async () => {
+      const store = await load();
+      const signal = store.signals.find((candidate) => candidate.id === signalId);
+      if (!signal) return null;
+      queueForSignal(store, signal, now);
+      const analysis = store.transcriptAnalyses
+        .filter((candidate) => candidate.signalId === signalId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+      await save(store);
+      return analysis;
+    });
+  },
+  async claimTranscriptAnalysis(now, claimId) {
+    return serialized(async () => {
+      const store = await load();
+      const nowMs = Date.parse(now);
+      for (let index = 0; index < store.transcriptAnalyses.length; index += 1) {
+        const analysis = store.transcriptAnalyses[index];
+        if (analysis.status === "running" && analysis.attempts >= TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS && Date.parse(analysis.claimExpiresAt ?? "") <= nowMs) {
+          store.transcriptAnalyses[index] = {
+            ...analysis,
+            status: "failed",
+            error: "The analysis attempt limit was reached after an expired claim.",
+            claimId: undefined,
+            claimedAt: undefined,
+            claimExpiresAt: undefined,
+          };
+        }
+      }
+      const candidate = [...store.transcriptAnalyses]
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .find((analysis) => (
+          analysis.attempts < TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS
+          && (analysis.status === "queued" || (analysis.status === "running" && Number.isFinite(Date.parse(analysis.claimExpiresAt ?? "")) && Date.parse(analysis.claimExpiresAt!) <= nowMs))
+        ));
+      if (!candidate) return null;
+      const claimed = {
+        ...candidate,
+        status: "running" as const,
+        attempts: candidate.attempts + 1,
+        claimedAt: now,
+        claimExpiresAt: new Date(nowMs + TRANSCRIPT_ANALYSIS_CLAIM_TIMEOUT_MS).toISOString(),
+        claimId,
+        error: undefined,
+      };
+      const index = store.transcriptAnalyses.findIndex((analysis) => analysis.id === candidate.id);
+      store.transcriptAnalyses[index] = claimed;
+      await save(store);
+      return claimed;
+    });
+  },
+  async settleTranscriptAnalysis(id, claimId, result: SettleTranscriptAnalysis) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.transcriptAnalyses.findIndex((analysis) => analysis.id === id);
+      if (index < 0 || store.transcriptAnalyses[index].claimId !== claimId) return null;
+      const current = store.transcriptAnalyses[index];
+      const signal = store.signals.find((candidate) => candidate.id === current.signalId);
+      const source = signal ? analysisText(signal) : null;
+      if (!source || source.textVersion !== current.textVersion || hashTranscriptText(source.text) !== current.textHash) return null;
+      validateTranscriptAnalysisSettlement(result, source.text);
+      const settled: TranscriptAnalysis = {
+        ...current,
+        status: result.status,
+        ...(result.framework === undefined ? {} : { framework: result.framework }),
+        ...(result.findings === undefined ? {} : { findings: result.findings }),
+        ...(result.chunks === undefined ? {} : { chunks: result.chunks as TranscriptAnalysisChunkState[] }),
+        ...(result.textLength === undefined ? {} : { textLength: result.textLength }),
+        ...(result.complete === undefined ? {} : { complete: result.complete }),
+        ...(result.status === "failed" ? { error: result.error || "Transcript analysis failed." } : { error: undefined, completedAt: result.now }),
+        claimedAt: undefined,
+        claimExpiresAt: undefined,
+        claimId: undefined,
+      };
+      store.transcriptAnalyses[index] = settled;
+      await save(store);
+      return settled;
+    });
+  },
+  async retryTranscriptAnalysis(id, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.transcriptAnalyses.findIndex((analysis) => analysis.id === id);
+      if (index < 0) return null;
+      const current = store.transcriptAnalyses[index];
+      if (current.status !== "failed") throw new Error("Only failed analyses can be retried.");
+      if (current.attempts >= TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS) throw new Error("The analysis attempt limit has been reached.");
+      store.transcriptAnalyses[index] = { ...current, status: "queued", error: undefined, createdAt: now, claimedAt: undefined, claimExpiresAt: undefined, claimId: undefined };
+      await save(store);
+      return store.transcriptAnalyses[index];
     });
   },
   async listTranscriptDictionary() {

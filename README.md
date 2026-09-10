@@ -95,6 +95,10 @@ curl http://127.0.0.1:3211/health
 
 Then use **Generate angle** in Ideas. It sends the strongest outlier reels of the last 30 days from your stored corpus; with an empty store the app shows demo fixtures but sends nothing. Window, threshold and packet size live in `lib/config.ts`. The bridge:
 
+The Reel view also queues finished transcripts for a bounded content-analysis worker. Manual analysis and retry run through `/api/transcript-analyses`; cloud refreshes leave jobs queued until the local Bridge is available. The stored result names its text version, hash and analysis version, and every finding must match a literal source range.
+
+Run one bounded local worker batch with `npm run worker:transcript-analysis`. An optional numeric argument such as `npm run worker:transcript-analysis -- 5` changes the batch size up to 20.
+
 - binds to localhost only
 - allows configured browser origins only
 - caps request bodies at 64 KB

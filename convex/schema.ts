@@ -62,6 +62,56 @@ export const transcriptDictionaryFields = {
   createdAt: v.string(),
 };
 
+const transcriptAnalysisFeature = v.union(
+  v.literal("hook"),
+  v.literal("tension"),
+  v.literal("loop"),
+  v.literal("proof"),
+  v.literal("example"),
+  v.literal("transition"),
+  v.literal("rhythm"),
+  v.literal("cta"),
+);
+
+export const transcriptAnalysisFindingFields = {
+  feature: transcriptAnalysisFeature,
+  explanation: v.string(),
+  quote: v.string(),
+  start: v.number(),
+  end: v.number(),
+  timecode: v.optional(v.object({ start: v.number(), end: v.number() })),
+};
+
+export const transcriptAnalysisChunkFields = {
+  index: v.number(),
+  start: v.number(),
+  end: v.number(),
+  status: v.union(v.literal("complete"), v.literal("missing")),
+};
+
+/** Persisted local-worker job and its human-reviewable, source-bound result. */
+export const transcriptAnalysisFields = {
+  id: v.string(),
+  signalId: v.string(),
+  textVersion: v.union(v.literal("original"), v.literal("working")),
+  textHash: v.string(),
+  analysisVersion: v.string(),
+  createdAt: v.string(),
+  runId: v.string(),
+  status: v.union(v.literal("queued"), v.literal("running"), v.literal("complete"), v.literal("failed")),
+  attempts: v.number(),
+  claimId: v.optional(v.string()),
+  claimedAt: v.optional(v.string()),
+  claimExpiresAt: v.optional(v.string()),
+  completedAt: v.optional(v.string()),
+  error: v.optional(v.string()),
+  framework: v.union(v.literal("pas"), v.literal("bbb"), v.literal("none")),
+  findings: v.array(v.object(transcriptAnalysisFindingFields)),
+  chunks: v.array(v.object(transcriptAnalysisChunkFields)),
+  textLength: v.number(),
+  complete: v.boolean(),
+};
+
 /** One German post collected from an Instagram hashtag search. */
 export const hashtagPostFields = {
   id: v.string(),
@@ -420,6 +470,11 @@ export default defineSchema({
     .index("by_published", ["publishedAt"]),
   transcriptDictionary: defineTable(transcriptDictionaryFields)
     .index("by_wrong", ["wrong"])
+    .index("by_createdAt", ["createdAt"]),
+  transcriptAnalyses: defineTable(transcriptAnalysisFields)
+    .index("by_external_id", ["id"])
+    .index("by_signal_createdAt", ["signalId", "createdAt"])
+    .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_createdAt", ["createdAt"]),
   hashtagPosts: defineTable(hashtagPostFields)
     .index("by_external_id", ["id"])

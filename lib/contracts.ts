@@ -155,7 +155,6 @@ export interface HashtagConnector {
   readonly id: string;
   collect(hashtags?: string[]): Promise<HashtagCollection>;
 }
-
 /**
  * One logged collection pass. ok = no errors, partial = some creators failed or
  * the refresh hit REFRESH_CREATOR_LIMIT, failed = every creator failed.
@@ -205,6 +204,52 @@ export type TranscriptPatch = {
 
 /** Readable alias for callers that emphasize the Signal boundary. */
 export type TranscriptSignalPatch = TranscriptPatch;
+
+export type TranscriptAnalysisFeature = "hook" | "tension" | "loop" | "proof" | "example" | "transition" | "rhythm" | "cta";
+export type TranscriptAnalysisFramework = "pas" | "bbb" | "none";
+export type TranscriptAnalysisTextVersion = "original" | "working";
+export type TranscriptAnalysisStatus = "queued" | "running" | "complete" | "failed";
+export type TranscriptAnalysisFinding = {
+  feature: TranscriptAnalysisFeature;
+  explanation: string;
+  quote: string;
+  start: number;
+  end: number;
+  timecode?: Pick<TranscriptSegment, "start" | "end">;
+};
+export type TranscriptAnalysisChunk = { index: number; start: number; end: number; text: string };
+export type TranscriptAnalysisChunkState = Omit<TranscriptAnalysisChunk, "text"> & { status: "complete" | "missing" };
+export type TranscriptAnalysis = {
+  id: string;
+  signalId: string;
+  textVersion: TranscriptAnalysisTextVersion;
+  textHash: string;
+  analysisVersion: string;
+  createdAt: string;
+  runId: string;
+  status: TranscriptAnalysisStatus;
+  attempts: number;
+  claimId?: string;
+  claimedAt?: string;
+  claimExpiresAt?: string;
+  completedAt?: string;
+  error?: string;
+  framework: TranscriptAnalysisFramework;
+  findings: TranscriptAnalysisFinding[];
+  chunks: TranscriptAnalysisChunkState[];
+  textLength: number;
+  complete: boolean;
+};
+export type SettleTranscriptAnalysis = {
+  status: "complete" | "failed";
+  now: string;
+  framework?: TranscriptAnalysisFramework;
+  findings?: TranscriptAnalysisFinding[];
+  chunks?: TranscriptAnalysisChunkState[];
+  textLength?: number;
+  complete?: boolean;
+  error?: string;
+};
 
 export type RefreshResult = {
   creatorsChecked: number;
@@ -795,6 +840,16 @@ export interface StorageAdapter {
   claimTranscript(id: string, now: string): Promise<SignalRecord | null>;
   /** Patches only transcript fields on one Signal. Null removes an optional field. */
   patchTranscript(id: string, patch: TranscriptSignalPatch): Promise<SignalRecord | null>;
+  /** Lists bounded content-analysis jobs, optionally for one Signal. */
+  listTranscriptAnalyses(options?: { signalId?: string; limit?: number }): Promise<TranscriptAnalysis[]>;
+  /** Idempotently queues the current finished transcript of one Reel. */
+  enqueueTranscriptAnalysis(signalId: string, now: string): Promise<TranscriptAnalysis | null>;
+  /** Claims the oldest queued or expired analysis job for one local worker. */
+  claimTranscriptAnalysis(now: string, claimId: string): Promise<TranscriptAnalysis | null>;
+  /** Settles only the current claim; stale workers receive null. */
+  settleTranscriptAnalysis(id: string, claimId: string, result: SettleTranscriptAnalysis): Promise<TranscriptAnalysis | null>;
+  /** Explicitly requeues a failed analysis when its attempt budget allows it. */
+  retryTranscriptAnalysis(id: string, now: string): Promise<TranscriptAnalysis | null>;
   /** Newest first. Personal transcript mappings are shared across Reels. */
   listTranscriptDictionary(): Promise<TranscriptDictionaryEntry[]>;
   /** Adds or updates one mapping. Duplicate mappings are merged. */

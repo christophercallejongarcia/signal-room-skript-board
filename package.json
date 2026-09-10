@@ -10,9 +10,10 @@
     "build": "next build",
     "start": "next start",
     "bridge": "node bridge/server.mjs",
+    "worker:transcript-analysis": "node scripts/transcript-analysis-worker.mjs",
     "diagrams": "node scripts/render-diagrams.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs && vitest run convex/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

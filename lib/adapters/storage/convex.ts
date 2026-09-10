@@ -4,7 +4,7 @@ import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
 import { DevelopConflictError, ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, Script, ScriptPatch, ScriptRunClaimOptions, SettleScriptRun, SignalRecord, Slate, StorageAdapter, TranscriptDictionaryEntry, TranscriptSignalPatch } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, Script, ScriptPatch, ScriptRunClaimOptions, SettleScriptRun, SignalRecord, Slate, StorageAdapter, TranscriptAnalysis, TranscriptDictionaryEntry, TranscriptSignalPatch, SettleTranscriptAnalysis } from "../../contracts";
 import { ScriptRunConflictError } from "../../scripts.ts";
 import { TranscriptConflictError } from "../../transcripts.ts";
 
@@ -29,7 +29,6 @@ function isMissingTranscriptDictionaryFunction(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("Could not find public function") && message.includes("transcriptDictionary:");
 }
-
 /** Keeps an older deployment readable until the Scripts table is deployed. */
 function isMissingScriptFunction(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -117,6 +116,37 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     },
     async patchTranscript(id, patch: TranscriptSignalPatch) {
       return (await client.mutation(anyApi.signals.patchTranscript, { id, patch })) as SignalRecord | null;
+    },
+    async listTranscriptAnalyses(options = {}) {
+      return (await client.query(anyApi.transcriptAnalyses.list, options)) as TranscriptAnalysis[];
+    },
+    async enqueueTranscriptAnalysis(signalId, now) {
+      return (await client.mutation(anyApi.transcriptAnalyses.enqueue, { signalId, now })) as TranscriptAnalysis | null;
+    },
+    async claimTranscriptAnalysis(now, claimId) {
+      return (await client.mutation(anyApi.transcriptAnalyses.claim, { now, claimId })) as TranscriptAnalysis | null;
+    },
+    async settleTranscriptAnalysis(id, claimId, result: SettleTranscriptAnalysis) {
+      return (await client.mutation(anyApi.transcriptAnalyses.settle, {
+        id,
+        claimId,
+        status: result.status,
+        now: result.now,
+        ...(result.framework === undefined ? {} : { framework: result.framework }),
+        ...(result.findings === undefined ? {} : { findings: result.findings }),
+        ...(result.chunks === undefined ? {} : { chunks: result.chunks }),
+        ...(result.textLength === undefined ? {} : { textLength: result.textLength }),
+        ...(result.complete === undefined ? {} : { complete: result.complete }),
+        ...(result.error === undefined ? {} : { error: result.error }),
+      })) as TranscriptAnalysis | null;
+    },
+    async retryTranscriptAnalysis(id, now) {
+      try {
+        return (await client.mutation(anyApi.transcriptAnalyses.retry, { id, now })) as TranscriptAnalysis | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { message?: string }) : null;
+        throw new Error(data?.message ?? (error instanceof Error ? error.message : "Transcript analysis retry failed."));
+      }
     },
     async listTranscriptDictionary() {
       try {

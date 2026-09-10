@@ -50,8 +50,8 @@ export const SCRIPT_FRAMEWORK_DEFINITIONS: readonly ScriptFrameworkDefinition[] 
   {
     id: "bbb",
     label: "BBB",
-    definition: "Before, Bridge, After: Ausgangslage zeigen, den Übergang erklären und das veränderte Ergebnis sichtbar machen.",
-    useWhen: "Wenn der Ansatz einen vorher-nachher-Weg oder eine konkrete Veränderung zeigt.",
+    definition: "Behaupten, Begründen, Beispiel: eine klare Aussage machen, nachvollziehbar begründen und an einem konkreten Beispiel zeigen.",
+    useWhen: "Wenn eine Aussage durch einen nachvollziehbaren Grund und ein konkretes Beispiel getragen werden soll.",
   },
   {
     id: "none",

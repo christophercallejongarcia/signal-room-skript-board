@@ -2,6 +2,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { isPendingTranscriptExpired } from "../lib/transcripts";
 import { transcriptPatchFields } from "./schema";
+import { enqueueForSignal } from "./transcriptAnalyses";
 
 /** Optional fields arrive as null from JSON sources; the schema wants them absent. */
 function clean<T extends Record<string, unknown>>(doc: T): T {
@@ -29,8 +30,10 @@ export const bulkUpsert = mutation({
         .query("signals")
         .withIndex("by_external_id", (q) => q.eq("id", record.id))
         .unique();
-      if (existing) await ctx.db.patch(existing._id, record);
-      else await ctx.db.insert("signals", record);
+      const signalId = existing ? existing._id : await ctx.db.insert("signals", record);
+      if (existing) await ctx.db.patch(signalId, record);
+      const stored = await ctx.db.get(signalId);
+      if (stored) await enqueueForSignal(ctx, stored, new Date().toISOString());
       // A duplicate inside one batch counts once, same as mergeSignals in the file store.
       if (seen.has(record.id)) continue;
       seen.add(record.id);
@@ -111,6 +114,7 @@ export const patchTranscript = mutation({
     await ctx.db.patch(existing._id, updates);
     const row = await ctx.db.get(existing._id);
     if (!row) return null;
+    await enqueueForSignal(ctx, row, patch.transcriptUpdatedAt ?? new Date().toISOString());
     const { _id, _creationTime, ...signal } = row;
     return signal;
   },
