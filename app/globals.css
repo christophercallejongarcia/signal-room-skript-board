@@ -275,6 +275,7 @@ main {
   overflow: hidden;
 }
 .filter-bar > div {
+  min-width: 0;
   padding: 16px 18px;
   border-right: 1px solid var(--line);
 }
@@ -287,7 +288,7 @@ main {
 }
 .filter-bar select {
   width: 100%;
-  padding: 6px 0;
+  padding: 6px 24px 6px 0;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -322,6 +323,17 @@ main {
 .filter-matches { display: grid; place-items: center; text-align: center; min-width: 96px; background: var(--surface); }
 .filter-matches strong { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: -0.03em; }
 .filter-matches span { color: var(--muted); font-size: 10.5px; margin-top: 4px; }
+
+.feed-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 64px;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 .results-row {
   display: flex;

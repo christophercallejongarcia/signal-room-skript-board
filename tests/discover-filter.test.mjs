@@ -6,6 +6,7 @@ import {
   countOutliers,
   filterDiscover,
   isOutlier,
+  sortDiscover,
   storeOrDemo,
 } from "../lib/discover-filter.ts";
 
@@ -33,6 +34,47 @@ const signals = [
   sig("s4", "b", 0.4, 2),
   sig("s5", "y", 9, 1),
 ];
+
+test("Discover sorts the complete filtered corpus by multiplier in either direction without changing its input", () => {
+  const filters = { network: "instagram", creatorId: "all", published: "all", now: NOW, threshold: 1.5, view: "outliers" };
+  const matches = filterDiscover(signals, creators, filters);
+  assert.deepEqual(sortDiscover(matches, "outlier").map((s) => s.id), ["s3", "s1", "s2"]);
+  assert.deepEqual(sortDiscover(matches, "outlier-asc").map((s) => s.id), ["s2", "s1", "s3"]);
+  assert.deepEqual(matches.map((s) => s.id), ["s1", "s2", "s3"]);
+});
+
+test("Discover orders equal multipliers by date then canonical id, independently of input order", () => {
+  const tied = [sig("z", "a", 3, 1), sig("old", "a", 3, 2), sig("a", "a", 3, 1)];
+  for (const sort of ["outlier", "outlier-asc"]) {
+    assert.deepEqual(sortDiscover(tied, sort).map((s) => s.id), ["a", "z", "old"]);
+    assert.deepEqual(sortDiscover([...tied].reverse(), sort).map((s) => s.id), ["a", "z", "old"]);
+  }
+});
+
+test("Discover sorts dates and plays in both directions, falling back to views and keeping zero plays", () => {
+  const items = [
+    { ...sig("fallback", "a", 2, 3), views: 30 },
+    { ...sig("zero", "a", 2, 1), plays: 0, views: 100 },
+    { ...sig("plays", "a", 2, 2), plays: 50, views: 1 },
+  ];
+  assert.deepEqual(sortDiscover(items, "newest").map((s) => s.id), ["zero", "plays", "fallback"]);
+  assert.deepEqual(sortDiscover(items, "oldest").map((s) => s.id), ["fallback", "plays", "zero"]);
+  assert.deepEqual(sortDiscover(items, "views").map((s) => s.id), ["plays", "fallback", "zero"]);
+  assert.deepEqual(sortDiscover(items, "views-asc").map((s) => s.id), ["zero", "fallback", "plays"]);
+  assert.deepEqual(sortDiscover([], "outlier"), []);
+});
+
+test("Discover keeps all 236 outliers available, including the strongest signal beyond the first 48", () => {
+  const corpus = Array.from({ length: 236 }, (_, index) => sig(`reel-${index}`, "a", index + 2, 1));
+  const matches = filterDiscover(corpus, creators, {
+    network: "instagram", creatorId: "all", published: "all", now: NOW, threshold: 2, view: "outliers",
+  });
+  const sorted = sortDiscover(matches, "outlier");
+  assert.equal(sorted.length, 236);
+  assert.equal(new Set(sorted.map((s) => s.id)).size, 236);
+  assert.equal(sorted[0].id, "reel-235");
+  assert.equal(sorted.at(-1).id, "reel-0");
+});
 
 test("thresholds expose 1.5x, 2x, 3x, 5x with 2x as default", () => {
   assert.deepEqual(OUTLIER_THRESHOLDS, [1.5, 2, 3, 5]);

@@ -33,6 +33,7 @@ import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CoverImage, formatNumber, formatOutlier, networkName, timeAgo } from "@/components/display";
 import { ReelDetailPanel, TranscriptStatusBadge } from "@/components/reel-detail";
+import { DiscoverFeed } from "@/components/discover-feed";
 import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
 import { rankCorpus, DEMO_NOW, type Ranked } from "@/lib/rank-corpus";
 import { demoCreators, demoHashtagPosts, demoIdeas, demoSignals } from "@/lib/demo-data";
@@ -43,6 +44,7 @@ import {
   countOutliers,
   countSaved,
   filterDiscover,
+  sortDiscover,
   isOutlier,
   isOwned,
   isSaved,
@@ -50,6 +52,7 @@ import {
   withSavedAt,
   withoutOwned,
   type DiscoverView as DiscoverViewMode,
+  type DiscoverSort,
   type OutlierThreshold,
   type PublishedWindow,
 } from "@/lib/discover-filter";
@@ -1089,7 +1092,7 @@ function DiscoverView({
   const [view, setView] = useState<DiscoverViewMode>("all");
   const [published, setPublished] = useState<PublishedWindow>("90");
   const [channel, setChannel] = useState("all");
-  const [sort, setSort] = useState<"newest" | "outlier" | "views">("newest");
+  const [sort, setSort] = useState<DiscoverSort>("newest");
   const [perPage, setPerPage] = useState(24);
   const [cols, setCols] = useState(4);
 
@@ -1105,14 +1108,8 @@ function DiscoverView({
   const outliers = countOutliers(rankedSignals, creators, filters);
   // Same for the saved view: the stat block and the matches counter read the predicate the cards use.
   const saved = countSaved(rankedSignals, creators, filters);
-  const filtered = filterDiscover(rankedSignals, creators, { ...filters, view })
-    .sort((a, b) => {
-      if (sort === "outlier") return (b.outlier ?? 0) - (a.outlier ?? 0);
-      if (sort === "views") return (b.plays ?? b.views) - (a.plays ?? a.views);
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
-
-  const shown = filtered.slice(0, perPage);
+  const filtered = sortDiscover(filterDiscover(rankedSignals, creators, { ...filters, view }), sort);
+  const feedKey = JSON.stringify([network, view, published, channel, sort, threshold, perPage]);
   const isIg = network === "instagram";
 
   return (
@@ -1152,7 +1149,7 @@ function DiscoverView({
             <button className={view === "saved" ? "active" : ""} onClick={() => setView("saved")}>Saved</button>
           </div>
           <p className="filter-hint">
-            {view === "outliers" ? "Ranked by follower-relative reach" : view === "saved" ? "Only what you saved" : "Newest uploads first"}
+            {view === "outliers" ? "Above the selected audience multiplier" : view === "saved" ? "Only what you saved" : "Every matching upload"}
           </p>
         </div>
         <div>
@@ -1177,8 +1174,11 @@ function DiscoverView({
           <label htmlFor="f-sort">Sort by</label>
           <select id="f-sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
             <option value="newest">Newest first</option>
-            <option value="outlier">Strongest outlier</option>
+            <option value="oldest">Oldest first</option>
+            <option value="outlier">Multiplier: high to low</option>
+            <option value="outlier-asc">Multiplier: low to high</option>
             <option value="views">Most {isIg ? "plays" : "views"}</option>
+            <option value="views-asc">Fewest {isIg ? "plays" : "views"}</option>
           </select>
         </div>
         <div>
@@ -1190,7 +1190,7 @@ function DiscoverView({
           </select>
         </div>
         <div>
-          <label htmlFor="f-perpage">Videos per page</label>
+          <label htmlFor="f-perpage">Videos per load</label>
           <select id="f-perpage" value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
             <option value={12}>12 videos</option>
             <option value={24}>24 videos</option>
@@ -1203,8 +1203,7 @@ function DiscoverView({
         </div>
       </section>
 
-      <div className="results-row">
-        <span>Showing {filtered.length === 0 ? 0 : 1}–{shown.length} of {filtered.length} videos</span>
+      <DiscoverFeed key={feedKey} signals={filtered} batchSize={perPage} controls={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           Videos per row
           <span className="pill-group">
@@ -1213,9 +1212,8 @@ function DiscoverView({
             ))}
           </span>
         </span>
-      </div>
-
-      {shown.length === 0 ? (
+      }>
+      {(shown) => shown.length === 0 ? (
         <div className="empty-state">
           {view === "saved"
             ? "No saved videos match these filters. Save one from a card, or widen the window."
@@ -1286,6 +1284,7 @@ function DiscoverView({
           })}
         </div>
       )}
+      </DiscoverFeed>
 
       <aside className="explain-note">
         <WarningCircle size={20} weight="fill" />

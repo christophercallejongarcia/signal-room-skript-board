@@ -19,6 +19,10 @@ Signal Room Starter is split into a product shell, stable domain contracts, repl
 
 The desk is one client shell (`components/signal-room.tsx`) with nine tabs; it opens on `/` and takes the tab from a `?tab=` parameter on mount. One creator has its own route, `/creator/<creator.id>` (`app/creator/[id]/page.tsx` → `components/creator-detail.tsx`): the stat bar and the sortable corpus table, both computed by the pure functions in `lib/creator-detail.ts`. Its links are built by `creatorPath`, which carries the tab the creator was opened from and the outlier threshold the desk was reading at, so the back link returns to that list and the outlier column limes at the same value. Both pages rank through `rankCorpus` (`lib/rank-corpus.ts`), so one reel never reads as two different outliers.
 
+### Discover feed
+
+Discover filters the complete loaded corpus through `filterDiscover` and sorts all matches through `sortDiscover` before rendering. Date, plays (falling back to views), and audience multiplier each support both directions; equal values are ordered by newest publication and canonical Signal id. `components/discover-feed.tsx` reveals 12, 24, or 48 additional cards when its footer approaches the viewport, with a manual load button when automatic observation is unavailable. There is no fixed total-card limit. Network, view, date window, creator, sort, threshold, or batch-size changes reset the visible batch; changing the column count or updating a saved mark preserves it. The counter reports visible versus matching Signals, and the footer identifies completion. This is incremental rendering of the existing browser snapshot, not server pagination: it adds no provider request, storage write, credential, or new trust boundary. Existing snapshot loading and error handling remain in the shell; an empty filtered feed retains its empty state.
+
 ## Domain model
 
 `Creator` identifies a watched public channel. `SignalRecord` is the normalized unit collected from a network. `RankedSignal` adds derived evidence and an explanation. `StrategyRequest` is a deliberately small packet sent to a strategy provider.

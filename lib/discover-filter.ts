@@ -7,6 +7,7 @@ export type OutlierThreshold = (typeof OUTLIER_THRESHOLDS)[number];
 export const DEFAULT_OUTLIER_THRESHOLD: OutlierThreshold = 2;
 
 export type DiscoverView = "all" | "outliers" | "saved";
+export type DiscoverSort = "newest" | "oldest" | "outlier" | "outlier-asc" | "views" | "views-asc";
 export type PublishedWindow = "7" | "30" | "90" | "all";
 export const PUBLISHED_WINDOWS: PublishedWindow[] = ["7", "30", "90", "all"];
 
@@ -79,6 +80,24 @@ export function filterDiscover<T extends RankedSignal>(
   if (filters.view === "saved") return scoped.filter(isSaved);
   if (filters.view === "outliers") return scoped.filter((signal) => isOutlier(signal, filters.threshold));
   return scoped;
+}
+
+/** Sort all matches before revealing batches. Equal values keep a canonical order. */
+export function sortDiscover<T extends RankedSignal>(signals: T[], sort: DiscoverSort): T[] {
+  return [...signals].sort((a, b) => {
+    const newestFirst = Date.parse(b.publishedAt) - Date.parse(a.publishedAt);
+    let difference = newestFirst;
+    if (sort === "oldest") difference = -newestFirst;
+    if (sort === "outlier" || sort === "outlier-asc") {
+      difference = (b.outlier ?? 0) - (a.outlier ?? 0);
+      if (sort === "outlier-asc") difference = -difference;
+    }
+    if (sort === "views" || sort === "views-asc") {
+      difference = (b.plays ?? b.views) - (a.plays ?? a.views);
+      if (sort === "views-asc") difference = -difference;
+    }
+    return difference || newestFirst || a.id.localeCompare(b.id);
+  });
 }
 
 /** Stat-block counter. Delegates to the same predicate the outlier view uses. */
