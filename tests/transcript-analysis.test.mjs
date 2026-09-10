@@ -100,7 +100,7 @@ test("bounded catch-up skips existing analyses without starving later unfinished
   const calls = [];
   const storage = {
     async listSignals() { return signals; },
-    async listTranscriptAnalyses() { return existing; },
+    async listTranscriptAnalyses({ analysisId } = {}) { return existing.filter((analysis) => !analysisId || analysis.id === analysisId); },
     async enqueueTranscriptAnalysis(signalId, now) {
       calls.push(signalId);
       return createTranscriptAnalysis(signals.find((signal) => signal.id === signalId), now, `run-${signalId}`);

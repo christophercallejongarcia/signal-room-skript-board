@@ -27,6 +27,8 @@ test("Convex queues at the signal write boundary and settles one claimed result"
   await t.mutation(api.signals.bulkUpsert, { records: [signal] });
   const first = await t.query(api.transcriptAnalyses.list, { signalId: signal.id });
   expect(first).toHaveLength(1);
+  expect(await t.query(api.transcriptAnalyses.list, { analysisId: first[0].id, limit: 1 })).toEqual(first);
+  expect(await t.query(api.transcriptAnalyses.list, { analysisId: "analysis-missing", limit: 1 })).toEqual([]);
   await t.mutation(api.signals.bulkUpsert, { records: [signal] });
   expect(await t.query(api.transcriptAnalyses.list, { signalId: signal.id })).toHaveLength(1);
 

@@ -33,10 +33,12 @@ export async function enqueueForSignal(ctx: MutationCtx, signal: Parameters<type
 }
 
 export const list = query({
-  args: { signalId: v.optional(v.string()), limit: v.optional(v.number()) },
-  handler: async (ctx, { signalId, limit }) => {
+  args: { signalId: v.optional(v.string()), analysisId: v.optional(v.string()), limit: v.optional(v.number()) },
+  handler: async (ctx, { signalId, analysisId, limit }) => {
     const bounded = Math.min(Math.max(Math.floor(limit ?? 100), 1), 500);
-    const rows = signalId
+    const rows = analysisId
+      ? await ctx.db.query("transcriptAnalyses").withIndex("by_external_id", (q) => q.eq("id", analysisId)).take(1)
+      : signalId
       ? await ctx.db.query("transcriptAnalyses").withIndex("by_signal_createdAt", (q) => q.eq("signalId", signalId)).order("desc").take(bounded)
       : await ctx.db.query("transcriptAnalyses").withIndex("by_createdAt").order("desc").take(bounded);
     return rows.map(publicRow);

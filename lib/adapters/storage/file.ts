@@ -242,6 +242,7 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
     const analyses = (await load()).transcriptAnalyses;
     return [...analyses]
       .filter((analysis) => !options.signalId || analysis.signalId === options.signalId)
+      .filter((analysis) => !options.analysisId || analysis.id === options.analysisId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, Math.min(Math.max(Math.floor(options.limit ?? 100), 1), 500));
   },

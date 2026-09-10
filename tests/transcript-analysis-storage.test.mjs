@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { processTranscriptAnalyses } from "../lib/transcript-analysis-run.ts";
+import { enqueueTranscriptAnalyses, processTranscriptAnalyses } from "../lib/transcript-analysis-run.ts";
+import { createTranscriptAnalysis } from "../lib/transcript-analysis.ts";
 
 const signal = {
   id: "ig-analysis-1",
@@ -38,6 +39,68 @@ test("file storage queues a finished transcript idempotently at saveSignals", as
     assert.equal(second.length, 1);
     assert.equal(second[0].id, first[0].id);
     assert.equal(second[0].textHash, first[0].textHash);
+  } finally {
+    process.chdir(previous);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("bounded catch-up reaches a new Reel after more than 500 existing analyses and stays idempotent", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "transcript-analysis-catch-up-"));
+  const previous = process.cwd();
+  process.chdir(dir);
+  try {
+    const signals = Array.from({ length: 502 }, (_, index) => ({
+      ...signal,
+      id: `ig-${index}`,
+      externalId: `${index}`,
+      transcript: `Transcript ${index}.`,
+    }));
+    const existing = signals.slice(0, 501).map((item, index) => {
+      const createdAt = new Date(Date.UTC(2026, 8, 1, 0, 0, index)).toISOString();
+      return createTranscriptAnalysis(item, createdAt, `run-${index}`);
+    });
+    await mkdir(path.join(dir, "data"), { recursive: true });
+    await writeFile(path.join(dir, "data", "store.json"), JSON.stringify({
+      creators: [],
+      signals,
+      transcriptDictionary: [],
+      hashtagPosts: [],
+      runs: [],
+      ideas: [],
+      scripts: [],
+      formatReviews: [],
+      hookRuns: [],
+      briefings: [],
+      slates: [],
+      transcriptAnalyses: existing,
+    }), "utf8");
+    const { fileStorage } = await import(`../lib/adapters/storage/file.ts?catch-up=${Date.now()}`);
+
+    const first = await enqueueTranscriptAnalyses(fileStorage, {
+      now: new Date("2026-09-10T10:00:00.000Z"),
+      limit: 1,
+    });
+    assert.deepEqual(first.analyses.map((analysis) => analysis.signalId), ["ig-501"]);
+    assert.deepEqual({ queued: first.queued, existing: first.existing, skipped: first.skipped }, { queued: 1, existing: 501, skipped: 0 });
+    assert.equal((await fileStorage.listTranscriptAnalyses({ signalId: "ig-501", limit: 1 })).length, 1);
+
+    const unchanged = await Promise.all(existing.map(async (analysis) => {
+      const [stored] = await fileStorage.listTranscriptAnalyses({ signalId: analysis.signalId, limit: 1 });
+      return { id: stored?.id, status: stored?.status, createdAt: stored?.createdAt };
+    }));
+    assert.deepEqual(unchanged, existing.map((analysis) => ({
+      id: analysis.id,
+      status: analysis.status,
+      createdAt: analysis.createdAt,
+    })));
+
+    const second = await enqueueTranscriptAnalyses(fileStorage, {
+      now: new Date("2026-09-10T10:01:00.000Z"),
+      limit: 1,
+    });
+    assert.deepEqual({ queued: second.queued, existing: second.existing, skipped: second.skipped }, { queued: 0, existing: 502, skipped: 0 });
+    assert.equal((await fileStorage.listTranscriptAnalyses({ signalId: "ig-501", limit: 10 })).length, 1);
   } finally {
     process.chdir(previous);
     await rm(dir, { recursive: true, force: true });

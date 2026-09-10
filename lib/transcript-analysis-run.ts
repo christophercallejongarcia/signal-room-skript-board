@@ -23,18 +23,15 @@ export async function enqueueTranscriptAnalyses(
 ): Promise<TranscriptAnalysisQueueResult> {
   const now = (options.now ?? new Date()).toISOString();
   const limit = Math.min(Math.max(Math.floor(options.limit ?? 20), 0), 100);
-  const [signals, existingAnalyses] = await Promise.all([
-    storage.listSignals(),
-    storage.listTranscriptAnalyses({ limit: 500 }),
-  ]);
-  const existingIds = new Set(existingAnalyses.map((analysis) => analysis.id));
+  const signals = await storage.listSignals();
   const candidates = signals.filter((signal) => signal.format === "reel" && isFinishedTranscript(signal));
   const analyses: TranscriptAnalysis[] = [];
   let existing = 0;
   for (const signal of candidates) {
     const prospective = createTranscriptAnalysis(signal, now);
     if (!prospective) continue;
-    if (existingIds.has(prospective.id)) {
+    const [existingAnalysis] = await storage.listTranscriptAnalyses({ analysisId: prospective.id, limit: 1 });
+    if (existingAnalysis) {
       existing += 1;
       continue;
     }

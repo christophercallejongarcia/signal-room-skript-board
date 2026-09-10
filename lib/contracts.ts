@@ -840,8 +840,8 @@ export interface StorageAdapter {
   claimTranscript(id: string, now: string): Promise<SignalRecord | null>;
   /** Patches only transcript fields on one Signal. Null removes an optional field. */
   patchTranscript(id: string, patch: TranscriptSignalPatch): Promise<SignalRecord | null>;
-  /** Lists bounded content-analysis jobs, optionally for one Signal. */
-  listTranscriptAnalyses(options?: { signalId?: string; limit?: number }): Promise<TranscriptAnalysis[]>;
+  /** Lists bounded content-analysis jobs, optionally for one Signal or exact canonical analysis ID. */
+  listTranscriptAnalyses(options?: { signalId?: string; analysisId?: string; limit?: number }): Promise<TranscriptAnalysis[]>;
   /** Idempotently queues the current finished transcript of one Reel. */
   enqueueTranscriptAnalysis(signalId: string, now: string): Promise<TranscriptAnalysis | null>;
   /** Claims the oldest queued or expired analysis job for one local worker. */
