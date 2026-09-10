@@ -1,4 +1,4 @@
-import type { SignalRecord, TranscriptCorrection, TranscriptPatch } from "./contracts";
+import type { SignalRecord, TranscriptCorrection, TranscriptDictionaryEntry, TranscriptPatch } from "./contracts";
 
 /** Bounds for the human-reviewable correction boundary. */
 export const TRANSCRIPT_CORRECTION_MAX = 120;
@@ -12,7 +12,7 @@ const CORRECTION_STATUSES = ["proposed", "accepted", "rejected"] as const;
 export type TranscriptCorrectionAction = {
   id: string;
   correctionId: string;
-  action: "accept" | "edit" | "reject";
+  action: "accept" | "edit" | "reject" | "dictionary" | "remove-dictionary";
   replacement?: string;
 };
 
@@ -137,12 +137,27 @@ export function parseTranscriptCorrectionResponse(
   return parsed;
 }
 
+/** Drops a Bridge proposal that disagrees with a known mapping for the same literal source. */
+export function filterDictionaryContradictions(
+  suggestions: readonly TranscriptCorrection[],
+  dictionary: readonly TranscriptDictionaryEntry[] = [],
+): TranscriptCorrection[] {
+  return suggestions.filter((suggestion) => {
+    const known = dictionary.filter((entry) => entry.wrong === suggestion.original);
+    return known.length === 0 || known.every((entry) => entry.right === suggestion.replacement);
+  });
+}
+
 /** Adds fresh Bridge proposals without replacing a decision already made on this Signal. */
-export function mergeCorrectionSuggestions(signal: SignalRecord, suggestions: TranscriptCorrection[]): SignalRecord {
+export function mergeCorrectionSuggestions(
+  signal: SignalRecord,
+  suggestions: TranscriptCorrection[],
+  dictionary: readonly TranscriptDictionaryEntry[] = [],
+): SignalRecord {
   const existing = signal.transcriptCorrections ?? [];
   const byOriginal = new Set(existing.map((correction) => correction.original));
   const corrections = [...existing];
-  for (const suggestion of suggestions) {
+  for (const suggestion of filterDictionaryContradictions(suggestions, dictionary)) {
     if (byOriginal.has(suggestion.original)) continue;
     byOriginal.add(suggestion.original);
     corrections.push(suggestion);
@@ -167,11 +182,14 @@ export function parseTranscriptCorrectionAction(body: unknown): TranscriptCorrec
   const action = input.action;
   if (!id) throw new Error("id required");
   if (!correctionId) throw new Error("correctionId required");
-  if (action !== "accept" && action !== "edit" && action !== "reject") {
-    throw new Error("action must be accept, edit or reject");
+  if (action !== "accept" && action !== "edit" && action !== "reject" && action !== "dictionary" && action !== "remove-dictionary") {
+    throw new Error("action must be accept, edit, reject, dictionary or remove-dictionary");
   }
   const replacement = input.replacement === undefined ? undefined : bounded(input.replacement, TRANSCRIPT_CORRECTION_MAX);
   if (action === "edit" && !replacement) throw new Error("replacement required for edit");
+  if ((action === "dictionary" || action === "remove-dictionary") && replacement !== undefined) {
+    throw new Error(`${action} does not accept a replacement`);
+  }
   return { id, correctionId, action, ...(replacement ? { replacement } : {}) };
 }
 
@@ -184,6 +202,7 @@ export function applyTranscriptCorrectionAction(
   const index = corrections.findIndex((correction) => correction.id === action.correctionId);
   if (index < 0) throw new Error(`unknown correction ${action.correctionId}`);
   const current = corrections[index];
+  if (action.action === "dictionary" || action.action === "remove-dictionary") return signal;
   const next = {
     ...current,
     ...(action.action === "edit" ? { replacement: action.replacement! } : {}),

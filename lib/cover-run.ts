@@ -1,19 +1,17 @@
 import { STRATEGY_BRIDGE_URL } from "./config.ts";
-import type { CoverPackage, Idea, StorageAdapter } from "./contracts.ts";
+import type { CoverPackage, Idea, IdeaCoverUpdate, StorageAdapter } from "./contracts.ts";
 import {
   COVER_FORMATS,
   coverBoard,
   coverBoardFor,
   parseCoverRequest,
   parseCoverResponse,
-  replaceCoverPackage,
-  upsertCoverBoard,
   type CoverRequest,
   type CoverResponsePackage,
 } from "./cover-lab.ts";
 import { coverAssetUrl, writeGeneratedCover } from "./adapters/storage/cover-lab-cache.ts";
 
-type CoverStorage = Pick<StorageAdapter, "listIdeas" | "saveIdea">;
+type CoverStorage = Pick<StorageAdapter, "getIdea" | "saveIdeaCover">;
 
 export class CoverRunError extends Error {
   status: number;
@@ -25,8 +23,7 @@ export class CoverRunError extends Error {
   }
 }
 
-function ideaForRequest(ideas: Idea[], request: CoverRequest) {
-  const idea = ideas.find((item) => item.id === request.ideaId);
+function ideaForRequest(idea: Idea | null, request: CoverRequest) {
   if (!idea) throw new CoverRunError(`unknown idea ${request.ideaId}`, 404);
   if (!idea.storyboard) throw new CoverRunError("Develop the idea before creating a cover.", 409);
   return idea;
@@ -114,7 +111,7 @@ async function persistPackages(
 /** Runs a three-package Cover-Lab pass or replaces one package in place. */
 export async function runCoverRequest(body: unknown, storage: CoverStorage): Promise<Idea> {
   const request = parseCoverRequest(body);
-  const idea = ideaForRequest(await storage.listIdeas(200), request);
+  const idea = ideaForRequest(await storage.getIdea(request.ideaId), request);
   const board = request.packageId ? coverBoardFor(idea, request.format) : undefined;
   const existing = request.packageId ? board?.packages.find((pkg) => pkg.id === request.packageId) : undefined;
   if (request.packageId && !existing) throw new CoverRunError(`Unknown ${COVER_FORMATS[request.format].label} cover package.`, 404);
@@ -123,9 +120,10 @@ export async function runCoverRequest(body: unknown, storage: CoverStorage): Pro
   const packages = parseCoverResponse(payload, { format: request.format, ...(request.packageId ? { packageId: request.packageId } : {}) });
   const now = new Date().toISOString();
   const persisted = await persistPackages(request, packages, now);
-  const next = request.packageId
-    ? replaceCoverPackage(idea, request.format, persisted[0], now)
-    : upsertCoverBoard(idea, coverBoard(request.format, request.treatment, persisted, now));
-  await storage.saveIdea(next);
+  const update: IdeaCoverUpdate = request.packageId
+    ? { kind: "package", format: request.format, package: persisted[0], now }
+    : { kind: "board", board: coverBoard(request.format, request.treatment, persisted, now) };
+  const next = await storage.saveIdeaCover(idea.id, update);
+  if (!next) throw new CoverRunError(`unknown idea ${request.ideaId}`, 404);
   return next;
 }

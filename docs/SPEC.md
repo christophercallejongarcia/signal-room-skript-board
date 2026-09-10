@@ -147,8 +147,7 @@ Definition: ADR-0003.
 - AK: "Generate angle" liefert JSON mit angle/rationale/opening/proofToShow/cautions aus echten Reels.
 
 ### T5.2 Ideas: Capture + Develop
-- Idea speichern (Storage), "Develop idea" erzeugt Short-Form-Storyboard (Hook, 3 Beats, CTA, Caption-Vorschlag).
-- AK: Storyboard wird in `ideas` persistiert und in der Liste angezeigt.
+- Der aktuelle Ablauf steht in der [Skriptstudio-Spec](../.scratch/phase-3-skriptstudio/spec.md): `Develop idea` eröffnet ein Skriptprojekt; ein Storyboard entsteht erst aus einem freigegebenen Skript.
 
 ### T5.3 Titles → Hooks-Board `[done]`
 - Für Instagram: Transkript/Idee rein, N Hook-Varianten (erste 3 Sekunden) gruppiert nach Hypothese, gegen Outlier-Korpus geprüft.

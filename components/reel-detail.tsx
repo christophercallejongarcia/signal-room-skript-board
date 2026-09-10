@@ -7,6 +7,7 @@ import {
   CheckCircle,
   Clock,
   FileText,
+  BookOpenText,
   Microphone,
   PencilSimple,
   X,
@@ -14,12 +15,17 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { CoverImage, formatNumber, networkName } from "@/components/display";
-import type { Creator, RankedSignal, Run, SignalRecord, TranscriptCorrection } from "@/lib/contracts";
+import type { Creator, RankedSignal, Run, SignalRecord, TranscriptCorrection, TranscriptDictionaryEntry } from "@/lib/contracts";
 import {
   applyTranscriptCorrectionAction,
   countTranscriptOccurrences,
   type TranscriptCorrectionAction,
 } from "@/lib/transcript-corrections";
+import {
+  applyTranscriptDictionary,
+  mergeTranscriptDictionaryEntries,
+  removeTranscriptDictionaryEntry,
+} from "@/lib/transcript-dictionary";
 import {
   transcriptDisplayStatus,
   TRANSCRIPT_STATUS_META,
@@ -119,6 +125,8 @@ export function ReelDetailPanel({
   onClose,
   onSignalUpdated,
   onRunCreated,
+  dictionary = [],
+  onDictionaryUpdated,
   demo = false,
 }: {
   signal: RankedSignal;
@@ -126,6 +134,8 @@ export function ReelDetailPanel({
   onClose: () => void;
   onSignalUpdated?: (signal: SignalRecord) => void;
   onRunCreated?: (run: Run) => void;
+  dictionary?: TranscriptDictionaryEntry[];
+  onDictionaryUpdated?: (entries: TranscriptDictionaryEntry[]) => void;
   demo?: boolean;
 }) {
   const [displaySignal, setDisplaySignal] = useState<RankedSignal>(signal);
@@ -184,8 +194,15 @@ export function ReelDetailPanel({
     setCorrectionState("loading");
     setCorrectionError("");
     if (demo) {
+      const updated = applyTranscriptDictionary(displaySignal, dictionary, {
+        now: "2026-08-31T12:00:00.000Z",
+        idFactory: (entry, index) => `demo-dictionary-${index}-${entry.wrong}`,
+      });
+      const added = (updated.transcriptCorrections?.filter((item) => item.source === "dictionary").length ?? 0)
+        - corrections.filter((item) => item.source === "dictionary").length;
+      if (updated !== displaySignal) updateSignal(updated);
       setCorrectionState("idle");
-      setCorrectionError("Demo mode shows the stored correction fixture; no Bridge run is needed.");
+      setCorrectionError(added > 0 ? `${added} Wörterbuch-Treffer angewendet.` : "Demo mode has no new dictionary hit; no Bridge run is needed.");
       return;
     }
     try {
@@ -209,7 +226,23 @@ export function ReelDetailPanel({
     setCorrectionActionId(action.correctionId);
     setCorrectionError("");
     try {
-      if (demo) {
+      if (action.action === "dictionary" || action.action === "remove-dictionary") {
+        const correction = corrections.find((item) => item.id === action.correctionId);
+        if (!correction) throw new Error(`unknown correction ${action.correctionId}`);
+        if (action.action === "dictionary") {
+          if (correction.status !== "accepted") throw new Error("Accept the correction before adding it to the dictionary.");
+          onDictionaryUpdated?.(mergeTranscriptDictionaryEntries(dictionary, {
+            wrong: correction.original,
+            right: correction.replacement,
+            createdAt: "2026-08-31T12:00:00.000Z",
+          }));
+        } else {
+          onDictionaryUpdated?.(removeTranscriptDictionaryEntry(dictionary, {
+            wrong: correction.original,
+            right: correction.replacement,
+          }));
+        }
+      } else if (demo) {
         updateSignal(applyTranscriptCorrectionAction(displaySignal, action));
       } else {
         const response = await fetch("/api/signals/transcript", {
@@ -217,9 +250,10 @@ export function ReelDetailPanel({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(action),
         });
-        const payload = (await response.json().catch(() => ({}))) as { signal?: SignalRecord; error?: string };
+        const payload = (await response.json().catch(() => ({}))) as { signal?: SignalRecord; dictionary?: TranscriptDictionaryEntry[]; error?: string };
         if (!response.ok || !payload.signal) throw new Error(payload.error || `The correction action answered with HTTP ${response.status}.`);
         updateSignal(payload.signal);
+        if (payload.dictionary) onDictionaryUpdated?.(payload.dictionary);
       }
       setEditingCorrectionId(null);
     } catch (error) {
@@ -261,6 +295,7 @@ export function ReelDetailPanel({
 
     // Show the lock immediately. The server claim remains the authority when
     // two browser requests reach it at the same time.
+    const previousSignal = displaySignal;
     updateSignal({
       ...displaySignal,
       transcriptStatus: "pending",
@@ -269,6 +304,7 @@ export function ReelDetailPanel({
       transcriptError: undefined,
     });
 
+    let serverSignal: SignalRecord | undefined;
     try {
       const response = await fetch("/api/signals/transcribe", {
         method: "POST",
@@ -276,11 +312,16 @@ export function ReelDetailPanel({
         body: JSON.stringify({ id: displaySignal.id }),
       });
       const payload = (await response.json().catch(() => ({}))) as { signal?: SignalRecord; run?: Run; error?: string };
-      if (payload.signal) updateSignal(payload.signal);
+      serverSignal = payload.signal;
+      if (serverSignal) updateSignal(serverSignal);
       if (payload.run) onRunCreated?.(payload.run);
       if (!response.ok) throw new Error(payload.error || `The transcript run answered with HTTP ${response.status}.`);
       setActionState("idle");
     } catch (error) {
+      // If the request failed before the server returned a Signal, remove the
+      // optimistic lock. Otherwise a transient API error leaves this dialog
+      // showing "Transcribing..." forever until it is reopened.
+      if (!serverSignal) updateSignal(previousSignal);
       setActionState("error");
       setActionError(error instanceof Error ? error.message : "The transcript run failed.");
     }
@@ -418,6 +459,7 @@ export function ReelDetailPanel({
                   {corrections.map((correction) => {
                     const occurrences = countTranscriptOccurrences(displaySignal.transcript || "", correction.original);
                     const editing = editingCorrectionId === correction.id;
+                    const inDictionary = dictionary.some((entry) => entry.wrong === correction.original && entry.right === correction.replacement);
                     return (
                       <article className={`transcript-correction status-${correction.status}`} key={correction.id}>
                         <div className="transcript-correction-main">
@@ -436,10 +478,20 @@ export function ReelDetailPanel({
                             <button className="ghost-button" type="button" onClick={() => void changeCorrection({ id: displaySignal.id, correctionId: correction.id, action: "accept" })} disabled={correctionActionId === correction.id || correction.status === "accepted"}>
                               <Check size={13} /> {correction.status === "accepted" ? "Accepted" : "Accept"}
                             </button>
+                            {correction.status === "accepted" && (
+                              <button className="ghost-button" type="button" onClick={() => void changeCorrection({ id: displaySignal.id, correctionId: correction.id, action: "dictionary" })} disabled={correctionActionId === correction.id || inDictionary}>
+                                <BookOpenText size={13} /> {inDictionary ? "Im Wörterbuch" : "Ins Wörterbuch"}
+                              </button>
+                            )}
                             <button className="ghost-button" type="button" onClick={() => startEditing(correction)} disabled={correctionActionId === correction.id}><PencilSimple size={13} /> Edit</button>
                             <button className="ghost-button" type="button" onClick={() => void changeCorrection({ id: displaySignal.id, correctionId: correction.id, action: "reject" })} disabled={correctionActionId === correction.id || correction.status === "rejected"}>
                               <X size={13} /> {correction.status === "rejected" ? "Rejected" : "Reject"}
                             </button>
+                            {inDictionary && (
+                              <button className="ghost-button" type="button" onClick={() => void changeCorrection({ id: displaySignal.id, correctionId: correction.id, action: "remove-dictionary" })} disabled={correctionActionId === correction.id}>
+                                <X size={13} /> Aus Wörterbuch entfernen
+                              </button>
+                            )}
                           </div>
                         )}
                       </article>

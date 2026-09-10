@@ -18,8 +18,10 @@ import type * as hookRuns from "../hookRuns.js";
 import type * as ideas from "../ideas.js";
 import type * as refresh from "../refresh.js";
 import type * as runs from "../runs.js";
+import type * as scripts from "../scripts.js";
 import type * as signals from "../signals.js";
 import type * as slates from "../slates.js";
+import type * as transcriptDictionary from "../transcriptDictionary.js";
 
 import type {
   ApiFromModules,
@@ -38,8 +40,10 @@ declare const fullApi: ApiFromModules<{
   ideas: typeof ideas;
   refresh: typeof refresh;
   runs: typeof runs;
+  scripts: typeof scripts;
   signals: typeof signals;
   slates: typeof slates;
+  transcriptDictionary: typeof transcriptDictionary;
 }>;
 
 /**

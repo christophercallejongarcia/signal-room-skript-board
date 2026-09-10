@@ -94,11 +94,16 @@ export function pickTranscriptBatch(signals: SignalRecord[], creators: Creator[]
   const threshold = options.scoreThreshold ?? TRANSCRIPT_SCORE_THRESHOLD;
   const limit = Math.max(0, Math.floor(options.limit ?? TRANSCRIPT_LIMIT_PER_RUN));
   const originalById = new Map(signals.map((signal) => [signal.id, signal]));
+  // The budget is global; the core niche must never lose slots to the English
+  // watchlist, so every qualifying German reel goes before any English one.
+  // Deliberately the simplest rule that guarantees this (no per-market budget).
+  const enCreators = new Set(creators.filter((creator) => creator.market === "en").map((creator) => creator.id));
+  const enLast = (signal: { creatorId: string }) => (enCreators.has(signal.creatorId) ? 1 : 0);
   return outlierScorer
     .rank(signals, creators, options.now)
     .filter((signal) => signal.format === "reel" && signal.url && !hasTranscriptOutcome(signal))
     .filter((signal) => signal.score >= threshold)
-    .sort((a, b) => b.score - a.score || b.outlier - a.outlier || reach(b) - reach(a))
+    .sort((a, b) => enLast(a) - enLast(b) || b.score - a.score || b.outlier - a.outlier || reach(b) - reach(a))
     .slice(0, limit)
     .map((signal) => originalById.get(signal.id)!)
     .filter((signal): signal is SignalRecord => signal !== undefined);

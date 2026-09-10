@@ -32,6 +32,24 @@ export function selectEvidence(
   creators: Creator[],
   options: EvidenceOptions = {},
 ): StrategyEvidenceItem[] {
+  const creatorMap = new Map(creators.map((creator) => [creator.id, creator]));
+  return selectEvidenceRecords(signals, creators, options)
+    // The title of an evidence entry is the reel's Hook, read the one way the app reads it.
+    .map((signal) => ({
+      title: hookOf(signal) || signal.title,
+      creator: creatorMap.get(signal.creatorId)!.handle,
+      caption: captionExcerpt(signal.caption),
+      plays: signal.plays ?? signal.views,
+      outlier: Math.round(signal.outlier * 10) / 10,
+    }));
+}
+
+/** Selects the same bounded evidence as selectEvidence, retaining canonical Signal ids for Script runs. */
+export function selectEvidenceRecords(
+  signals: RankedSignal[],
+  creators: Creator[],
+  options: EvidenceOptions = {},
+): RankedSignal[] {
   const now = options.now ?? Date.now();
   const windowDays = options.windowDays ?? STRATEGY_EVIDENCE_WINDOW_DAYS;
   const threshold = options.threshold ?? OUTLIER_THRESHOLD;
@@ -46,15 +64,7 @@ export function selectEvidence(
     .filter((signal) => isOutlier(signal, threshold))
     // Rank on the exact factor; rounding is presentation and would collapse neighbours.
     .sort((a, b) => b.outlier - a.outlier || (b.plays ?? b.views) - (a.plays ?? a.views))
-    .slice(0, limit)
-    // The title of an evidence entry is the reel's Hook, read the one way the app reads it.
-    .map((signal) => ({
-      title: hookOf(signal) || signal.title,
-      creator: creatorMap.get(signal.creatorId)!.handle,
-      caption: captionExcerpt(signal.caption),
-      plays: signal.plays ?? signal.views,
-      outlier: Math.round(signal.outlier * 10) / 10,
-    }));
+    .slice(0, limit);
 }
 
 /** Titles are compared as one bounded, lower-cased line on both sides, so a double space or a newline in a stored title never breaks the match. */

@@ -7,8 +7,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const storage = getStorage();
-  const [creators, signals] = await Promise.all([storage.listCreators(), storage.listSignals()]);
-  return NextResponse.json({ creators, signals: await withCoverUrls(signals) });
+  const [creators, signals, dictionary] = await Promise.all([
+    storage.listCreators(),
+    storage.listSignals(),
+    storage.listTranscriptDictionary(),
+  ]);
+  return NextResponse.json({ creators, signals: await withCoverUrls(signals), dictionary });
 }
 
 /** Saves a signal for the Saved view, or releases it. The mark lives on the signal and survives every refresh. */

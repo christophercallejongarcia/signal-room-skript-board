@@ -1,4 +1,4 @@
-import type { Creator, HashtagPost, SignalRecord } from "./contracts";
+import type { Creator, HashtagPost, Script, ScriptHookOption, SignalRecord } from "./contracts";
 
 export const demoCreators: Creator[] = [
   {
@@ -252,6 +252,162 @@ export const demoHashtagPosts: HashtagPost[] = [
     topic: "vibe-coding",
     language: "de",
     collectedAt: "2026-08-22T16:00:00.000Z",
+  },
+];
+
+/** Synthetic Script projects shown only while the store is empty. */
+export const demoScriptIdeaTitles: Record<string, string> = {
+  "idea-script-hook": "The first line is the production decision",
+  "idea-script-draft": "A quieter way to explain an agent workflow",
+  "idea-script-review": "What visible proof does for trust",
+  "idea-script-approved": "The five-minute brief that stops revision loops",
+};
+
+export const demoScripts: Script[] = [
+  {
+    id: "script-demo-hook-selection",
+    ideaId: "idea-script-hook",
+    sourceSignalId: "signal-thumbnail",
+    evidenceSignalIds: ["signal-thumbnail", "signal-manual-transcript"],
+    status: "hook-selection",
+    framework: "pas",
+    frameworkReason: "The tension is clearest when the cost of the old workflow comes first.",
+    hookOptions: [
+      {
+        id: "demo-hook-option-1",
+        hook: "Die lauteste erste Zeile ist selten die glaubwürdigste.",
+        angle: "Show why restraint can make a useful idea easier to trust.",
+        hypothesis: "A small contradiction earns attention before the explanation starts.",
+        framework: "pas",
+        evidence: [{ signalId: "signal-thumbnail", hook: "Laute Gestaltung gewinnt nicht automatisch Aufmerksamkeit.", creator: "@studioindex", outlier: 1.61, fit: "The source Reel turns a quiet visual choice into a trust argument." }],
+        edited: false,
+      },
+      {
+        id: "demo-hook-option-2",
+        hook: "Was, wenn weniger Reiz mehr Klarheit schafft?",
+        angle: "Use a question to make the viewer test the assumption on their own feed.",
+        hypothesis: "An open question creates a gap the proof can close.",
+        framework: "bbb",
+        evidence: [{ signalId: "signal-manual-transcript", hook: "Ein kleines Detail macht einen Reel sofort glaubwürdiger.", creator: "@studioindex", outlier: 1.14, fit: "The adjacent Reel supports a detail-first explanation." }],
+        edited: false,
+      },
+    ],
+    sections: [],
+    revision: 0,
+    createdAt: "2026-08-30T09:00:00.000Z",
+    updatedAt: "2026-08-31T09:15:00.000Z",
+  },
+  {
+    id: "script-demo-draft",
+    ideaId: "idea-script-draft",
+    sourceSignalId: "signal-manual-transcript",
+    evidenceSignalIds: ["signal-manual-transcript", "signal-agents"],
+    status: "draft",
+    framework: "bbb",
+    frameworkReason: "The idea needs a concrete example before the broader claim.",
+    hookOptions: [],
+    selectedHookId: "demo-hook-draft",
+    sections: [
+      { kind: "hook", label: "Hook", text: "Ein Agent wird erst nützlich, wenn du seinen Arbeitsweg sehen kannst." },
+      { kind: "beat", label: "Das Problem", text: "Viele Workflows zeigen nur das Ergebnis und verstecken die Entscheidungen dazwischen." },
+      { kind: "beat", label: "Der Beleg", text: "Zeige einen kleinen Auftrag mit Input, Zwischenstand und einer klaren Abbruchregel." },
+      { kind: "cta", label: "CTA", text: "Speichere dir die drei Stationen für deinen nächsten Test." },
+    ],
+    revision: 1,
+    createdAt: "2026-08-27T10:00:00.000Z",
+    updatedAt: "2026-08-30T14:20:00.000Z",
+  },
+  {
+    id: "script-demo-review",
+    ideaId: "idea-script-review",
+    sourceSignalId: "signal-thumbnail",
+    evidenceSignalIds: ["signal-thumbnail", "signal-research"],
+    status: "review",
+    framework: "pas",
+    frameworkReason: "Start with the trust problem, then make the visible receipt the relief.",
+    hookOptions: [],
+    selectedHookId: "demo-hook-review",
+    sections: [
+      { kind: "hook", label: "Hook", text: "Vertrauen entsteht nicht durch eine größere Behauptung." },
+      { kind: "beat", label: "Problem", text: "Wenn der Weg zur Aussage unsichtbar bleibt, muss das Publikum dem Ergebnis blind glauben." },
+      { kind: "transition", label: "Wendung", text: "Ein einziger sichtbarer Beleg verändert diese Prüfung." },
+      { kind: "beat", label: "Beleg", text: "Zeige die Quelle, die Entscheidung und die Stelle, an der du bewusst nicht weitergehst." },
+      { kind: "beat", label: "Konsequenz", text: "So wird aus einer starken Aussage ein nachvollziehbarer Arbeitsweg." },
+      { kind: "cta", label: "CTA", text: "Prüfe deinen nächsten Beitrag auf genau einen sichtbaren Beleg." },
+    ],
+    revision: 2,
+    createdAt: "2026-08-25T08:30:00.000Z",
+    updatedAt: "2026-08-29T16:45:00.000Z",
+  },
+  {
+    id: "script-demo-approved",
+    ideaId: "idea-script-approved",
+    sourceSignalId: "signal-thumbnail",
+    evidenceSignalIds: ["signal-briefs", "signal-format"],
+    status: "approved",
+    framework: "none",
+    frameworkReason: "The sequence is simple enough to carry without a named framework.",
+    hookOptions: [],
+    selectedHookId: "demo-hook-approved",
+    sections: [
+      { kind: "hook", label: "Hook", text: "Ein gutes Briefing beendet die Revision, bevor sie beginnt." },
+      { kind: "beat", label: "Der Engpass", text: "Die meisten Briefings sammeln Material, aber treffen keine Entscheidung." },
+      { kind: "beat", label: "Die Regel", text: "Lege zuerst fest, was nach fünf Minuten klar sein muss." },
+      { kind: "beat", label: "Das Beispiel", text: "Zeige danach nur die drei Belege, die diese Entscheidung tragen." },
+      { kind: "cta", label: "CTA", text: "Teste die Regel beim nächsten Briefing und streiche alles, was keine Entscheidung stützt." },
+    ],
+    revision: 1,
+    approvedRevision: 1,
+    approvedAt: "2026-08-28T11:10:00.000Z",
+    createdAt: "2026-08-22T09:00:00.000Z",
+    updatedAt: "2026-08-28T11:10:00.000Z",
+  },
+];
+
+/** Fixed Lektorat suggestions shown for matching demo sections; nothing is auto-applied. */
+export const demoScriptLintSuggestions = [
+  {
+    sectionId: "section-2",
+    original: "Viele Workflows zeigen nur das Ergebnis und verstecken die Entscheidungen dazwischen.",
+    replacement: "Viele Workflows zeigen nur das Ergebnis. Die Entscheidungen dazwischen bleiben unsichtbar.",
+    reason: "Zwei konkrete Sätze lesen sich hier klarer als eine aufgeladene Gegensatzkonstruktion.",
+  },
+  {
+    sectionId: "section-2",
+    original: "Wenn der Weg zur Aussage unsichtbar bleibt, muss das Publikum dem Ergebnis blind glauben.",
+    replacement: "Wenn der Weg zur Aussage unsichtbar bleibt, glaubt das Publikum dem Ergebnis blind.",
+    reason: "Die Aussage kommt ohne die unnötige Modalform direkter auf den Punkt.",
+  },
+];
+
+/** Fixed Hook options used when an empty store develops a captured Idea without a Bridge. */
+export const demoScriptHookOptions: ScriptHookOption[] = [
+  {
+    id: "demo-develop-hook-1",
+    hook: "Die erste Zeile entscheidet, ob der Beleg überhaupt eine Chance bekommt.",
+    angle: "Beginne mit dem Engpass zwischen einer starken Beobachtung und ihrer sichtbaren Erklärung.",
+    hypothesis: "Ein konkreter Widerspruch öffnet Spannung, bevor die Erklärung beginnt.",
+    framework: "pas",
+    evidence: [],
+    edited: false,
+  },
+  {
+    id: "demo-develop-hook-2",
+    hook: "Was würde sich ändern, wenn du den Beleg vor die Behauptung stellst?",
+    angle: "Lass das Publikum die Reihenfolge an einem kleinen Beispiel selbst prüfen.",
+    hypothesis: "Eine offene Frage hält die Aufmerksamkeit bis zum sichtbaren Beleg.",
+    framework: "bbb",
+    evidence: [],
+    edited: false,
+  },
+  {
+    id: "demo-develop-hook-3",
+    hook: "Die ruhigste Erklärung kann die stärkste Reaktion auslösen.",
+    angle: "Zeige, wie eine klare Szene eine laute Behauptung ersetzt.",
+    hypothesis: "Eine unerwartete Zuspitzung macht das Thema merkbar, ohne es aufzublasen.",
+    framework: "none",
+    evidence: [],
+    edited: false,
   },
 ];
 

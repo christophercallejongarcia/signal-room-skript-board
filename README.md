@@ -14,7 +14,7 @@
 
 ![Signal Room Starter interface](docs/assets/signal-room-starter.jpg)
 
-Signal Room collects public creator signals, ranks what deserves attention, turns evidence into a briefing, and develops ideas into storyboards. It grew out of the clean-room starter that still sits at commit `37deeb0` on the public remote; everything since then is identity-specific and stays here. Source choices, scoring theory, prompts, and audience knowledge are part of the product now, not seams left open for someone else.
+Signal Room collects public creator signals, ranks what deserves attention, turns evidence into a briefing, and develops ideas into reviewed Script drafts. It grew out of the clean-room starter that still sits at commit `37deeb0` on the public remote; everything since then is identity-specific and stays here. Source choices, scoring theory, prompts, and audience knowledge are part of the product now, not seams left open for someone else.
 
 > [!IMPORTANT]
 > The fixtures in `lib/demo-data.ts` are synthetic and only render when the store is empty. With a watchlist connected, every card, score and briefing comes from real collected data. The demo ranker is an educational example, not a recommendation system.
@@ -29,7 +29,7 @@ Signal Room collects public creator signals, ranks what deserves attention, turn
 | Trend Radar | Daily Instagram hashtag sweep, German topic grouping, momentum and opportunity | Topic vocabulary and scoring window |
 | Format Signals | Reusable content-format library | Your format taxonomy and performance evidence |
 | Tracked Channels | Add-channel flow and daily-watch model | Validation, scheduling, collection, persistence |
-| Ideas | Idea workspace and local strategy request | Your strategy prompt, model policy, approval flow |
+| Ideas | Inbox for capture, Develop, Drop, Script links, and reviewable Storyboards | Your intake and production-stage policy |
 | Cover Lab | Three cover packages for Reels and YouTube per developed Idea | Image testing data, brand system |
 | Hooks | Hooks board: source material in, first-three-second variants grouped by hypothesis, run history | Your hook corpus, hypothesis set, and scoring rules |
 | Profile | Adapter status and private-boundary reminder | Authentication, accounts, billing, team settings |
@@ -91,7 +91,7 @@ npm run bridge
 curl http://127.0.0.1:3211/health
 ```
 
-`/health` answers `{ ok, service, codex }`, where `codex` is `logged-in` or `logged-out`. The Ideas tab polls it and shows which of the three states you are in — reachable and logged in, not reachable, Codex not logged in — with the command that fixes each one.
+`/health` answers `{ ok, service, codex }`, where `codex` is `logged-in` or `logged-out`. The Bridge-backed workflows use that state to distinguish reachable and logged in, not reachable, and Codex not logged in.
 
 Then use **Generate angle** in Ideas. It sends the strongest outlier reels of the last 30 days from your stored corpus; with an empty store the app shows demo fixtures but sends nothing. Window, threshold and packet size live in `lib/config.ts`. The bridge:
 

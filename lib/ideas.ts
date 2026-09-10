@@ -41,6 +41,14 @@ export class ForbiddenMoveError extends Error {
   }
 }
 
+/** A second Develop click cannot claim the same Idea while its current run is active. */
+export class DevelopConflictError extends Error {
+  constructor(message = "This Idea is already being developed.") {
+    super(message);
+    this.name = "DevelopConflictError";
+  }
+}
+
 /** Refuses by name, so the caller can show why a move was not allowed. */
 function requireTransition(from: IdeaStatus, to: IdeaStatus) {
   if (!canTransition(from, to)) throw new ForbiddenMoveError(`An idea cannot move from ${from} to ${to}.`);
@@ -133,8 +141,8 @@ export function newIdea(input: Partial<IdeaInput>, options: { id: string; now: s
 }
 
 /**
- * Claims the Idea for one develop run. The claim is the whole collision guard:
- * a second run overwrites it, and the first run's result is then stale.
+ * Claims the Idea for one develop run. Storage adapters add the atomic conflict
+ * guard; this pure helper only applies the claim once the adapter has accepted it.
  */
 export function claimDevelop(idea: Idea, runId: string, now: string): Idea {
   requireTransition(idea.status, "developing");
@@ -157,6 +165,23 @@ export function applyStoryboard(
   return {
     ...rest,
     status: "developing",
+    storyboard,
+    ...(options.forecast ? { forecast: options.forecast } : {}),
+    developedAt: options.now,
+    evidenceCount: options.evidenceCount,
+    updatedAt: options.now,
+  };
+}
+
+/** Adds a Script-derived Storyboard without replacing concurrent stage or cover writes. */
+export function attachStoryboard(
+  idea: Idea,
+  storyboard: Storyboard,
+  options: { now: string; evidenceCount: number; forecast: Forecast | null },
+): Idea {
+  const { forecast: _previous, ...rest } = idea;
+  return {
+    ...rest,
     storyboard,
     ...(options.forecast ? { forecast: options.forecast } : {}),
     developedAt: options.now,

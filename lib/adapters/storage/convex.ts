@@ -3,8 +3,9 @@ import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.
 import { anyApi, type FunctionReference } from "convex/server";
 import type { CollectStorage } from "../../collect.ts";
 import { ConvexError } from "convex/values";
-import { ForbiddenMoveError } from "../../ideas.ts";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, SignalRecord, Slate, StorageAdapter, TranscriptSignalPatch } from "../../contracts";
+import { DevelopConflictError, ForbiddenMoveError } from "../../ideas.ts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SaveResult, Script, ScriptPatch, ScriptRunClaimOptions, SettleScriptRun, SignalRecord, Slate, StorageAdapter, TranscriptDictionaryEntry, TranscriptSignalPatch } from "../../contracts";
+import { ScriptRunConflictError } from "../../scripts.ts";
 import { TranscriptConflictError } from "../../transcripts.ts";
 
 /**
@@ -22,6 +23,18 @@ export type ConvexCollectStorage = CollectStorage & Pick<StorageAdapter, "saveBr
 export type ConvexHashtagStorage = Pick<StorageAdapter, "saveHashtagPosts" | "saveRun"> & {
   listHashtagPosts(limit?: number): Promise<HashtagPost[]>;
 };
+
+/** Keeps existing corpora readable while a deployment rolls out the dictionary table. */
+function isMissingTranscriptDictionaryFunction(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Could not find public function") && message.includes("transcriptDictionary:");
+}
+
+/** Keeps an older deployment readable until the Scripts table is deployed. */
+function isMissingScriptFunction(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Could not find public function") && message.includes("scripts:");
+}
 
 /** The slice a collection pass and the briefing after it touch. Declared once for both callers. */
 export function collectStorageOver(convex: ConvexCaller): ConvexCollectStorage {
@@ -105,6 +118,20 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     async patchTranscript(id, patch: TranscriptSignalPatch) {
       return (await client.mutation(anyApi.signals.patchTranscript, { id, patch })) as SignalRecord | null;
     },
+    async listTranscriptDictionary() {
+      try {
+        return (await client.query(anyApi.transcriptDictionary.list, {})) as TranscriptDictionaryEntry[];
+      } catch (error) {
+        if (isMissingTranscriptDictionaryFunction(error)) return [];
+        throw error;
+      }
+    },
+    async addTranscriptDictionary(entry) {
+      return (await client.mutation(anyApi.transcriptDictionary.add, { entry })) as TranscriptDictionaryEntry;
+    },
+    async removeTranscriptDictionary(entry) {
+      return (await client.mutation(anyApi.transcriptDictionary.remove, entry)) as TranscriptDictionaryEntry | null;
+    },
     async listRuns(limit = 10) {
       return (await client.query(anyApi.runs.list, { limit })) as Run[];
     },
@@ -132,11 +159,32 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     async listIdeas(limit = 50) {
       return (await client.query(anyApi.ideas.list, { limit })) as Idea[];
     },
+    async getIdea(id) {
+      return (await client.query(anyApi.ideas.get, { id })) as Idea | null;
+    },
     async saveIdea(idea) {
       await client.mutation(anyApi.ideas.upsert, { idea });
     },
+    async saveIdeaStoryboard(id, storyboard, options) {
+      return (await client.mutation(anyApi.ideas.setStoryboard, {
+        id,
+        storyboard,
+        forecast: options.forecast,
+        evidenceCount: options.evidenceCount,
+        now: options.now,
+      })) as Idea | null;
+    },
+    async saveIdeaCover(id, update) {
+      return (await client.mutation(anyApi.ideas.setCover, { id, update })) as Idea | null;
+    },
     async claimIdeaDevelop(id, runId, now) {
-      return (await client.mutation(anyApi.ideas.claim, { id, runId, now })) as Idea | null;
+      try {
+        return (await client.mutation(anyApi.ideas.claim, { id, runId, now })) as Idea | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
+        if (data?.kind === "develop-conflict") throw new DevelopConflictError(data.message ?? "This Idea is already being developed.");
+        throw error;
+      }
     },
     async settleIdeaDevelop(id, runId, result) {
       return (await client.mutation(anyApi.ideas.settle, {
@@ -154,6 +202,81 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
         // The mutation refuses a forbidden move as ConvexError; hand it on as the lib's own error.
         const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
         if (data?.kind === "forbidden-move") throw new ForbiddenMoveError(data.message ?? "That move is not allowed.");
+        throw error;
+      }
+    },
+    async listScripts(limit = 50) {
+      try {
+        return (await client.query(anyApi.scripts.list, { limit })) as Script[];
+      } catch (error) {
+        if (isMissingScriptFunction(error)) return [];
+        throw error;
+      }
+    },
+    async getScript(id) {
+      try {
+        return (await client.query(anyApi.scripts.get, { id })) as Script | null;
+      } catch (error) {
+        if (isMissingScriptFunction(error)) return null;
+        throw error;
+      }
+    },
+    async saveScript(script) {
+      await client.mutation(anyApi.scripts.upsert, { script });
+    },
+    async patchScript(id, patch: ScriptPatch, now) {
+      try {
+        return (await client.mutation(anyApi.scripts.patch, {
+          id,
+          now,
+          ...(patch.sections === undefined ? {} : { sections: patch.sections }),
+          ...(patch.framework === undefined ? {} : { framework: patch.framework }),
+          ...(patch.status === undefined ? {} : { status: patch.status }),
+          ...(patch.evidenceSignalIds === undefined ? {} : { evidenceSignalIds: patch.evidenceSignalIds }),
+          ...(patch.hookOptions === undefined ? {} : { hookOptions: patch.hookOptions }),
+          ...(patch.selectedHookId === undefined ? {} : { selectedHookId: patch.selectedHookId }),
+        })) as Script | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
+        if (data?.kind === "forbidden-move") throw new ForbiddenMoveError(data.message ?? "That Script patch is not allowed.");
+        throw error;
+      }
+    },
+    async claimScriptRun(id, runId, now, options?: ScriptRunClaimOptions) {
+      try {
+        return (await client.mutation(anyApi.scripts.claim, {
+          id,
+          runId,
+          now,
+          rejectIfRunning: options?.rejectIfRunning ?? false,
+          allowApproved: options?.allowApproved ?? false,
+        })) as Script | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
+        if (data?.kind === "forbidden-move") throw new ForbiddenMoveError(data.message ?? "That Script run is not allowed.");
+        if (data?.kind === "script-run-conflict") throw new ScriptRunConflictError(data.message ?? "This Script already has a run in progress.");
+        throw error;
+      }
+    },
+    async settleScriptRun(id, runId, result: SettleScriptRun) {
+      return (await client.mutation(anyApi.scripts.settle, {
+        id,
+        runId,
+        now: result.now,
+        ...(result.status === undefined ? {} : { status: result.status }),
+        ...(result.framework === undefined ? {} : { framework: result.framework }),
+        ...(result.frameworkReason === undefined ? {} : { frameworkReason: result.frameworkReason }),
+        ...(result.hookOptions === undefined ? {} : { hookOptions: result.hookOptions }),
+        ...(result.selectedHookId === undefined ? {} : { selectedHookId: result.selectedHookId }),
+        ...(result.sections === undefined ? {} : { sections: result.sections }),
+      })) as Script | null;
+    },
+    async moveScript(id, status, now) {
+      try {
+        return (await client.mutation(anyApi.scripts.move, { id, status, now })) as Script | null;
+      } catch (error) {
+        const data = error instanceof ConvexError ? (error.data as { kind?: string; message?: string }) : null;
+        if (data?.kind === "forbidden-move") throw new ForbiddenMoveError(data.message ?? "That Script move is not allowed.");
         throw error;
       }
     },

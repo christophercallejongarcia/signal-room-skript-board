@@ -21,6 +21,20 @@ const valid = {
   evidence: [evidenceItem],
 };
 
+const validScript = {
+  ...valid,
+  script: {
+    id: "script-approved",
+    revision: 7,
+    sections: [
+      { kind: "hook", label: "Hook", text: "Ein gutes Briefing trifft zuerst eine Entscheidung." },
+      { kind: "beat", label: "Problem", text: "Material ohne Richtung erzeugt Schleifen." },
+      { kind: "beat", label: "Regel", text: "Eine Auswahl hält den Beleg klein." },
+      { kind: "cta", label: "CTA", text: "Prüfe dein nächstes Briefing." },
+    ],
+  },
+};
+
 test("validates a bounded storyboard packet", () => {
   assert.deepEqual(validateStoryboardRequest(valid), valid);
 });
@@ -33,6 +47,30 @@ test("the idea title is required", () => {
 test("the idea goal is optional and dropped when empty", () => {
   const request = validateStoryboardRequest({ ...valid, idea: { title: "Nur ein Titel", goal: "   " } });
   assert.deepEqual(request.idea, { title: "Nur ein Titel" });
+});
+
+test("the second Storyboard input form carries one bounded approved Script", () => {
+  assert.deepEqual(validateStoryboardRequest(validScript), validScript);
+  assert.throws(
+    () => validateStoryboardRequest({ ...validScript, script: { ...validScript.script, sections: [] } }),
+    /script.sections/,
+  );
+  assert.throws(
+    () => validateStoryboardRequest({ ...validScript, script: { ...validScript.script, sections: validScript.script.sections.filter((section) => section.kind !== "cta") } }),
+    /exactly one CTA/,
+  );
+  assert.throws(
+    () => validateStoryboardRequest({ ...validScript, script: { ...validScript.script, sections: validScript.script.sections.filter((section) => section.kind !== "beat") } }),
+    /two to five Beats/,
+  );
+});
+
+test("the Script Storyboard prompt asks for three derived beats and a literal Script Hook", () => {
+  const prompt = buildStoryboardPrompt(validateStoryboardRequest(validScript));
+  assert.match(prompt, /approved Script/);
+  assert.match(prompt, /exactly three/);
+  assert.match(prompt, /Hook.*verbatim/i);
+  assert.match(prompt, /Ein gutes Briefing trifft zuerst eine Entscheidung/);
 });
 
 test("storyboard runs need evidence like strategy runs", () => {

@@ -90,9 +90,12 @@ test("no accepted correction means no working-copy field, while the review list 
   });
 });
 
-test("the PATCH parser accepts only the three review actions", () => {
+test("the PATCH parser accepts the five review actions", () => {
   assert.deepEqual(parseTranscriptCorrectionAction({ id: " signal-1 ", correctionId: " c1 ", action: "accept" }), { id: "signal-1", correctionId: "c1", action: "accept" });
   assert.deepEqual(parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "edit", replacement: "Notion AI" }), { id: "signal-1", correctionId: "c1", action: "edit", replacement: "Notion AI" });
+  assert.deepEqual(parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "dictionary" }), { id: "signal-1", correctionId: "c1", action: "dictionary" });
+  assert.deepEqual(parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "remove-dictionary" }), { id: "signal-1", correctionId: "c1", action: "remove-dictionary" });
   assert.throws(() => parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "edit" }), /replacement required/);
+  assert.throws(() => parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "dictionary", replacement: "Notion AI" }), /does not accept/);
   assert.throws(() => parseTranscriptCorrectionAction({ id: "signal-1", correctionId: "c1", action: "approve" }), /action must be/);
 });

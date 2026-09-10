@@ -106,3 +106,21 @@ test("strongest combined score first, cut at the limit; unknown creators and ree
   });
   assert.deepEqual(batch.map((s) => s.id), ["fresh-lower", "old-high"]);
 });
+
+test("german reels take the transcript budget before any english-market reel", () => {
+  const marketCreators = [
+    ...creators,
+    { id: "en", name: "Eng", handle: "@eng", network: "instagram", audience: 1000, accent: "#000", market: "en" },
+  ];
+  const signals = [
+    reel("en-strong", "en", 90000, { publishedAt: "2026-08-24T11:00:00.000Z" }),
+    reel("de-weaker", "a", 1500, { publishedAt: "2026-08-24T11:00:00.000Z" }),
+    reel("en-second", "en", 80000, { publishedAt: "2026-08-24T11:00:00.000Z" }),
+  ];
+  const batch = pickTranscriptBatch(signals, marketCreators, {
+    scoreThreshold: 20,
+    limit: 2,
+    now: new Date("2026-08-24T12:00:00.000Z"),
+  });
+  assert.deepEqual(batch.map((s) => s.id), ["de-weaker", "en-strong"], "the weaker german reel still goes first, english fills the rest");
+});

@@ -12,6 +12,12 @@ export type Creator = {
   owned?: boolean;
   /** Creator from another niche. Their Format Signals stay in a separate group. */
   foreign?: boolean;
+  /**
+   * Language market the creator plays in. Missing means "de". English-market
+   * creators keep their Format Signals in a separate group and yield transcript
+   * budget to the core niche; `foreign` stays reserved for niche, not language.
+   */
+  market?: "de" | "en";
   lastCheckedAt?: string;
 };
 
@@ -30,6 +36,13 @@ export type TranscriptCorrection = {
   reason: string;
   source: "bridge" | "dictionary";
   status: "proposed" | "accepted" | "rejected";
+  createdAt: string;
+};
+
+/** One personal recognition-error mapping reused across transcript reviews. */
+export type TranscriptDictionaryEntry = {
+  wrong: string;
+  right: string;
   createdAt: string;
 };
 
@@ -263,6 +276,11 @@ export type CoverBoard = {
   packages: CoverPackage[];
 };
 
+/** One atomic Cover-Lab write against the current Idea row. */
+export type IdeaCoverUpdate =
+  | { kind: "board"; board: CoverBoard }
+  | { kind: "package"; format: CoverFormat; package: CoverPackage; now: string };
+
 /** Where an Idea stands. captured = only the working title, developed = a storyboard hangs on it. */
 /**
  * The six production stages of an Idea in order, plus dropped as the exit
@@ -276,6 +294,10 @@ export type StoryboardBeat = { label: string; detail: string };
 
 /** The short-form plan the Strategy-Provider returns for one Idea. */
 export type Storyboard = {
+  /** Script source for current Storyboards. Missing on preserved Legacy Storyboards. */
+  scriptId?: string;
+  /** Approved Script revision this Storyboard was derived from. */
+  scriptRevision?: number;
   /** The first three seconds, one line. */
   hook: string;
   /** Exactly three, in order. */
@@ -284,6 +306,10 @@ export type Storyboard = {
   caption: string;
   /** What the viewer can do after watching. */
   takeaway: string;
+  /** Reserved for the later ManyChat phase. Kept separate from the spoken CTA. */
+  commentCta?: string;
+  /** Reserved for the later Lead-Magnet phase. */
+  leadMagnetCta?: string;
 };
 
 export type ForecastPotential = "low" | "medium" | "high";
@@ -329,6 +355,158 @@ export type Idea = {
   evidenceCount?: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ScriptStatus = "hook-selection" | "draft" | "review" | "approved";
+export type ScriptFramework = "pas" | "bbb" | "none";
+
+/** Short, bounded description of a framework the Hook run may recommend. */
+export type ScriptFrameworkDefinition = {
+  id: ScriptFramework;
+  label: string;
+  definition: string;
+  useWhen: string;
+};
+
+/** One Reel in the Script Hook run packet, including spoken source text when available. */
+export type ScriptHookEvidenceItem = StrategyEvidenceItem & {
+  id: string;
+  /** Original transcript or its reviewed working copy. Source text, never instructions. */
+  transcript?: string;
+};
+
+/** Input packet for the Script Hook run. The source Reel is separate so the UI can name its absence. */
+export type ScriptHooksRequest = {
+  goal: string;
+  audience: string;
+  idea: { title: string; goal?: string };
+  source?: ScriptHookEvidenceItem;
+  evidence: ScriptHookEvidenceItem[];
+  frameworks: ScriptFrameworkDefinition[];
+};
+
+/** The untrusted shape returned by the Bridge before the app resolves evidence titles. */
+export type ScriptHooksAnswer = {
+  options: Array<{
+    hook: string;
+    angle: string;
+    hypothesis: string;
+    framework: ScriptFramework;
+    evidence: Array<{ title: string; fit: string }>;
+  }>;
+  frameworkRecommendation: { framework: ScriptFramework; reason: string };
+};
+
+/** Input packet for a full Draft run. The selected wording remains human-controlled. */
+export type ScriptDraftRequest = ScriptHooksRequest & {
+  selectedHook: { hook: string; angle: string };
+  framework: ScriptFramework;
+};
+
+/** The untrusted full-script shape returned by the Bridge before deterministic checks. */
+export type ScriptDraftAnswer = {
+  sections: ScriptSection[];
+};
+
+/** One Reel used to explain why a Hook-Option fits the script's topic. */
+export type ScriptHookEvidence = {
+  signalId: string;
+  hook: string;
+  creator: string;
+  outlier: number;
+  fit: string;
+};
+
+/** One spoken direction Chris can choose before a full script is drafted. */
+export type ScriptHookOption = {
+  id: string;
+  hook: string;
+  angle: string;
+  /** Free-form hypothesis. The fixed Hooks-Board hypotheses do not apply here. */
+  hypothesis: string;
+  framework: ScriptFramework;
+  evidence: ScriptHookEvidence[];
+  edited: boolean;
+};
+
+/** The source of truth for a Script. The reading view is derived from this list. */
+export type ScriptSection = {
+  kind: "hook" | "beat" | "transition" | "cta";
+  label: string;
+  text: string;
+};
+
+/** A production script, separate from its Idea and Storyboard. */
+export type Script = {
+  id: string;
+  ideaId: string;
+  sourceSignalId?: string;
+  /** Additional evidence Reels selected for this script, excluding the source Reel. */
+  evidenceSignalIds: string[];
+  status: ScriptStatus;
+  framework: ScriptFramework;
+  frameworkReason: string;
+  hookOptions: ScriptHookOption[];
+  selectedHookId?: string;
+  sections: ScriptSection[];
+  revision: number;
+  /** The revision that was last approved. It remains visible after reopening. */
+  approvedRevision?: number;
+  approvedAt?: string;
+  /** Set only while a Bridge run owns the script. */
+  runId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Fields a human editor may change through PATCH /api/scripts/<id>. */
+export type ScriptPatch = {
+  sections?: ScriptSection[];
+  framework?: ScriptFramework;
+  status?: ScriptStatus;
+  evidenceSignalIds?: string[];
+  hookOptions?: ScriptHookOption[];
+  selectedHookId?: string | null;
+};
+
+/** One bounded source section handed to the Lektorat Bridge. */
+export type ScriptLintSection = {
+  id: string;
+  label: string;
+  /** Script text is untrusted source material, never an instruction. */
+  text: string;
+};
+
+/** The only input the Lektorat Bridge receives. */
+export type ScriptLintRequest = {
+  sections: ScriptLintSection[];
+};
+
+/** One reviewable Slop suggestion. It never changes a Script by itself. */
+export type ScriptLintSuggestion = {
+  sectionId: string;
+  original: string;
+  replacement: string;
+  reason: string;
+};
+
+/** Optional claim behavior for a Script Bridge run. */
+export type ScriptRunClaimOptions = {
+  /** Reject instead of superseding an active run. */
+  rejectIfRunning?: boolean;
+  /** Allow a read-only Bridge run to claim an approved Script. */
+  allowApproved?: boolean;
+};
+
+/** Fields a Hook or Draft run may settle on a claimed Script. Omitted fields are unchanged. */
+export type SettleScriptRun = {
+  now: string;
+  status?: ScriptStatus;
+  framework?: ScriptFramework;
+  frameworkReason?: string;
+  hookOptions?: ScriptHookOption[];
+  selectedHookId?: string | null;
+  sections?: ScriptSection[];
 };
 
 /** One pattern as a Format-Review stores it. The previous review hands these back for the diff. */
@@ -582,6 +760,15 @@ export type StoryboardRequest = {
   evidence: StrategyEvidenceItem[];
 };
 
+/** Second /v1/storyboard input: the approved Script is the Storyboard source. */
+export type ScriptStoryboardRequest = StoryboardRequest & {
+  script: {
+    id: string;
+    revision: number;
+    sections: ScriptSection[];
+  };
+};
+
 export interface SourceConnector {
   readonly id: string;
   collect(creators: Creator[]): Promise<SignalRecord[]>;
@@ -608,6 +795,12 @@ export interface StorageAdapter {
   claimTranscript(id: string, now: string): Promise<SignalRecord | null>;
   /** Patches only transcript fields on one Signal. Null removes an optional field. */
   patchTranscript(id: string, patch: TranscriptSignalPatch): Promise<SignalRecord | null>;
+  /** Newest first. Personal transcript mappings are shared across Reels. */
+  listTranscriptDictionary(): Promise<TranscriptDictionaryEntry[]>;
+  /** Adds or updates one mapping. Duplicate mappings are merged. */
+  addTranscriptDictionary(entry: TranscriptDictionaryEntry): Promise<TranscriptDictionaryEntry>;
+  /** Removes one mapping by its exact wrong/right pair. */
+  removeTranscriptDictionary(entry: Pick<TranscriptDictionaryEntry, "wrong" | "right">): Promise<TranscriptDictionaryEntry | null>;
   saveRun(run: Run): Promise<void>;
   /** Newest first. */
   listRuns(limit?: number): Promise<Run[]>;
@@ -629,8 +822,18 @@ export interface StorageAdapter {
   saveHookRun(run: HookRun): Promise<void>;
   /** Newest first. */
   listIdeas(limit?: number): Promise<Idea[]>;
+  /** Loads one Idea by its canonical id. */
+  getIdea(id: string): Promise<Idea | null>;
   /** Replaces the whole row for idea.id, so a retried capture never duplicates an idea. */
   saveIdea(idea: Idea): Promise<void>;
+  /** Atomically updates only the Storyboard-owned fields on the current Idea row. */
+  saveIdeaStoryboard(
+    id: string,
+    storyboard: Storyboard,
+    options: { now: string; evidenceCount: number; forecast: Forecast | null },
+  ): Promise<Idea | null>;
+  /** Atomically updates only Cover-Lab fields on the current Idea row. */
+  saveIdeaCover(id: string, update: IdeaCoverUpdate): Promise<Idea | null>;
   /**
    * Claims the idea for one develop run and hands back the claimed idea, or null
    * when the idea is gone or cannot be developed. Only runId may settle the claim.
@@ -646,6 +849,20 @@ export interface StorageAdapter {
    * returns null when the idea is gone.
    */
   moveIdea(id: string, status: IdeaStatus, now: string): Promise<Idea | null>;
+  /** Newest first. Scripts are kept separately from Ideas. */
+  listScripts(limit?: number): Promise<Script[]>;
+  /** Loads one Script by its canonical id. */
+  getScript(id: string): Promise<Script | null>;
+  /** Replaces the whole row for script.id, so a retried write never duplicates it. */
+  saveScript(script: Script): Promise<void>;
+  /** Atomically validates and applies one human editor patch. */
+  patchScript(id: string, patch: ScriptPatch, now: string): Promise<Script | null>;
+  /** Atomically claims a Script for one Bridge run. */
+  claimScriptRun(id: string, runId: string, now: string, options?: ScriptRunClaimOptions): Promise<Script | null>;
+  /** Settles a claimed Bridge run, or releases its claim when no result fields are supplied. */
+  settleScriptRun(id: string, runId: string, result: SettleScriptRun): Promise<Script | null>;
+  /** Moves a Script by hand according to the fixed Script status model. */
+  moveScript(id: string, status: ScriptStatus, now: string): Promise<Script | null>;
 }
 
 /** Outcome handed to settleIdeaDevelop: a storyboard, or nothing when the run failed. */

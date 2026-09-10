@@ -39,7 +39,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { handle?: string; network?: Network; owned?: boolean };
+  const body = (await request.json().catch(() => ({}))) as { handle?: string; network?: Network; owned?: boolean; market?: string };
   const network = body.network ?? "instagram";
   if (network !== "instagram") {
     return NextResponse.json({ error: `Network ${network} has no connector yet` }, { status: 400 });
@@ -47,6 +47,11 @@ export async function POST(request: Request) {
   const handle = normalizeHandle(body.handle ?? "");
   if (!handle) return NextResponse.json({ error: "handle required" }, { status: 400 });
   const owned = body.owned === true;
+  if (body.market !== undefined && body.market !== "de" && body.market !== "en") {
+    return NextResponse.json({ error: `market must be "de" or "en"` }, { status: 400 });
+  }
+  // Missing market means "de" everywhere; only "en" is worth storing.
+  const market = body.market === "en" ? ("en" as const) : undefined;
 
   const storage = getStorage();
   const id = `${network}-${handle}`;
@@ -73,6 +78,7 @@ export async function POST(request: Request) {
       url: profile.url,
       // Set at add time, so the first backfill already lands in Profile instead of the feed.
       ...(owned ? { owned: true } : {}),
+      ...(market ? { market } : {}),
     };
     const { recordsAdded, covers } = await runBackfill(creator);
     return NextResponse.json({ creator, existing: false, recordsAdded, covers });

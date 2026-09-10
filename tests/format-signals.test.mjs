@@ -244,3 +244,32 @@ test("a transcript outranks the caption as the hook; without one the caption sti
   const ids = own.signals.map((s) => [s.id, s.examples.map((e) => e.id)]);
   assert.deepEqual(ids.sort(), [["die-besten", ["written"]], ["hoer-auf", ["spoken"]]]);
 });
+
+test("english-market creators form their own group; foreign wins over market", () => {
+  const marketCreators = [
+    ...creators,
+    { id: "en", name: "En", handle: "@en", network: "instagram", audience: 1000, accent: "#000", market: "en" },
+    { id: "farEn", name: "FarEn", handle: "@faren", network: "instagram", audience: 1000, accent: "#000", market: "en", foreign: true },
+  ];
+  const { own, foreign, en } = buildFormatSignals(
+    [
+      reel("own", "Die besten Tools", 4, 1),
+      reel("en", "Die besten Prompts", 5, 1),
+      reel("en", "Nie wieder Copy-Paste", 3, 2),
+      reel("farEn", "Warum floppen deine Reels?", 4, 1),
+    ],
+    marketCreators,
+    options,
+  );
+  assert.equal(own.total, 1, "the english reels never move the own numbers");
+  assert.equal(en.total, 2);
+  assert.equal(en.scope, "en");
+  assert.deepEqual(en.signals.map((signal) => signal.id).sort(), ["die-besten", "nie-wieder"]);
+  assert.equal(foreign.total, 1, "a niche-foreign creator stays foreign in any language");
+});
+
+test("a creator without market counts as the own niche", () => {
+  const { own, en } = buildFormatSignals([reel("own", "Die besten Tools", 4, 1)], creators, options);
+  assert.equal(own.total, 1);
+  assert.equal(en.total, 0);
+});

@@ -1,4 +1,4 @@
-import type { CoverBoard, CoverFormat, CoverPackage, CoverTreatment, Idea } from "./contracts";
+import type { CoverBoard, CoverFormat, CoverPackage, CoverTreatment, Idea, IdeaCoverUpdate } from "./contracts";
 import { COVER_FORMATS, isCoverFormat } from "./cover-formats.mjs";
 import { bounded } from "./ideas.ts";
 
@@ -119,6 +119,13 @@ export function replaceCoverPackage(idea: Idea, format: CoverFormat, replacement
   const packages = board.packages.map((current) => (current.id === replacement.id ? replacement : current));
   if (packages.every((current) => current.id !== replacement.id)) throw new Error(`Unknown cover package ${replacement.id}.`);
   return upsertCoverBoard(idea, { ...board, packages, generatedAt: now });
+}
+
+/** Applies one Cover-Lab result to the latest Idea row supplied by storage. */
+export function applyCoverUpdate(idea: Idea, update: IdeaCoverUpdate) {
+  return update.kind === "board"
+    ? upsertCoverBoard(idea, update.board)
+    : replaceCoverPackage(idea, update.format, update.package, update.now);
 }
 
 export function coverBoardFor(idea: Idea, format: CoverFormat): CoverBoard | undefined {

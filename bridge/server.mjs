@@ -9,12 +9,18 @@ import {
   buildCoverImagePrompt,
   buildCoverPrompt,
   buildHooksPrompt,
+  buildScriptLintPrompt,
+  buildScriptDraftPrompt,
+  buildScriptHooksPrompt,
   buildTranscriptCorrectionsPrompt,
   buildStoryboardPrompt,
   buildStrategyPrompt,
   buildSlatePrompt,
   coverOutputSchema,
   hooksOutputSchema,
+  scriptLintOutputSchema,
+  scriptDraftOutputSchema,
+  scriptHooksOutputSchema,
   normalizeCoverPackages,
   slateOutputSchema,
   storyboardOutputSchema,
@@ -23,6 +29,9 @@ import {
   validateBriefingRequest,
   validateCoverRequest,
   validateHooksRequest,
+  validateScriptLintRequest,
+  validateScriptDraftRequest,
+  validateScriptHooksRequest,
   validateTranscriptCorrectionsRequest,
   validateSlateRequest,
   validateStoryboardRequest,
@@ -158,6 +167,33 @@ const routes = new Map([
         // The answer schema is built from the validated count, so a run comes back with exactly that many.
         const request = validateHooksRequest(input);
         return runCodex(buildHooksPrompt(request), hooksOutputSchema(request.count));
+      },
+    },
+  ],
+  [
+    "/v1/script-hooks",
+    {
+      label: "Script Hooks",
+      failure: "The local Codex Script Hook run failed.",
+      run: (input) => runCodex(buildScriptHooksPrompt(validateScriptHooksRequest(input)), scriptHooksOutputSchema),
+    },
+  ],
+  [
+    "/v1/script-draft",
+    {
+      label: "Script Draft",
+      failure: "The local Codex Script Draft run failed.",
+      run: (input) => runCodex(buildScriptDraftPrompt(validateScriptDraftRequest(input)), scriptDraftOutputSchema),
+    },
+  ],
+  [
+    "/v1/script-lint",
+    {
+      label: "Script lint",
+      failure: "The local Codex Lektorat run failed.",
+      run: (input) => {
+        const request = validateScriptLintRequest(input);
+        return runCodex(buildScriptLintPrompt(request), scriptLintOutputSchema);
       },
     },
   ],

@@ -24,10 +24,14 @@ test("the correction request requires original transcript and Creator", () => {
 });
 
 test("the correction prompt forbids rewriting and carries the source packet", () => {
-  const prompt = buildTranscriptCorrectionsPrompt(validateTranscriptCorrectionsRequest(valid));
+  const prompt = buildTranscriptCorrectionsPrompt(validateTranscriptCorrectionsRequest({
+    ...valid,
+    dictionary: [{ wrong: "Notion", right: "Notion AI" }],
+  }));
   assert.match(prompt, /recognition errors only/i);
   assert.match(prompt, /Do not rewrite/i);
   assert.match(prompt, /Notion/);
+  assert.match(prompt, /Notion AI/);
   assert.match(prompt, /@chris/);
 });
 
@@ -39,4 +43,3 @@ test("the output schema is a bounded fixed corrections list", () => {
   assert.equal(item.additionalProperties, false);
   assert.equal(transcriptCorrectionsOutputSchema.properties.corrections.maxItems, 20);
 });
-

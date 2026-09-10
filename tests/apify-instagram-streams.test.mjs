@@ -38,3 +38,15 @@ test("a stream without a usage figure is counted as unreported, not as zero", as
   const { usage: total } = await collectForCreator(creator, run);
   assert.deepEqual(total, { unreported: 1, computeUnits: 0.1, costUsd: 0.04 });
 });
+
+test("a long caption is cut on code points, never through an emoji surrogate pair", async () => {
+  // 86 ASCII chars, then an emoji: the old UTF-16 slice at 87 kept only half the pair.
+  const caption = "a".repeat(86) + "🔥🔥 rest of a very long caption that goes past the ninety character limit";
+  const run = async () => ({ items: [{ ...post("emoji"), caption }], usage: { computeUnits: 0.1 } });
+  const { records } = await collectForCreator(creator, run);
+  const title = records[0].title;
+  assert.ok(title.endsWith("…"));
+  const lone = /(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])/;
+  assert.equal(lone.test(title), false, `title carries a lone surrogate: ${JSON.stringify(title)}`);
+  assert.ok(title.includes("🔥"), "the emoji survives whole");
+});

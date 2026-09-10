@@ -126,10 +126,11 @@ export type FormatSignal = {
 
 /**
  * One side of the tab. "own" is the niche, "foreign" holds creators marked
- * `foreign` so imported shapes never move the own numbers.
+ * `foreign`, "en" holds English-market creators. Both stay apart so imported
+ * shapes never move the own numbers.
  */
 export type FormatSignalGroup = {
-  scope: "own" | "foreign";
+  scope: "own" | "foreign" | "en";
   /** Outlier reels read for this group. The share denominator. */
   total: number;
   signals: FormatSignal[];
@@ -146,7 +147,7 @@ export type FormatSignalOptions = {
 /** Everything groupByPattern needs beyond the reels themselves. */
 type GroupSettings = { now: number; weekCount: number; exampleLimit: number };
 
-function groupByPattern(scope: "own" | "foreign", reels: RankedSignal[], settings: GroupSettings): FormatSignalGroup {
+function groupByPattern(scope: FormatSignalGroup["scope"], reels: RankedSignal[], settings: GroupSettings): FormatSignalGroup {
   const { now, weekCount, exampleLimit } = settings;
   const buckets = new Map<string, RankedSignal[]>();
   for (const reel of reels) {
@@ -189,13 +190,14 @@ function groupByPattern(scope: "own" | "foreign", reels: RankedSignal[], setting
 
 /**
  * The Format Signals of the window: outlier reels grouped by hook pattern, own
- * niche and foreign niche kept apart. Pure over the corpus the caller hands in.
+ * niche, foreign niche and English market kept apart. Pure over the corpus the
+ * caller hands in.
  */
 export function buildFormatSignals(
   signals: RankedSignal[],
   creators: Creator[],
   options: FormatSignalOptions = {},
-): { own: FormatSignalGroup; foreign: FormatSignalGroup } {
+): { own: FormatSignalGroup; foreign: FormatSignalGroup; en: FormatSignalGroup } {
   const now = options.now ?? Date.now();
   const windowDays = options.windowDays ?? FORMAT_WINDOW_DAYS;
   const threshold = options.threshold ?? OUTLIER_THRESHOLD;
@@ -206,6 +208,7 @@ export function buildFormatSignals(
 
   const own: RankedSignal[] = [];
   const foreign: RankedSignal[] = [];
+  const en: RankedSignal[] = [];
   for (const signal of signals) {
     if (signal.format !== "reel") continue;
     const creator = creatorMap.get(signal.creatorId);
@@ -214,12 +217,14 @@ export function buildFormatSignals(
     if (isOwned(creator)) continue;
     if (now - new Date(signal.publishedAt).getTime() > windowDays * DAY) continue;
     if (!isOutlier(signal, threshold)) continue;
-    (creator.foreign ? foreign : own).push(signal);
+    // Foreign wins over market: a niche-foreign creator stays foreign in any language.
+    (creator.foreign ? foreign : creator.market === "en" ? en : own).push(signal);
   }
 
   const settings: GroupSettings = { now, weekCount, exampleLimit };
   return {
     own: groupByPattern("own", own, settings),
     foreign: groupByPattern("foreign", foreign, settings),
+    en: groupByPattern("en", en, settings),
   };
 }

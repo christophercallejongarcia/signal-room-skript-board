@@ -1,7 +1,8 @@
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { forecastFields, ideaFields, storyboardFields } from "./schema";
-import { ForbiddenMoveError, applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../lib/ideas";
+import { coverBoardFields, coverPackageFields, forecastFields, ideaFields, storyboardFields } from "./schema";
+import { ForbiddenMoveError, applyStoryboard, attachStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../lib/ideas";
+import { applyCoverUpdate } from "../lib/cover-lab";
 
 /** The row for one external id, split into its Convex id and the Idea the lib functions take. */
 async function findIdea(ctx: MutationCtx, id: string) {
@@ -27,6 +28,20 @@ export const list = query({
   },
 });
 
+/** Loads one Idea by its canonical id without relying on the bounded inbox list. */
+export const get = query({
+  args: { id: v.string() },
+  handler: async (ctx, { id }) => {
+    const row = await ctx.db
+      .query("ideas")
+      .withIndex("by_external_id", (q) => q.eq("id", id))
+      .unique();
+    if (!row) return null;
+    const { _id, _creationTime, ...idea } = row;
+    return idea;
+  },
+});
+
 /** Replaces the whole row for idea.id, so a retried capture never duplicates an idea. */
 export const upsert = mutation({
   args: { idea: v.object(ideaFields) },
@@ -38,10 +53,50 @@ export const upsert = mutation({
   },
 });
 
+/** Patches only Storyboard-owned fields on the current row in one transaction. */
+export const setStoryboard = mutation({
+  args: {
+    id: v.string(),
+    storyboard: v.object(storyboardFields),
+    forecast: v.union(v.object(forecastFields), v.null()),
+    evidenceCount: v.number(),
+    now: v.string(),
+  },
+  handler: async (ctx, { id, storyboard, forecast, evidenceCount, now }) => {
+    const existing = await findIdea(ctx, id);
+    if (!existing) return null;
+    const updated = attachStoryboard(existing.idea, storyboard, { now, evidenceCount, forecast });
+    await ctx.db.replace(existing._id, updated);
+    return updated;
+  },
+});
+
+/** Patches only Cover-Lab fields on the current row in one transaction. */
+export const setCover = mutation({
+  args: {
+    id: v.string(),
+    update: v.union(
+      v.object({ kind: v.literal("board"), board: v.object(coverBoardFields) }),
+      v.object({
+        kind: v.literal("package"),
+        format: coverBoardFields.format,
+        package: v.object(coverPackageFields),
+        now: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, { id, update }) => {
+    const existing = await findIdea(ctx, id);
+    if (!existing) return null;
+    const updated = applyCoverUpdate(existing.idea, update);
+    await ctx.db.replace(existing._id, updated);
+    return updated;
+  },
+});
+
 /**
- * Claims the idea for one develop run. A second claim overwrites the first, so
- * the slower run finds the claim gone in settleDevelop and its result is dropped.
- * The transition rules live in lib/ideas.ts and are not restated here.
+ * Claims the idea for one develop run. A second active claim is a conflict; the
+ * transition rules live in lib/ideas.ts and are not restated here.
  */
 export const claim = mutation({
   args: { id: v.string(), runId: v.string(), now: v.string() },
@@ -49,6 +104,9 @@ export const claim = mutation({
     const existing = await findIdea(ctx, id);
     if (!existing) return null;
     const { _id, idea } = existing;
+    if (idea.developRunId && idea.developRunId !== runId) {
+      throw new ConvexError({ kind: "develop-conflict", message: "This Idea already has a Develop-Lauf in progress." });
+    }
     const claimed = claimDevelop(idea, runId, now);
     await ctx.db.replace(_id, claimed);
     return claimed;

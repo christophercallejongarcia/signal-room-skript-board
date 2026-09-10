@@ -12,6 +12,7 @@ import {
   Globe,
   CheckCircle,
   Clock,
+  FileText,
   House,
   ImageSquare,
   Lightbulb,
@@ -38,7 +39,7 @@ import { ReelDetailPanel, TranscriptStatusBadge } from "@/components/reel-detail
 import { DiscoverFeed } from "@/components/discover-feed";
 import { TAB_PARAM, creatorPath, creatorStats } from "@/lib/creator-detail";
 import { rankCorpus, DEMO_NOW, type Ranked } from "@/lib/rank-corpus";
-import { demoCreators, demoHashtagPosts, demoIdeas, demoSignals } from "@/lib/demo-data";
+import { demoCreators, demoHashtagPosts, demoScriptIdeaTitles, demoScripts, demoSignals } from "@/lib/demo-data";
 import { DEMO_SCORING_NOTE } from "@/lib/demo-score";
 import {
   DEFAULT_OUTLIER_THRESHOLD,
@@ -71,23 +72,23 @@ import {
   OUTLIER_THRESHOLD,
   SLATE_DIRECTION_MAX,
   SLATE_SIZE,
-  STRATEGY_AUDIENCE,
   STRATEGY_BRIDGE_URL,
   STRATEGY_EVIDENCE_LIMIT,
   STRATEGY_EVIDENCE_WINDOW_DAYS,
-  STRATEGY_GOAL,
 } from "@/lib/config";
 import { parseHookRequest, type HookRequestInput } from "@/lib/hooks-board";
 import { COVER_FORMATS, type CoverFormat, type CoverTreatment } from "@/lib/cover-lab";
 import { IDEA_STATUSES, canTransition, countByStage, nextStage, type IdeaInput } from "@/lib/ideas";
+import { SCRIPT_STATUSES, countByStatus } from "@/lib/scripts";
+import { isLegacyStoryboard, isStoryboardOutdated } from "@/lib/storyboard";
 import { nextRefreshAt, REFRESH_TIME_ZONE, REFRESH_ZONE_LABEL } from "@/lib/refresh-schedule";
 import { selectEvidence } from "@/lib/strategy-evidence";
 import { UNCLASSIFIED, buildFormatSignals, type FormatSignal } from "@/lib/format-signals";
 import { buildTrendRadar, type TrendRadar } from "@/lib/trend-radar";
 
-import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, SignalRecord, Slate } from "@/lib/contracts";
+import type { Briefing, CoverBoard, Forecast, FormatReview, FormatReviewPattern, HookRun, Idea, IdeaStatus, PatternMove, RefreshResult, Run, RunUsage, Script, ScriptStatus, SignalRecord, Slate, TranscriptDictionaryEntry } from "@/lib/contracts";
 import type { MonthUsage } from "@/lib/run-cost";
-import type { Creator, Network, StrategyEvidenceItem, StrategyResponse } from "@/lib/contracts";
+import type { Creator, Network, StrategyEvidenceItem } from "@/lib/contracts";
 
 /** Reachability plus Codex login, as reported by the bridge health route. */
 type BridgeHealth = "checking" | "online" | "offline" | "logged-out";
@@ -98,6 +99,12 @@ type IdeasState = {
   phase: "loading" | "ready" | "error";
   /** id of the idea whose develop run is in flight, null when none is. */
   developing: string | null;
+  error: string;
+};
+
+type ScriptsState = {
+  items: Script[];
+  phase: "loading" | "ready" | "error";
   error: string;
 };
 
@@ -148,13 +155,6 @@ type TrendState = {
 };
 
 /** The strategy panel's own state. These four always travel together. */
-type StrategyState = {
-  result: StrategyResponse | null;
-  phase: "idle" | "loading" | "error";
-  error: string;
-  evidence: StrategyEvidenceItem[];
-};
-
 type CoverRun = { ideaId: string; format: CoverFormat; treatment: CoverTreatment; packageId?: string };
 type CoverState = { phase: "idle" | "loading" | "error"; run: CoverRun | null; error: string };
 
@@ -165,6 +165,7 @@ const navItems = [
   { id: "formats", label: "Format Signals", icon: Shapes },
   { id: "channels", label: "Tracked Channels", icon: Binoculars },
   { id: "ideas", label: "Ideas", icon: Lightbulb },
+  { id: "scripts", label: "Scripts", icon: FileText },
   { id: "thumbnails", label: "Cover Lab", icon: ImageSquare },
   { id: "hooks", label: "Hooks", icon: TextAa },
   { id: "profile", label: "Profile", icon: UserCircle },
@@ -257,6 +258,7 @@ export function SignalRoom() {
   const [network, setNetwork] = useState<Network>("instagram");
   const [creators, setCreators] = useState<Creator[]>(demoCreators);
   const [signals, setSignals] = useState<SignalRecord[]>(demoSignals);
+  const [transcriptDictionary, setTranscriptDictionary] = useState<TranscriptDictionaryEntry[]>([]);
   const [live, setLive] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState("Demo snapshot");
@@ -269,7 +271,7 @@ export function SignalRoom() {
   async function loadStore() {
     const response = await fetch("/api/signals");
     if (!response.ok) return;
-    const data = (await response.json()) as { creators: Creator[]; signals: SignalRecord[] };
+    const data = (await response.json()) as { creators: Creator[]; signals: SignalRecord[]; dictionary?: TranscriptDictionaryEntry[] };
     // One real creator hides every demo fixture. Demo only exists for an empty store.
     const store = storeOrDemo(data, { creators: demoCreators, signals: demoSignals });
     const isLive = store === data;
@@ -277,6 +279,7 @@ export function SignalRoom() {
     setSignals(store.signals);
     setLive(isLive);
     setLastRefresh(isLive ? "Stored snapshot" : "Demo snapshot");
+    if (isLive) setTranscriptDictionary(data.dictionary ?? []);
   }
 
   async function loadRuns() {
@@ -300,6 +303,17 @@ export function SignalRoom() {
       setIdeas((current) => ({ ...current, items: data.ideas, phase: "ready" }));
     } catch {
       setIdeas((current) => ({ ...current, phase: "error" }));
+    }
+  }
+
+  async function loadScripts() {
+    try {
+      const response = await fetch("/api/scripts", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { scripts: Script[]; demo?: boolean };
+      setScripts((current) => ({ ...current, items: data.demo ? demoScripts : data.scripts, phase: "ready" }));
+    } catch {
+      setScripts((current) => ({ ...current, phase: "error" }));
     }
   }
 
@@ -516,6 +530,7 @@ export function SignalRoom() {
     loadStore().catch(() => {});
     loadRuns();
     loadIdeas();
+    loadScripts();
     loadHookRuns();
     loadBriefings();
     loadSlates();
@@ -524,11 +539,9 @@ export function SignalRoom() {
     checkBridge();
   }, []);
   const [showAddCreator, setShowAddCreator] = useState(false);
-  const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
-  const [strategyState, setStrategyState] = useState<"idle" | "loading" | "error">("idle");
-  const [strategyError, setStrategyError] = useState("");
   const [bridge, setBridge] = useState<BridgeHealth>("checking");
   const [ideas, setIdeas] = useState<IdeasState>({ items: [], phase: "loading", developing: null, error: "" });
+  const [scripts, setScripts] = useState<ScriptsState>({ items: [], phase: "loading", error: "" });
   const [briefings, setBriefings] = useState<BriefingState>({
     briefings: [],
     phase: "loading",
@@ -562,6 +575,10 @@ export function SignalRoom() {
     setSelectedReel((current) => current && current.signal.id === updated.id
       ? { ...current, signal: { ...current.signal, ...updated } }
       : current);
+  }
+
+  function updateTranscriptDictionary(entries: TranscriptDictionaryEntry[]) {
+    setTranscriptDictionary(entries);
   }
 
   const demoRadar = useMemo(
@@ -612,6 +629,7 @@ export function SignalRoom() {
     const handle = String(form.get("handle") || "").trim().replace(/^@/, "");
     const network = String(form.get("network") || "youtube") as Network;
     const owned = form.get("owned") === "on";
+    const market = form.get("market") === "en" ? "en" : "de";
     if (!handle) return;
 
     if (network === "instagram") {
@@ -620,7 +638,7 @@ export function SignalRoom() {
         const response = await fetch("/api/creators", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ handle, network, owned }),
+          body: JSON.stringify({ handle, network, owned, market }),
         });
         if (!response.ok) throw new Error(await response.text());
         await loadStore();
@@ -672,50 +690,6 @@ export function SignalRoom() {
 
   /** Flips the owned mark: an owned creator leaves the research views and reads in Profile. */
   const toggleOwned = (creator: Creator) => markCreator(creator, { owned: !isOwned(creator) });
-
-  async function generateStrategy(input: { idea: string; goal: string }) {
-    if (!live) {
-      setStrategyState("error");
-      setStrategyError(
-        "The corpus is empty, the cards show demo fixtures. Add a creator to the watchlist first.",
-      );
-      return;
-    }
-    if (evidence.length === 0) {
-      setStrategyState("error");
-      setStrategyError(
-        `No reel above ${OUTLIER_THRESHOLD}x outlier in the last ${STRATEGY_EVIDENCE_WINDOW_DAYS} days. Refresh, then try again.`,
-      );
-      return;
-    }
-
-    setStrategyState("loading");
-    setStrategy(null);
-    setStrategyError("");
-
-    const goal = [STRATEGY_GOAL, input.goal.trim(), input.idea.trim() && `Working idea: ${input.idea.trim()}`]
-      .filter(Boolean)
-      .join(" ");
-
-    try {
-      const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/strategy`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ goal, audience: STRATEGY_AUDIENCE, evidence }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || `The bridge answered with HTTP ${response.status}.`);
-      }
-      setStrategy((await response.json()) as StrategyResponse);
-      setStrategyState("idle");
-    } catch (error) {
-      setStrategyState("error");
-      setStrategyError(error instanceof Error ? error.message : "The bridge is unreachable.");
-      checkBridge();
-    }
-  }
 
   /**
    * Move an idea by hand. The server refuses a forbidden move with the reason,
@@ -787,10 +761,7 @@ export function SignalRoom() {
     }
   }
 
-  /**
-   * Develop through the server route, which claims the idea for one run. A second
-   * run on the same idea wins, and the slower answer is dropped instead of written.
-   */
+  /** Develop through the server route, then open the Script Hook Selection page. */
   async function developIdea(ideaId: string) {
     if (ideas.developing) return;
     setIdeas((current) => ({ ...current, developing: ideaId, error: "" }));
@@ -800,22 +771,32 @@ export function SignalRoom() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ideaId }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { idea?: Idea; stale?: boolean; error?: string };
-      if (!response.ok) throw new Error(payload.error || `The develop run answered with HTTP ${response.status}.`);
+      const payload = (await response.json().catch(() => ({}))) as { idea?: Idea; script?: Script; openedExisting?: boolean; stale?: boolean; error?: string };
+      if (!response.ok) {
+        if (response.status >= 500) checkBridge();
+        throw new Error(payload.error || `The develop run answered with HTTP ${response.status}.`);
+      }
       if (payload.stale) {
-        await loadIdeas();
+        await Promise.all([loadIdeas(), loadScripts()]);
         return;
       }
       setIdeas((current) => ({
         ...current,
         items: current.items.map((item) => (item.id === ideaId ? payload.idea ?? item : item)),
       }));
+      if (payload.script) {
+        setScripts((current) => ({
+          ...current,
+          items: [payload.script as Script, ...current.items.filter((item) => item.id !== payload.script?.id)],
+          phase: "ready",
+        }));
+        window.location.assign(`/script/${encodeURIComponent(payload.script.id)}?from=ideas`);
+      }
     } catch (error) {
       setIdeas((current) => ({
         ...current,
         error: error instanceof Error ? error.message : "The develop run failed.",
       }));
-      checkBridge();
     } finally {
       setIdeas((current) => ({ ...current, developing: null }));
     }
@@ -1002,17 +983,17 @@ export function SignalRoom() {
         )}
         {activeTab === "ideas" && (
           <IdeasView
-            strategy={{ result: strategy, phase: strategyState, error: strategyError, evidence }}
-            live={live}
             bridge={bridge}
             ideas={ideas}
-            onGenerate={generateStrategy}
-            onRecheckBridge={checkBridge}
             onCapture={captureIdea}
             onDevelop={developIdea}
             onMove={moveIdea}
             onReloadIdeas={loadIdeas}
+            scripts={scripts.items}
           />
+        )}
+        {activeTab === "scripts" && (
+          <ScriptsView state={scripts} signals={signals} ideas={ideas.items} onReload={loadScripts} />
         )}
         {activeTab === "thumbnails" && (
           <ThumbnailsView
@@ -1046,6 +1027,8 @@ export function SignalRoom() {
           onClose={() => setSelectedReel(null)}
           onSignalUpdated={updateSignal}
           onRunCreated={() => void loadRuns()}
+          dictionary={transcriptDictionary}
+          onDictionaryUpdated={updateTranscriptDictionary}
           demo={!live}
         />
       )}
@@ -1900,7 +1883,7 @@ function FormatsView({
   review: ReviewState;
   onRunReview: () => void;
 }) {
-  const { own, foreign } = useMemo(
+  const { own, foreign, en } = useMemo(
     () => buildFormatSignals(rankedSignals, creators, { now: Date.now(), threshold }),
     [rankedSignals, creators, threshold],
   );
@@ -1936,6 +1919,18 @@ function FormatsView({
       {own.signals.map((signal) => (
         <FormatSection key={signal.id} signal={signal} threshold={threshold} />
       ))}
+
+      {en.total > 0 && (
+        <>
+          <div className="format-group-head">
+            <h2>English market</h2>
+            <p>{en.total} outlier reels from English-market creators. Kept apart so their baselines never move the German numbers above.</p>
+          </div>
+          {en.signals.map((signal) => (
+            <FormatSection key={`en-${signal.id}`} signal={signal} threshold={threshold} />
+          ))}
+        </>
+      )}
 
       {foreign.total > 0 && (
         <>
@@ -2070,6 +2065,7 @@ function ChannelsView({
                   <span className="status-chip"><CheckCircle size={14} weight="fill" /> Watching · {creator.lastCheckedAt ? `checked ${timeAgo(creator.lastCheckedAt, nowMs)}` : "checked 8h ago"}</span>
                   {isOwned(creator) && <span className="niche-chip owned">Own account</span>}
                   {creator.foreign && <span className="niche-chip">Foreign niche</span>}
+                  {creator.market === "en" && <span className="niche-chip">EN</span>}
                 </td>
                 <td className="hide-sm"><span className="num">{own.length}</span> <span className="muted">videos · {formatNumber(median)} median</span></td>
                 <td className="hide-sm"><span className="muted">{own[0]?.title ?? "No uploads retained yet"}</span></td>
@@ -2183,6 +2179,7 @@ function CoverBoardsPreview({ boards }: { boards?: CoverBoard[] }) {
 function IdeaRow({
   idea,
   index,
+  script,
   developing,
   blocked,
   onDevelop,
@@ -2190,12 +2187,15 @@ function IdeaRow({
 }: {
   idea: Idea;
   index: number;
+  script?: Script;
   developing: boolean;
   blocked: boolean;
   onDevelop: (id: string) => void;
   onMove: (id: string, status: IdeaStatus) => void;
 }) {
   const next = nextStage(idea.status);
+  const legacyStoryboard = idea.storyboard ? isLegacyStoryboard(idea.storyboard) : false;
+  const outdatedStoryboard = idea.storyboard ? isStoryboardOutdated(idea.storyboard, script) : false;
   // "since" says how long the idea has sat on its stage; a fresh capture has no second date.
   const meta = [
     formatDay(idea.createdAt),
@@ -2213,6 +2213,11 @@ function IdeaRow({
           <small>{meta.join(" · ")}</small>
           <h3>{idea.title}</h3>
           {idea.goal && <p className="idea-goal">{idea.goal}</p>}
+          {script && (
+            <Link className="signal-link idea-script-link" href={`/script/${encodeURIComponent(script.id)}?from=ideas`}>
+              Script · {scriptStatusCopy[script.status]} · {scriptHook(script)}
+            </Link>
+          )}
           {idea.storyboard && (
             <p className={idea.forecast?.range ? `forecast-line potential-${idea.forecast.potential}` : "forecast-line potential-none"}>
               <ChartLineUp size={11} /> {forecastLine(idea.forecast)}
@@ -2243,7 +2248,7 @@ function IdeaRow({
             className="ghost-button"
             type="button"
             onClick={() => onDevelop(idea.id)}
-            disabled={blocked || developing || !canTransition(idea.status, "developing")}
+            disabled={blocked || developing || (!script && !canTransition(idea.status, "developing"))}
           >
             {developing ? (
               <>
@@ -2251,7 +2256,7 @@ function IdeaRow({
               </>
             ) : (
               <>
-                <Sparkle size={13} /> {idea.storyboard ? "Develop again" : "Develop idea"}
+                <Sparkle size={13} /> {script ? (idea.storyboard ? "Develop again" : "Open script") : idea.status === "developing" ? "Retry Hook run" : "Develop idea"}
               </>
             )}
           </button>
@@ -2260,7 +2265,12 @@ function IdeaRow({
       {idea.storyboard && (
         <details className="storyboard">
           <summary>
-            Storyboard <span>{idea.developedAt ? formatStamp(idea.developedAt) : ""}</span>
+            Storyboard
+            <span className="storyboard-summary-meta">
+              {legacyStoryboard && <em className="storyboard-badge legacy">Legacy</em>}
+              {outdatedStoryboard && <em className="storyboard-badge stale">Storyboard älter als das Skript</em>}
+              {idea.developedAt ? formatStamp(idea.developedAt) : ""}
+            </span>
           </summary>
           <dl>
             <dt>Hook</dt>
@@ -2277,6 +2287,10 @@ function IdeaRow({
             <dd>{idea.storyboard.caption}</dd>
             <dt>Takeaway</dt>
             <dd>{idea.storyboard.takeaway}</dd>
+            <dt>Comment CTA</dt>
+            <dd>{idea.storyboard.commentCta || "Noch nicht befüllt"}</dd>
+            <dt>Lead-Magnet CTA</dt>
+            <dd>{idea.storyboard.leadMagnetCta || "Noch nicht befüllt"}</dd>
             <dt>Forecast</dt>
             <dd>{forecastLine(idea.forecast)}</dd>
             {idea.forecast && (
@@ -2295,28 +2309,114 @@ function IdeaRow({
   );
 }
 
+const scriptStatusCopy: Record<ScriptStatus, string> = {
+  "hook-selection": "Hook Selection",
+  draft: "Draft",
+  review: "Review",
+  approved: "Approved",
+};
+
+function scriptHook(script: Script) {
+  return script.hookOptions.find((option) => option.id === script.selectedHookId)?.hook
+    ?? script.sections.find((section) => section.kind === "hook")?.text
+    ?? "No hook selected yet";
+}
+
+function ScriptsView({ state, signals, ideas, onReload }: { state: ScriptsState; signals: SignalRecord[]; ideas: Idea[]; onReload: () => void }) {
+  const [status, setStatus] = useState<ScriptStatus | null>(null);
+  const counts = countByStatus(state.items);
+  const visible = status ? state.items.filter((script) => script.status === status) : state.items;
+  const signalMap = new Map(signals.map((signal) => [signal.id, signal]));
+
+  return (
+    <div className="view-stack">
+      <section className="hero">
+        <div>
+          <p className="hero-kicker">Scripts / production studio</p>
+          <h1>Scripts</h1>
+          <p className="hero-sub">A separate home for Hook Selection, Draft, Review and Approved scripts. Every script keeps its Idea, source Reel and evidence close by.</p>
+        </div>
+        <div className="stat-blocks">
+          <div><strong>{state.items.length}</strong><span>script projects</span></div>
+          <div><strong>{counts["hook-selection"] + counts.draft}</strong><span>still in progress</span></div>
+          <div className="lime"><strong>{counts.approved}</strong><span>approved</span></div>
+        </div>
+      </section>
+
+      <section className="panel script-list-panel">
+        <div className="panel-head">
+          <div>
+            <p className="kicker">Script repository</p>
+            <h2>What is waiting for a decision?</h2>
+            <p>The script is its own object. Open one to see its Hook options, framework, sections and evidence.</p>
+          </div>
+          <button className="ghost-button" type="button" onClick={onReload}><ArrowsClockwise size={13} /> Reload</button>
+        </div>
+
+        <div className="stage-bar script-status-bar" role="group" aria-label="Scripts by status">
+          {SCRIPT_STATUSES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={`${item === status ? "active" : ""} status-${item}`}
+              aria-pressed={item === status}
+              onClick={() => setStatus((current) => current === item ? null : item)}
+            >
+              <strong>{counts[item]}</strong> {scriptStatusCopy[item]}
+            </button>
+          ))}
+        </div>
+
+        {state.phase === "loading" && <div className="empty-state">Reading the Scripts table.</div>}
+        {state.phase === "error" && <div className="empty-state">The Scripts table is unreachable.</div>}
+        {state.phase === "ready" && state.items.length === 0 && <div className="empty-state">No script project yet. Develop an Idea to open one.</div>}
+        {state.phase === "ready" && state.items.length > 0 && visible.length === 0 && status && <div className="empty-state">No script in {scriptStatusCopy[status]}.</div>}
+        {visible.map((script, index) => (
+          <ScriptRow key={script.id} script={script} index={index} source={script.sourceSignalId ? signalMap.get(script.sourceSignalId) : undefined} ideas={ideas} />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function ScriptRow({ script, index, source, ideas }: { script: Script; index: number; source?: SignalRecord; ideas: Idea[] }) {
+  const title = ideas.find((idea) => idea.id === script.ideaId)?.title ?? demoScriptIdeaTitles[script.ideaId] ?? script.ideaId;
+  return (
+    <article className="script-entry">
+      <div className="script-row">
+        <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+        <div className="script-main">
+          <small>{title}</small>
+          <Link className="script-title" href={`/script/${encodeURIComponent(script.id)}?from=scripts`}>{scriptHook(script)}</Link>
+          <p>{script.sections.length ? `${script.sections.length} sections` : "Hook options ready"} · {script.evidenceSignalIds.length} evidence Reels</p>
+        </div>
+        <span className={`state status-${script.status}`}>{scriptStatusCopy[script.status]}</span>
+        <span className="script-revision">Rev. {script.revision}</span>
+        <div className="script-source">
+          {source?.url ? <a className="signal-link" href={source.url} target="_blank" rel="noreferrer">{source.title} <ArrowSquareOut size={11} /></a> : <span className="muted">{source?.title ?? "No source Reel"}</span>}
+        </div>
+        <time dateTime={script.updatedAt}>{formatStamp(script.updatedAt)}</time>
+      </div>
+    </article>
+  );
+}
+
 function IdeasView({
-  strategy,
-  live,
   bridge,
   ideas,
-  onGenerate,
-  onRecheckBridge,
   onCapture,
   onDevelop,
   onMove,
   onReloadIdeas,
+  scripts,
 }: {
-  strategy: StrategyState;
-  live: boolean;
   bridge: BridgeHealth;
   ideas: IdeasState;
-  onGenerate: (input: { idea: string; goal: string }) => void;
-  onRecheckBridge: () => void;
   onCapture: (input: IdeaInput) => void;
   onDevelop: (id: string) => void;
   onMove: (id: string, status: IdeaStatus) => void;
   onReloadIdeas: () => void;
+  scripts: Script[];
 }) {
   const [idea, setIdea] = useState("");
   const [goal, setGoal] = useState("");
@@ -2324,12 +2424,10 @@ function IdeasView({
   const [stage, setStage] = useState<IdeaStatus | null>(null);
   const counts = countByStage(ideas.items);
   const visible = stage ? ideas.items.filter((item) => item.status === stage) : ideas.items;
-  const status = bridgeCopy[bridge];
-  const { result, phase, error, evidence } = strategy;
-  const blocked = bridge === "offline" || bridge === "logged-out" || phase === "loading";
-  // The working title is what you typed; the generated angle only fills in for it.
-  const captureTitle = idea.trim() || result?.angle || "";
-  const developed = ideas.items.filter((item) => item.storyboard).length;
+  const developBlocked = bridge === "offline" || bridge === "logged-out";
+  const captureTitle = idea.trim();
+  const scriptsByIdea = new Map(scripts.map((script) => [script.ideaId, script]));
+  const developed = ideas.items.filter((item) => scriptsByIdea.has(item.id)).length;
 
   function capture() {
     onCapture({ title: captureTitle, goal: goal.trim() });
@@ -2343,12 +2441,12 @@ function IdeasView({
         <div>
           <p className="hero-kicker">Idea repository / strategy desk</p>
           <h1>Ideas</h1>
-          <p className="hero-sub">Capture a working idea, test how it reads as short form and long form, then develop it into a storyboard with the local strategy bridge.</p>
+          <p className="hero-sub">Inbox für neue Ansätze. Erfasse eine Idea, öffne ihr Skriptprojekt oder verwirf sie.</p>
         </div>
         <div className="stat-blocks">
-          <div><strong>{ideas.items.length}</strong><span>captured ideas</span></div>
-          <div><strong>{evidence.length}</strong><span>outlier reels as evidence</span></div>
-          <div className="lime"><strong>{developed}</strong><span>storyboards</span></div>
+          <div><strong>{ideas.items.length}</strong><span>Ideas in der Inbox</span></div>
+          <div><strong>{counts.captured}</strong><span>noch nicht entwickelt</span></div>
+          <div className="lime"><strong>{developed}</strong><span>script projects</span></div>
         </div>
       </section>
 
@@ -2359,38 +2457,6 @@ function IdeasView({
             <h2>What are you thinking about making?</h2>
             <p>One line is enough. The goal tells the bridge what the viewer should walk away with.</p>
           </div>
-          <div className="control-cluster">
-            <div><span>Model</span><select defaultValue="strategy"><option value="strategy">Sol · strategy</option></select></div>
-            <div><span>Reasoning</span><select defaultValue="medium"><option>Low</option><option>Medium</option><option>High</option></select></div>
-          </div>
-        </div>
-
-        <div className={`bridge-status ${status.tone}`}>
-          <span className="dot" aria-hidden="true" />
-          <div>
-            <strong>{status.label}</strong>
-            <p>{status.hint}</p>
-          </div>
-          <button className="ghost-button" type="button" onClick={onRecheckBridge}>
-            <ArrowsClockwise size={13} /> Check again
-          </button>
-        </div>
-
-        <div className="evidence-note">
-          {live ? (
-            <>
-              <strong>{evidence.length} of at most {STRATEGY_EVIDENCE_LIMIT} outlier reels</strong>
-              <span>
-                from {OUTLIER_THRESHOLD}x outlier up, last {STRATEGY_EVIDENCE_WINDOW_DAYS} days
-                {evidence.length > 0 && `: ${[...new Set(evidence.map((item) => item.creator))].join(", ")}`}
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>No corpus</strong>
-              <span>The cards show demo fixtures. The strategy bridge never sees them.</span>
-            </>
-          )}
         </div>
 
         <div className="panel-body">
@@ -2405,34 +2471,9 @@ function IdeasView({
           </div>
         </div>
         <div className="panel-foot">
-          <span>Uses the local strategy bridge. Nothing is sent to an API key.</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="secondary-button" type="button" onClick={capture} disabled={!captureTitle}>Capture idea</button>
-            <button className="primary-button" type="button" onClick={() => onGenerate({ idea, goal })} disabled={blocked}>Generate angle <ArrowRight size={15} /></button>
-          </div>
+          <span>Der Develop-Schritt öffnet das Skriptprojekt und startet dort die Hook-Auswahl.</span>
+          <button className="primary-button" type="button" onClick={capture} disabled={!captureTitle}>Capture idea</button>
         </div>
-        {phase === "loading" && <div className="strategy-loading"><span /><span /><span /><p>Reading the evidence packet</p></div>}
-        {phase === "error" && (
-          <div className="strategy-error">
-            <WarningCircle size={20} weight="fill" />
-            <h3>No angle</h3>
-            <p>{error || "The bridge is unreachable."}</p>
-            <div><button className="secondary-button" onClick={() => onGenerate({ idea, goal })}>Try again</button></div>
-          </div>
-        )}
-        {result && (
-          <div className="strategy-result">
-            <span>Suggested angle from {evidence.length} outlier reels</span>
-            <h3>{result.angle}</h3>
-            <p>{result.rationale}</p>
-            <dl>
-              <dt>Opening</dt><dd>{result.opening}</dd>
-              <dt>Proof to show</dt><dd>{result.proofToShow.join(", ")}</dd>
-              <dt>Cautions</dt><dd>{result.cautions.join(", ")}</dd>
-            </dl>
-            <div><button className="secondary-button" type="button" onClick={capture} disabled={!captureTitle}>Capture idea</button></div>
-          </div>
-        )}
       </section>
 
       <section className="panel">
@@ -2440,7 +2481,7 @@ function IdeasView({
           <div>
             <p className="kicker">Idea repository</p>
             <h2>Captured ideas</h2>
-            <p>Stored in the ideas table. Develop sends the idea and the evidence packet to the bridge.</p>
+            <p>Stored in the ideas table. Develop opens a Script and sends its evidence packet to the Hook bridge.</p>
           </div>
           <button className="ghost-button" type="button" onClick={onReloadIdeas}>
             <ArrowsClockwise size={13} /> Reload
@@ -2479,36 +2520,15 @@ function IdeasView({
             key={item.id}
             idea={item}
             index={index}
+            script={scriptsByIdea.get(item.id)}
             developing={ideas.developing === item.id}
-            blocked={blocked || (ideas.developing !== null && ideas.developing !== item.id)}
+            blocked={(!scriptsByIdea.has(item.id) && developBlocked) || (ideas.developing !== null && ideas.developing !== item.id)}
             onDevelop={onDevelop}
             onMove={onMove}
           />
         ))}
       </section>
 
-      <div className="idea-columns">
-        <section>
-          <header>Long form <span>{demoIdeas.length}</span></header>
-          {demoIdeas.map((item, index) => (
-            <div className="idea-row" key={item.id}>
-              <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              <div><small>{item.format}</small><h3>{item.title}</h3></div>
-              <span className="state">{item.state}</span>
-            </div>
-          ))}
-        </section>
-        <section>
-          <header>Short form <span>{demoIdeas.length}</span></header>
-          {demoIdeas.map((item, index) => (
-            <div className="idea-row" key={item.id}>
-              <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              <div><small>{item.format}</small><h3>{item.title.split(" ").slice(0, 5).join(" ")} in 45 seconds</h3></div>
-              <span className="state">{item.evidence} sources</span>
-            </div>
-          ))}
-        </section>
-      </div>
     </div>
   );
 }
@@ -3022,6 +3042,7 @@ function AddCreatorDialog({ onClose, onSubmit, state }: { onClose: () => void; o
         <form onSubmit={onSubmit}>
           <label><span>Channel handle</span><input name="handle" placeholder="@usefulcreator" autoFocus required /><small>The connector resolves the handle and pulls the last 90 days.</small></label>
           <label><span>Network</span><select name="network" defaultValue="instagram"><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option></select></label>
+          <label><span>Market</span><select name="market" defaultValue="de"><option value="de">German (core niche)</option><option value="en">English</option></select><small>English-market creators keep their Format Signals in a separate group and yield transcript budget to the core niche.</small></label>
           <label className="check-label"><input type="checkbox" name="owned" /><span>This is my own account<small>Owned accounts are read in Profile and stay out of Discover, Briefing and Format Signals.</small></span></label>
           <div className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={state === "loading"}>{state === "loading" ? "Backfilling 90 days via Apify…" : state === "error" ? "Failed, retry" : "Add to daily watch"}<ArrowRight size={15} /></button></div>
         </form>

@@ -55,6 +55,13 @@ export const transcriptPatchFields = {
   )),
 };
 
+/** One personal mapping reused when checking future transcripts. */
+export const transcriptDictionaryFields = {
+  wrong: v.string(),
+  right: v.string(),
+  createdAt: v.string(),
+};
+
 /** One German post collected from an Instagram hashtag search. */
 export const hashtagPostFields = {
   id: v.string(),
@@ -76,11 +83,15 @@ export const hashtagPostFields = {
 
 /** Short-form plan attached to an idea; shared with convex/ideas.ts. */
 export const storyboardFields = {
+  scriptId: v.optional(v.string()),
+  scriptRevision: v.optional(v.number()),
   hook: v.string(),
   beats: v.array(v.object({ label: v.string(), detail: v.string() })),
   cta: v.string(),
   caption: v.string(),
   takeaway: v.string(),
+  commentCta: v.optional(v.string()),
+  leadMagnetCta: v.optional(v.string()),
 };
 
 /** Forecast at an idea; range and potential are null without a comparable base. */
@@ -93,7 +104,7 @@ export const forecastFields = {
 };
 
 /** One generated Cover-Lab package; image bytes stay in the local gitignored cache. */
-const coverPackageFields = {
+export const coverPackageFields = {
   id: v.string(),
   label: v.string(),
   textOverlay: v.string(),
@@ -106,7 +117,7 @@ const coverPackageFields = {
 };
 
 /** One latest Cover-Lab board. Ideas keep at most one board per format. */
-const coverBoardFields = {
+export const coverBoardFields = {
   format: v.union(v.literal("reel"), v.literal("youtube")),
   aspectRatio: v.union(v.literal("4:5"), v.literal("16:9")),
   treatment: v.union(v.literal("faceless"), v.literal("face")),
@@ -141,6 +152,66 @@ export const ideaFields = {
   evidenceCount: v.optional(v.number()),
   createdAt: v.string(),
   updatedAt: v.string(),
+};
+
+/** One evidence item attached to a Script Hook-Option. */
+const scriptHookEvidenceFields = {
+  signalId: v.string(),
+  hook: v.string(),
+  creator: v.string(),
+  outlier: v.number(),
+  fit: v.string(),
+};
+
+const scriptStatusValidator = v.union(v.literal("hook-selection"), v.literal("draft"), v.literal("review"), v.literal("approved"));
+const scriptFrameworkValidator = v.union(v.literal("pas"), v.literal("bbb"), v.literal("none"));
+
+/** One spoken direction shown before a Script draft exists. */
+const scriptHookOptionFields = {
+  id: v.string(),
+  hook: v.string(),
+  angle: v.string(),
+  hypothesis: v.string(),
+  framework: v.union(v.literal("pas"), v.literal("bbb"), v.literal("none")),
+  evidence: v.array(v.object(scriptHookEvidenceFields)),
+  edited: v.boolean(),
+};
+
+/** The ordered source-of-truth sections of a Script. */
+export const scriptSectionFields = {
+  kind: v.union(v.literal("hook"), v.literal("beat"), v.literal("transition"), v.literal("cta")),
+  label: v.string(),
+  text: v.string(),
+};
+
+/** A Script is its own production object, separate from its Idea and Storyboard. */
+export const scriptFields = {
+  id: v.string(),
+  ideaId: v.string(),
+  sourceSignalId: v.optional(v.string()),
+  evidenceSignalIds: v.array(v.string()),
+  status: scriptStatusValidator,
+  framework: scriptFrameworkValidator,
+  frameworkReason: v.string(),
+  hookOptions: v.array(v.object(scriptHookOptionFields)),
+  selectedHookId: v.optional(v.string()),
+  sections: v.array(v.object(scriptSectionFields)),
+  revision: v.number(),
+  approvedRevision: v.optional(v.number()),
+  approvedAt: v.optional(v.string()),
+  runId: v.optional(v.string()),
+  createdAt: v.string(),
+  updatedAt: v.string(),
+};
+
+/** The bounded fields accepted by the human Script editor. */
+export const scriptPatchFields = {
+  sections: v.optional(v.array(v.object(scriptSectionFields))),
+  framework: v.optional(scriptFrameworkValidator),
+  status: v.optional(scriptStatusValidator),
+  evidenceSignalIds: v.optional(v.array(v.string())),
+  hookOptions: v.optional(v.array(v.object(scriptHookOptionFields))),
+  selectedHookId: v.optional(v.union(v.string(), v.null())),
 };
 
 /** One Signal on a daily Briefing; part of briefingFields. */
@@ -304,6 +375,7 @@ export default defineSchema({
     url: v.optional(v.string()),
     owned: v.optional(v.boolean()),
     foreign: v.optional(v.boolean()),
+    market: v.optional(v.union(v.literal("de"), v.literal("en"))),
     lastCheckedAt: v.optional(v.string()),
   }).index("by_external_id", ["id"]),
   signals: defineTable({
@@ -346,12 +418,19 @@ export default defineSchema({
     .index("by_external_id", ["id"])
     .index("by_creator", ["creatorId"])
     .index("by_published", ["publishedAt"]),
+  transcriptDictionary: defineTable(transcriptDictionaryFields)
+    .index("by_wrong", ["wrong"])
+    .index("by_createdAt", ["createdAt"]),
   hashtagPosts: defineTable(hashtagPostFields)
     .index("by_external_id", ["id"])
     .index("by_published", ["publishedAt"]),
   ideas: defineTable(ideaFields)
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),
+  scripts: defineTable(scriptFields)
+    .index("by_ideaId", ["ideaId"])
+    .index("by_external_id", ["id"])
+    .index("by_updatedAt", ["updatedAt"]),
   hookRuns: defineTable(hookRunFields)
     .index("by_external_id", ["id"])
     .index("by_createdAt", ["createdAt"]),

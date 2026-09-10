@@ -71,6 +71,10 @@ Die gespeicherte Fassung aus `transcript` plus allen akzeptierten `transcriptCor
 Ein Vorschlag für einen wörtlich im Original vorkommenden Erkennungsfehler mit `original`, `replacement`, `reason`, `source` (`bridge` oder `dictionary`), `status` (`proposed`, `accepted` oder `rejected`) und Zeitstempel. Jede Fundstelle wird ersetzt, auch bei mehrfacher Verwendung; die Anzahl steht im Grund. `POST /api/signals/transcript` lässt den lokalen Bridge-Endpunkt Erkennungsfehler vorschlagen, `PATCH /api/signals/transcript` nimmt einzelne Vorschläge an, bearbeitet oder verwirft sie. Bridge-Text bleibt untrusted source text und wird vor Speicherung begrenzt und geprüft.
 Nicht: "Untertitel", "Captions" (Caption ist der Beitragstext), "Speech-to-Text".
 
+**Wörterbuch**
+Die persönliche Liste aus bekannten Erkennungsfehlern (`wrong -> right`) mit Zeitpunkt. Beim nächsten "Korrekturen vorschlagen" werden wörtliche Treffer zuerst als akzeptierte Korrekturen mit Quelle `dictionary` auf diesem Reel angelegt; die Ablehnung ändert nur dieses Reel. Der Bridge wird die Liste als untrusted Kontext mitgegeben, ein widersprechender Bridge-Vorschlag wird verworfen. Ein Eintrag kann in der Korrekturliste gemerkt oder wieder entfernt werden; einen eigenen Editor gibt es nicht.
+Nicht: "Glossar", "Auto-Korrektur".
+
 **Reel-Ansicht**
 Das gemeinsame Detailpanel, das sich aus Discover-Karte, Briefing-Zeile und Creator-Detailzeile öffnet. Es zeigt Cover, Kennzahlen, Caption, Transkriptstatus, Zeitpunkt, Versuche und bei `ready` das Originaltranskript mit Zeitmarken. Wenn Korrekturen vorliegen, schaltet der Umschalter zwischen Original und Arbeitsfassung, die Fundstellen sind markiert und die Korrekturliste bietet `Annehmen`, `Bearbeiten` und `Verwerfen`. `Korrekturen vorschlagen` startet den Bridge-Lauf mit Lade- und Fehlerzustand. `Transkribieren` startet den manuellen Lauf für genau dieses Reel; `Erneut versuchen` steht für `silent`, `missing` und `failed` bereit, während `pending` die Aktion sperrt.
 Nicht: "Transcript-Modal", "Video-Detail", "Untertitelansicht".
@@ -109,6 +113,8 @@ Nicht: "Report", "Monatsbericht", "Audit".
 
 **Nische-fremder Creator**
 Ein Creator mit `foreign: true`, also aus einer anderen Nische; wird normal beobachtet, aber seine Format Signals erscheinen im eigenen Block "Foreign niche", damit importierte Muster die eigenen Kennzahlen nicht verwässern. Umgeschaltet über den Globus-Knopf in Tracked Channels, gespeichert über `PATCH /api/creators` (Body geparst von `parseCreatorMark` in `lib/creator-mark.ts`).
+
+Davon getrennt ist `market: "de" | "en"` (fehlend = `"de"`): gleiche Nische, anderer Sprachmarkt. Englische Creator behalten ihre Format Signals im Block "English market", geben beim globalen Transkript-Budget deutschen Reels den Vortritt und tragen in Tracked Channels ein EN-Badge. `foreign` bleibt für nischen-fremd reserviert, `market` für die Sprache; ein Creator kann beides tragen, dann gewinnt `foreign`. Gesetzt beim Anlegen über den Market-Select im Add-Dialog bzw. `POST /api/creators`.
 Nicht: "Fremdnische", "External", "Competitor".
 
 **Hook**
@@ -157,8 +163,40 @@ Nicht: "Prompt", "Instruktion", "Feedback", "Direction" (nur als Feldname und en
 
 ## Ergänzende Begriffe
 
+**Skript**
+Ein eigenes Produktionsobjekt in der Tabelle `scripts`, verbunden mit einer Idea, einem optionalen Quell-Reel und weiteren Belegen. Das Skript beginnt in `hook-selection`, trägt Hook-Optionen und Abschnitte und bleibt vom Storyboard getrennt. Der Hauptbereich ist der `Scripts`-Tab, einzelne Skripte liegen unter `/script/<id>`. Der Text wird im Store gehalten und nie in den Vault oder in Git geschrieben. Ein freigegebenes Skript ist bis zum bewussten Wiederöffnen unveränderlich.
+Nicht: "Storyboard", "Outline", "Shotlist", "Konzept".
+
+**Skriptstatus**
+Die vier festen Zustände eines Skripts: `hook-selection`, `draft`, `review` und `approved`. `hook-selection -> draft` geschieht nur durch einen erfolgreichen Draft-Lauf. Von Hand gehen nur `draft -> review`, `review -> draft`, `review -> approved` und beim Wiederöffnen `approved -> draft`; das Wiederöffnen erhöht die Revision. Verbotene Züge werfen denselben `ForbiddenMoveError` wie bei Ideas und kommen aus Convex als `kind: "forbidden-move"` zurück.
+Nicht: "Produktionsstufe", "State", "Kanban-Spalte".
+
+**Develop-Lauf**
+Der Lauf aus `POST /api/ideas/develop` ist der Hook-Lauf eines Skripts. Er wählt bis zu zehn Outlier-Reels aus demselben Fenster wie das Evidenzpaket, nimmt das Quell-Reel einer Idea zusätzlich auf, wenn es außerhalb des Fensters liegt, und bevorzugt die geprüfte Transkript-Arbeitsfassung vor dem Original. Der lokale Bridge-Endpunkt `/v1/script-hooks` liefert drei bis fünf unterschiedliche Hook-Optionen mit Hook, Angle, frei formulierter Hypothese, Framework, Belegen und Themenpassung sowie eine PAS-, BBB- oder Keins-Empfehlung. Ein Lauf hält die Idea über `developRunId` und das Skript über `runId`; ein Fehler gibt beide Ansprüche frei. Ein zweiter Klick während eines laufenden Laufs ist ein Konflikt. Ein späterer Klick öffnet das vorhandene Skript. Im leeren Store kommen drei feste Demo-Optionen zurück, ohne Bridge-Aufruf.
+Nicht: "Storyboard-Lauf", "Forecast-Lauf", "zweiter Versuch überschreibt den ersten".
+
+**Hook-Option**
+Eine mögliche gesprochene Eröffnung eines Skripts mit `id`, `hook`, `angle`, frei formulierter Hypothese, Framework, Belegen und Themenpassung. `edited` markiert, dass Chris Hook oder Angle bearbeitet hat. Hook-Optionen werden vor dem ersten Draft gewählt und bleiben am Skript gespeichert.
+Nicht: "Hook-Board-Hypothese", "Titel", "Opener".
+
+**Abschnitt**
+Ein geordnetes Element der Skriptquelle mit `kind` (`hook`, `beat`, `transition` oder `cta`), `label` und `text`. Ein vollständiges Skript hat genau einen Hook und eine CTA sowie zwei bis fünf Beats; Übergänge sind optional. Die Leseansicht wird später aus diesen Abschnitten gerendert und ist keine zweite Textquelle.
+Nicht: "Freitext", "Storyboard-Beat", "Shot".
+
+**Leseansicht**
+Die zusammenhängende, trotzdem abschnittsgebundene Darstellung eines Skripts im Editor. `renderScriptReadingView` leitet jedes Lesestück mit seinem `sectionIndex` aus der Abschnittsliste ab; eine Bearbeitung schreibt direkt in diesen Abschnitt zurück und übersetzt keinen zusammengefügten Freitext zurück. Die Ansicht ist bei `approved` gesperrt und wird erst nach `approved -> draft` wieder bearbeitbar.
+Nicht: "Preview", "Textansicht", "Freitext-Editor".
+
+**Draft-Lauf**
+Der vollständige Skriptlauf aus `POST /api/scripts/<id>/draft`. Er nimmt die gewählte Hook-Option und das Framework, sendet das begrenzte Quell- und Evidenzpaket an `/v1/script-draft` und schreibt genau einen Hook, zwei bis fünf Beats, optionale Übergänge und eine CTA. Der Hook muss wörtlich der Auswahl entsprechen. Vor dem Speichern lehnt `parseScriptDraftAnswer` jeden Satz ab acht Wörtern ab, der nach Kleinschreibung und Leerraum-Normalisierung in einem mitgegebenen Transkript oder einer Caption vorkommt. Ein Fehler gibt `runId` frei und lässt das Skript unverändert. Ein neuer Lauf ersetzt alle Abschnitte und erhöht die Revision.
+Nicht: "Develop-Lauf" (der erzeugt Hook-Optionen), "Rewrite", "Autokopie".
+
+**Lektorat**
+Der prüfende Lauf im Skript-Editor (`POST /api/scripts/<id>/lint`). Die Bridge führt zuerst `slop-lint.sh` als Regex-Stufe aus und gibt den installierten Pattern-Katalog an die Modell-Stufe; die Abschnitte bleiben dabei untrusted source text. Die Antwort enthält nur begrenzte Vorschläge mit `sectionId`, `original`, `replacement` und `reason`. `parseScriptLintResponse` lässt nur wörtliche Fundstellen im genannten Abschnitt durch, und Chris übernimmt jeden Vorschlag einzeln. Eine Übernahme schreibt in die Abschnittsliste und erhöht die Revision; der Lektorat-Lauf selbst ändert keinen Text. Während des Laufs sperrt `runId` das Skript, ein Fehler gibt den Claim frei.
+Nicht: "Autokorrektur", "Rewrite", "Stilpolitur".
+
 **Idea**
-Ein gespeicherter Content-Ansatz in der Tabelle `ideas`: Arbeitstitel, optionales Ziel, optionales Quell-Signal (`sourceSignalId`, `sourceCreator`), Status (eine Produktionsstufe oder `dropped`) und Storyboard. Capture geht aus dem Ideas-Formular und aus einer Karte in Discover oder Briefing. Der Strategy-Provider liefert daneben den Angle-Entwurf als `StrategyResponse` (angle, rationale, opening, proofToShow, cautions).
+Ein gespeicherter Content-Ansatz in der Tabelle `ideas`: Arbeitstitel, optionales Ziel, optionales Quell-Signal (`sourceSignalId`, `sourceCreator`), Status (eine Produktionsstufe oder `dropped`), ein mögliches Storyboard und ein separates Skript. Der Ideas-Tab ist die Inbox für Erfassen, Develop, manuelle Stufenzüge und Drop; die Schreibarbeit liegt im Skript. Capture geht aus dem Ideas-Formular und aus einer Karte in Discover oder Briefing.
 Nicht: "Draft", "Konzept".
 
 **Produktionsstufe**
@@ -166,11 +204,15 @@ Wo eine Idea in der Pipeline steht. Sechs Stufen in fester Reihenfolge (`IDEA_ST
 Nicht: "Phase", "Workflow-Step", "Kanban-Spalte", "State" (nur als CSS-Klasse).
 
 **Storyboard**
-Der Short-Form-Plan an einer Idea: `hook` (erste drei Sekunden), genau drei `beats` mit Label und Detail, `cta`, `caption` (Zeilenumbrüche bleiben erhalten) und `takeaway`. Entsteht im Develop-Lauf über `POST /api/ideas/develop`, der Bridge antwortet auf `/v1/storyboard` gegen `storyboardOutputSchema`. Ein Develop-Lauf hält die Idea über `developRunId`; startet ein zweiter Lauf, wird das Ergebnis des ersten verworfen.
+Der Short-Form-Plan an einer Idea, erzeugt ausschließlich über `POST /api/scripts/<id>/storyboard` aus einem aktuell freigegebenen Skript. Er trägt `scriptId`, `scriptRevision`, den wörtlichen Skript-Hook, genau drei verdichtete `beats`, eine gesprochene `cta`, `caption` und `takeaway`. `commentCta` und `leadMagnetCta` sind davon getrennte Felder und bleiben bis zu den späteren Phasen leer. Caption-Zeilen, CTA und Beat-Details dürfen sich weder gegenseitig noch den Hook wiederholen; `parseScriptStoryboardAnswer` lehnt den ganzen Lauf vor dem Speichern ab. `/v1/storyboard` akzeptiert dafür das Skript mit seinen Abschnitten als zweite Eingabeform.
 Nicht: "Skript", "Outline", "Shotlist".
 
+**Legacy-Storyboard**
+Ein erhaltenes Storyboard ohne `scriptId`, das vor dem Skriptstudio direkt aus einer Idea und dem Evidenzpaket entstand. Die Ideas-Inbox zeigt dafür das Badge `Legacy`. Es bleibt unverändert, bis Chris im zugehörigen freigegebenen Skript gezielt `Storyboard neu erzeugen` startet; dann wird es durch ein Storyboard mit `scriptId` und `scriptRevision` ersetzt. Weicht diese Revision später von `approvedRevision` ab, zeigt die Idea `Storyboard älter als das Skript`.
+Nicht: "veraltetes Skript", "Entwurf", "automatisch migriertes Storyboard".
+
 **Prognose**
-Was eine Idea vor der Produktion wahrscheinlich bringt, gespeichert als `forecast` an der Idea (`Forecast` in `lib/contracts.ts`) und geschrieben vom Develop-Lauf neben dem Storyboard. Vier Teile: Reichweiten-Spanne (`range`, Plays des schwächsten und stärksten vergleichbaren Reels), Potenzial (`potential`: `low`, `medium`, `high` nach dem Median-Outlier der Vergleichsreels, Grenzen `FORECAST_MEDIUM_OUTLIER` 3 und `FORECAST_HIGH_OUTLIER` 5), größtes Risiko (`risk`) und Spannung (`tension`, die Frage, die das Reel auflöst). Der Bridge schätzt keine Zahl: er nennt im Feld `forecast.comparable` die Titel der Reels aus dem Evidenzpaket, die er für vergleichbar hält, und `deriveForecast` (`lib/forecast.ts`) rechnet Spanne und Potenzial aus genau diesen Reels; Titel, die das Paket nicht führt, fallen weg wie ein Beleg (gemeinsame Funktion `citedEvidence` in `lib/strategy-evidence.ts`), die Anzahl der Treffer steht als `comparableCount` an der Prognose. Unter `FORECAST_MIN_COMPARABLE` (2) Vergleichsreels sind `range` und `potential` null, und die UI zeigt "No forecast", Risiko und Spannung bleiben stehen. Eine Bridge-Antwort ohne brauchbares `forecast`-Feld erzeugt das Storyboard trotzdem, die Idea trägt dann keine Prognose und die UI sagt auch das ("No forecast: the bridge answered without one"). Ideen-Liste zeigt die Spanne als Zeile unter dem Titel, das aufgeklappte Storyboard dazu Risiko und Spannung.
+Was eine Idea vor der Produktion wahrscheinlich bringt, gespeichert als `forecast` neben ihrem Storyboard (`Forecast` in `lib/contracts.ts`). Der Storyboard-Bridge schätzt keine Zahl: Er nennt im Feld `forecast.comparable` die Titel der Reels aus dem Skriptpaket, die er für vergleichbar hält, und `deriveForecast` (`lib/forecast.ts`) rechnet Spanne und Potenzial aus genau diesen Reels. Titel, die das Paket nicht führt, fallen weg wie ein Beleg. Die vier Teile bleiben Reichweiten-Spanne, Potenzial (`low`, `medium`, `high`), größtes Risiko und Spannung.
 Nicht: "Forecast" (nur als Feldname und als englisches UI-Label), "Schätzung", "Vorhersage", "Score".
 
 **Strategy-Provider**

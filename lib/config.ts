@@ -101,3 +101,5 @@ export const HOOK_RATIONALE_MAX = 400;
 export const HOOK_DIRECTION_MAX = 500;
 /** Characters of the input the history rail keeps. The board itself is the run's payload. */
 export const HOOK_SOURCE_EXCERPT = 240;
+/** A generated Draft sentence at or above this word count may not occur in supplied source text. */
+export const SCRIPT_COPY_SENTENCE_MIN_WORDS = 8;

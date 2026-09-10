@@ -11,6 +11,7 @@ import {
   parseTranscriptCorrectionAction,
   transcriptCorrectionFields,
 } from "@/lib/transcript-corrections";
+import { applyTranscriptDictionary } from "@/lib/transcript-dictionary";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -41,13 +42,40 @@ export async function POST(request: Request) {
   if (!signal.transcript?.trim()) return NextResponse.json({ error: "This Reel has no ready transcript to check." }, { status: 409 });
   if (!creator) return NextResponse.json({ error: "The Reel's Creator is missing." }, { status: 409 });
 
+  const now = new Date().toISOString();
+  const dictionary = await storage.listTranscriptDictionary();
+  const prepared = applyTranscriptDictionary(signal, dictionary, {
+    now,
+    idFactory: (entry, index) => `dictionary-${randomUUID()}-${index}-${entry.wrong}`,
+  });
+  const dictionaryChanged = prepared !== signal;
+  const dictionaryAdded = Math.max(
+    0,
+    (prepared.transcriptCorrections?.filter((item) => item.source === "dictionary").length ?? 0)
+      - (signal.transcriptCorrections?.filter((item) => item.source === "dictionary").length ?? 0),
+  );
+  let sourceSignal = signal;
+  if (dictionaryChanged) {
+    const saved = await storage.patchTranscript(
+      id,
+      transcriptCorrectionFields(prepared.transcript, prepared.transcriptCorrections ?? []),
+    );
+    if (!saved) return NextResponse.json({ error: `unknown signal ${id}` }, { status: 404 });
+    sourceSignal = saved;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
   try {
     const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/transcript-corrections`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript: signal.transcript, creator: creator.handle, caption: signal.caption }),
+      body: JSON.stringify({
+        transcript: sourceSignal.transcript,
+        creator: creator.handle,
+        caption: sourceSignal.caption,
+        dictionary,
+      }),
       signal: controller.signal,
     });
     const payload = (await response.json().catch(() => ({}))) as unknown;
@@ -61,12 +89,12 @@ export async function POST(request: Request) {
       now: new Date().toISOString(),
       idFactory: () => `correction-${randomUUID()}`,
     });
-    const merged = mergeCorrectionSuggestions(signal, suggestions);
-    const fields = transcriptCorrectionFields(signal.transcript, merged.transcriptCorrections ?? []);
+    const merged = mergeCorrectionSuggestions(sourceSignal, suggestions, dictionary);
+    const fields = transcriptCorrectionFields(sourceSignal.transcript, merged.transcriptCorrections ?? []);
     const saved = await storage.patchTranscript(id, fields);
     if (!saved) return NextResponse.json({ error: `unknown signal ${id}` }, { status: 404 });
     const [withCover] = await withCoverUrls([saved]);
-    return NextResponse.json({ signal: withCover, added: suggestions.length });
+    return NextResponse.json({ signal: withCover, dictionary, added: dictionaryAdded + suggestions.length });
   } catch (error) {
     return NextResponse.json({ error: "The correction bridge is unreachable." }, { status: 502 });
   } finally {
@@ -86,6 +114,29 @@ export async function PATCH(request: Request) {
   const { storage, signal } = await storedSignal(action.id);
   if (!signal) return NextResponse.json({ error: `unknown signal ${action.id}` }, { status: 404 });
   try {
+    const correction = signal.transcriptCorrections?.find((item) => item.id === action.correctionId);
+    if (!correction) throw new Error(`unknown correction ${action.correctionId}`);
+
+    if (action.action === "dictionary") {
+      if (correction.status !== "accepted") throw new Error("Accept the correction before adding it to the dictionary.");
+      await storage.addTranscriptDictionary({
+        wrong: correction.original,
+        right: correction.replacement,
+        createdAt: new Date().toISOString(),
+      });
+      const dictionary = await storage.listTranscriptDictionary();
+      const [withCover] = await withCoverUrls([signal]);
+      return NextResponse.json({ signal: withCover, dictionary });
+    }
+
+    if (action.action === "remove-dictionary") {
+      const dictionaryEntry = { wrong: correction.original, right: correction.replacement };
+      await storage.removeTranscriptDictionary(dictionaryEntry);
+      const dictionary = await storage.listTranscriptDictionary();
+      const [withCover] = await withCoverUrls([signal]);
+      return NextResponse.json({ signal: withCover, dictionary });
+    }
+
     const updated = applyTranscriptCorrectionAction(signal, action);
     const saved = await storage.patchTranscript(action.id, {
       ...transcriptCorrectionFields(signal.transcript, updated.transcriptCorrections ?? []),
@@ -93,10 +144,9 @@ export async function PATCH(request: Request) {
     });
     if (!saved) return NextResponse.json({ error: `unknown signal ${action.id}` }, { status: 404 });
     const [withCover] = await withCoverUrls([saved]);
-    return NextResponse.json({ signal: withCover });
+    return NextResponse.json({ signal: withCover, dictionary: await storage.listTranscriptDictionary() });
   } catch (error) {
     const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: message.startsWith("unknown correction") ? 404 : 400 });
   }
 }
-

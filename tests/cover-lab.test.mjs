@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   COVER_FORMATS,
   COVER_PACKAGE_COUNT,
+  applyCoverUpdate,
   coverBoard,
   coverBoardFor,
   parseCoverRequest,
@@ -10,7 +11,7 @@ import {
   replaceCoverPackage,
   upsertCoverBoard,
 } from "../lib/cover-lab.ts";
-import { newIdea } from "../lib/ideas.ts";
+import { attachStoryboard, newIdea } from "../lib/ideas.ts";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -119,6 +120,30 @@ test("regenerating one package preserves the other packages and format board", (
   assert.equal(updated.coverBoards?.[0].packages[0].textOverlay, "Fokus 1");
   assert.equal(updated.coverBoards?.[0].packages[1].textOverlay, "Neu gerendert");
   assert.equal(updated.coverBoards?.[0].packages[2].textOverlay, "Fokus 3");
+});
+
+test("an atomic Cover update preserves a Storyboard written during image generation", () => {
+  const storyboard = {
+    scriptId: "script-1",
+    scriptRevision: 3,
+    hook: "Ein Hook.",
+    beats: [1, 2, 3].map((number) => ({ label: `Beat ${number}`, detail: `Detail ${number}` })),
+    cta: "Eine CTA.",
+    caption: "Eine Caption.",
+    takeaway: "Ein Takeaway.",
+  };
+  const current = attachStoryboard(idea(), storyboard, { now: NOW, evidenceCount: 2, forecast: null });
+  const board = coverBoard("reel", "faceless", [1, 2, 3].map((number) => ({
+    id: `package-${number}`,
+    label: `Package ${number}`,
+    textOverlay: `Fokus ${number}`,
+    imageIdea: "Objekt",
+    colorWorld: "Koralle",
+    imagePrompt: "Prompt",
+  })), NOW);
+  const updated = applyCoverUpdate(current, { kind: "board", board });
+  assert.equal(updated.storyboard?.scriptId, "script-1");
+  assert.equal(updated.coverBoards?.[0].format, "reel");
 });
 
 test("generated images are stored below the ignored cover cache with format-separated paths", async () => {

@@ -66,7 +66,10 @@ export async function resolveProfile(handleInput: string): Promise<ResolvedProfi
 
 function firstLine(caption: string | undefined) {
   const line = (caption ?? "").split("\n").map((part) => part.trim()).find(Boolean) ?? "";
-  return line.length > 90 ? `${line.slice(0, 87)}…` : line;
+  if (line.length <= 90) return line;
+  // Cut on code points, never through a surrogate pair: a half emoji is an
+  // invalid string Convex rejects with "Invalid arguments provided".
+  return `${[...line].slice(0, 87).join("")}…`;
 }
 
 function mapPost(post: ApifyPost, creator: Creator): SignalRecord | null {

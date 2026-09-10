@@ -1,19 +1,24 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, SignalRecord, Slate, StorageAdapter, TranscriptSignalPatch } from "../../contracts";
+import type { Briefing, Creator, FormatReview, HashtagPost, HookRun, Idea, Run, Script, ScriptPatch, ScriptRunClaimOptions, SignalRecord, Slate, StorageAdapter, TranscriptDictionaryEntry, TranscriptSignalPatch } from "../../contracts";
 import { BRIEFING_HISTORY, HOOK_RUN_HISTORY, SLATE_HISTORY } from "../../config.ts";
 import { withSavedAt } from "../../discover-filter.ts";
-import { applyStoryboard, claimDevelop, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
+import { applyStoryboard, attachStoryboard, claimDevelop, DevelopConflictError, legacyStage, moveIdea, releaseDevelop } from "../../ideas.ts";
+import { claimScriptRun, moveScript, patchScript, settleScriptRun, validateScriptWrite } from "../../scripts.ts";
 import { resetLegacyTranscriptStatuses, transcriptConflictReason, TranscriptConflictError } from "../../transcripts.ts";
 import { mergeSignals } from "../../refresh-window.ts";
 import { mergeHashtagPosts } from "../../hashtag-posts.ts";
+import { mergeTranscriptDictionaryEntries, normalizeTranscriptDictionary, removeTranscriptDictionaryEntry } from "../../transcript-dictionary.ts";
+import { applyCoverUpdate } from "../../cover-lab.ts";
 
 type Store = {
   creators: Creator[];
   signals: SignalRecord[];
+  transcriptDictionary: TranscriptDictionaryEntry[];
   hashtagPosts: HashtagPost[];
   runs: Run[];
   ideas: Idea[];
+  scripts: Script[];
   formatReviews: FormatReview[];
   hookRuns: HookRun[];
   briefings: Briefing[];
@@ -25,6 +30,8 @@ const STORE_PATH = path.join(process.cwd(), "data", "store.json");
 const MAX_RUNS = 100;
 /** Ideas kept in the file store; Convex keeps everything. */
 const MAX_IDEAS = 500;
+/** Scripts kept in the file store; Convex keeps everything. */
+const MAX_SCRIPTS = 500;
 /** Hook runs kept in the file store; Convex keeps everything. */
 const MAX_HOOK_RUNS = 100;
 /** Format reviews kept in the file store. One per run date, monthly plus any manual run. */
@@ -33,7 +40,7 @@ const MAX_FORMAT_REVIEWS = 24;
 const MAX_BRIEFINGS = 90;
 /** Slates kept in the file store. One per day, like the briefings. */
 const MAX_SLATES = 90;
-const EMPTY: Store = { creators: [], signals: [], hashtagPosts: [], runs: [], ideas: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
+const EMPTY: Store = { creators: [], signals: [], transcriptDictionary: [], hashtagPosts: [], runs: [], ideas: [], scripts: [], formatReviews: [], hookRuns: [], briefings: [], slates: [] };
 
 async function load(): Promise<Store> {
   let parsed: Partial<Store>;
@@ -49,6 +56,7 @@ async function load(): Promise<Store> {
   const store: Store = {
     creators: parsed.creators ?? [],
     signals: migrated.signals,
+    transcriptDictionary: normalizeTranscriptDictionary(parsed.transcriptDictionary ?? []),
     hashtagPosts: parsed.hashtagPosts ?? [],
     runs: (parsed.runs ?? []).map((run) =>
       run.transcripts && run.transcripts.failed === undefined
@@ -57,6 +65,7 @@ async function load(): Promise<Store> {
     ),
     // Ideas written before the six stages land on the matching stage; nothing else changes.
     ideas: (parsed.ideas ?? []).map((idea) => ({ ...idea, status: legacyStage(idea.status) ?? idea.status })),
+    scripts: parsed.scripts ?? [],
     formatReviews: parsed.formatReviews ?? [],
     hookRuns: parsed.hookRuns ?? [],
     briefings: parsed.briefings ?? [],
@@ -210,6 +219,30 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       return patched;
     });
   },
+  async listTranscriptDictionary() {
+    return (await load()).transcriptDictionary;
+  },
+  async addTranscriptDictionary(entry) {
+    return serialized(async () => {
+      const normalized = normalizeTranscriptDictionary([entry])[0];
+      if (!normalized) throw new Error("Dictionary entries need different, non-empty wrong and right text.");
+      const store = await load();
+      store.transcriptDictionary = mergeTranscriptDictionaryEntries(store.transcriptDictionary, normalized);
+      await save(store);
+      return store.transcriptDictionary.find((candidate) => candidate.wrong === normalized.wrong) ?? normalized;
+    });
+  },
+  async removeTranscriptDictionary(entry) {
+    return serialized(async () => {
+      const store = await load();
+      const removed = store.transcriptDictionary.find(
+        (candidate) => candidate.wrong === entry.wrong && candidate.right === entry.right,
+      ) ?? null;
+      store.transcriptDictionary = removeTranscriptDictionaryEntry(store.transcriptDictionary, entry);
+      if (removed) await save(store);
+      return removed;
+    });
+  },
   async saveRun(run) {
     await serialized(async () => {
       const store = await load();
@@ -275,6 +308,9 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
     const ideas = (await load()).ideas;
     return [...ideas].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
   },
+  async getIdea(id) {
+    return (await load()).ideas.find((idea) => idea.id === id) ?? null;
+  },
   async saveIdea(idea) {
     await serialized(async () => {
       const store = await load();
@@ -282,11 +318,36 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       await save(store);
     });
   },
+  async saveIdeaStoryboard(id, storyboard, options) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.ideas.findIndex((idea) => idea.id === id);
+      if (index < 0) return null;
+      const updated = attachStoryboard(store.ideas[index], storyboard, options);
+      store.ideas[index] = updated;
+      await save(store);
+      return updated;
+    });
+  },
+  async saveIdeaCover(id, update) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.ideas.findIndex((idea) => idea.id === id);
+      if (index < 0) return null;
+      const updated = applyCoverUpdate(store.ideas[index], update);
+      store.ideas[index] = updated;
+      await save(store);
+      return updated;
+    });
+  },
   async claimIdeaDevelop(id, runId, now) {
     return serialized(async () => {
       const store = await load();
       const index = store.ideas.findIndex((idea) => idea.id === id);
       if (index < 0) return null;
+      if (store.ideas[index].developRunId && store.ideas[index].developRunId !== runId) {
+        throw new DevelopConflictError("This Idea already has a Develop-Lauf in progress.");
+      }
       const claimed = claimDevelop(store.ideas[index], runId, now);
       store.ideas[index] = claimed;
       await save(store);
@@ -319,6 +380,66 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       if (index < 0) return null;
       const moved = moveIdea(store.ideas[index], status, now);
       store.ideas[index] = moved;
+      await save(store);
+      return moved;
+    });
+  },
+  async listScripts(limit = 50) {
+    const scripts = (await load()).scripts;
+    return [...scripts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit);
+  },
+  async getScript(id) {
+    return (await load()).scripts.find((script) => script.id === id) ?? null;
+  },
+  async saveScript(script) {
+    await serialized(async () => {
+      const store = await load();
+      validateScriptWrite(store.scripts.find((existing) => existing.id === script.id) ?? null, script);
+      store.scripts = [script, ...store.scripts.filter((existing) => existing.id !== script.id)].slice(0, MAX_SCRIPTS);
+      await save(store);
+    });
+  },
+  async patchScript(id, patch: ScriptPatch, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.scripts.findIndex((script) => script.id === id);
+      if (index < 0) return null;
+      const patched = patchScript(store.scripts[index], patch, now);
+      store.scripts[index] = patched;
+      await save(store);
+      return patched;
+    });
+  },
+  async claimScriptRun(id, runId, now, options?: ScriptRunClaimOptions) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.scripts.findIndex((script) => script.id === id);
+      if (index < 0) return null;
+      const claimed = claimScriptRun(store.scripts[index], runId, now, options);
+      store.scripts[index] = claimed;
+      await save(store);
+      return claimed;
+    });
+  },
+  async settleScriptRun(id, runId, result) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.scripts.findIndex((script) => script.id === id);
+      if (index < 0) return null;
+      const settled = settleScriptRun(store.scripts[index], runId, result);
+      if (!settled) return null;
+      store.scripts[index] = settled;
+      await save(store);
+      return settled;
+    });
+  },
+  async moveScript(id, status, now) {
+    return serialized(async () => {
+      const store = await load();
+      const index = store.scripts.findIndex((script) => script.id === id);
+      if (index < 0) return null;
+      const moved = moveScript(store.scripts[index], status, now);
+      store.scripts[index] = moved;
       await save(store);
       return moved;
     });
