@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -30,12 +30,12 @@ test("Convex queues at the signal write boundary and settles one claimed result"
   await t.mutation(api.signals.bulkUpsert, { records: [signal] });
   expect(await t.query(api.transcriptAnalyses.list, { signalId: signal.id })).toHaveLength(1);
 
-  const claimed = await t.mutation(api.transcriptAnalyses.claim, {
+  const claimed = await t.mutation(internal.transcriptAnalyses.claimInternal, {
     now: "2026-09-10T10:00:00.000Z",
     claimId: "claim-1",
   });
   expect(claimed?.status).toBe("running");
-  const settled = await t.mutation(api.transcriptAnalyses.settle, {
+  const settled = await t.mutation(internal.transcriptAnalyses.settleInternal, {
     id: first[0].id,
     claimId: "claim-1",
     status: "complete",
@@ -54,11 +54,11 @@ test("Convex atomically reclaims an expired job and rejects the earlier worker",
   const t = convexTest(schema, modules);
   await t.mutation(api.signals.bulkUpsert, { records: [{ ...signal, id: "ig-expired" }] });
   const [queued] = await t.query(api.transcriptAnalyses.list, { signalId: "ig-expired" });
-  await t.mutation(api.transcriptAnalyses.claim, { now: "2026-09-10T10:00:00.000Z", claimId: "old-worker" });
-  expect(await t.mutation(api.transcriptAnalyses.claim, { now: "2026-09-10T10:09:59.999Z", claimId: "early-worker" })).toBeNull();
-  const reclaimed = await t.mutation(api.transcriptAnalyses.claim, { now: "2026-09-10T10:10:00.000Z", claimId: "new-worker" });
+  await t.mutation(internal.transcriptAnalyses.claimInternal, { now: "2026-09-10T10:00:00.000Z", claimId: "old-worker" });
+  expect(await t.mutation(internal.transcriptAnalyses.claimInternal, { now: "2026-09-10T10:09:59.999Z", claimId: "early-worker" })).toBeNull();
+  const reclaimed = await t.mutation(internal.transcriptAnalyses.claimInternal, { now: "2026-09-10T10:10:00.000Z", claimId: "new-worker" });
   expect(reclaimed?.attempts).toBe(2);
-  expect(await t.mutation(api.transcriptAnalyses.settle, {
+  expect(await t.mutation(internal.transcriptAnalyses.settleInternal, {
     id: queued.id,
     claimId: "old-worker",
     status: "complete",
@@ -70,12 +70,12 @@ test("Convex keeps a late result from replacing a newer working copy", async () 
   const t = convexTest(schema, modules);
   await t.mutation(api.signals.bulkUpsert, { records: [{ ...signal, id: "ig-stale" }] });
   const [queued] = await t.query(api.transcriptAnalyses.list, { signalId: "ig-stale" });
-  await t.mutation(api.transcriptAnalyses.claim, { now: "2026-09-10T10:00:00.000Z", claimId: "stale-worker" });
+  await t.mutation(internal.transcriptAnalyses.claimInternal, { now: "2026-09-10T10:00:00.000Z", claimId: "stale-worker" });
   await t.mutation(api.signals.patchTranscript, {
     id: "ig-stale",
     patch: { transcriptWorkingCopy: "Eine neuere Arbeitsfassung.", transcriptUpdatedAt: "2026-09-10T10:00:01.000Z" },
   });
-  expect(await t.mutation(api.transcriptAnalyses.settle, {
+  expect(await t.mutation(internal.transcriptAnalyses.settleInternal, {
     id: queued.id,
     claimId: "stale-worker",
     status: "complete",
@@ -84,4 +84,30 @@ test("Convex keeps a late result from replacing a newer working copy", async () 
   const analyses = await t.query(api.transcriptAnalyses.list, { signalId: "ig-stale" });
   expect(analyses).toHaveLength(2);
   expect(analyses.find((item) => item.id === queued.id)?.status).toBe("running");
+});
+
+test("Convex claims the selected analysis ahead of an older queued job", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.signals.bulkUpsert, { records: [
+    { ...signal, id: "ig-older-selected-test" },
+    { ...signal, id: "ig-selected-test", transcript: "Selected Reel." },
+  ] });
+  const [selected] = await t.query(api.transcriptAnalyses.list, { signalId: "ig-selected-test" });
+  const claimed = await t.mutation(internal.transcriptAnalyses.claimInternal, {
+    now: "2026-09-10T10:00:00.000Z",
+    claimId: "selected-worker",
+    analysisId: selected.id,
+  });
+  expect(claimed?.id).toBe(selected.id);
+  const [older] = await t.query(api.transcriptAnalyses.list, { signalId: "ig-older-selected-test" });
+  expect(older.status).toBe("queued");
+});
+
+test("public worker mutations fail closed without the deployment secret", async () => {
+  const t = convexTest(schema, modules);
+  await expect(t.mutation(api.transcriptAnalyses.claim, {
+    now: "2026-09-10T10:00:00.000Z",
+    claimId: "unauthorized-worker",
+    workerToken: "wrong",
+  })).rejects.toThrow(/not authorized/i);
 });

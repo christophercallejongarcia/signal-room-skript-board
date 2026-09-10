@@ -74,6 +74,7 @@ export type TranscriptAnalysisRunDeps = {
   limit: number;
   chunkSize: number;
   maxChunks: number;
+  analysisId?: string;
 };
 export type TranscriptAnalysisRunResult = { claimed: number; completed: number; failed: number; stale: number };
 
@@ -108,6 +109,7 @@ function defaults(overrides: Partial<TranscriptAnalysisRunDeps>): TranscriptAnal
     limit: Math.min(Math.max(Math.floor(overrides.limit ?? 3), 0), 20),
     chunkSize: Math.max(2, Math.floor(overrides.chunkSize ?? 4_000)),
     maxChunks: Math.min(Math.max(Math.floor(overrides.maxChunks ?? 8), 1), 20),
+    analysisId: overrides.analysisId,
   };
 }
 
@@ -192,7 +194,7 @@ export async function processTranscriptAnalyses(overrides: Partial<TranscriptAna
   const signals = await deps.storage.listSignals();
   for (let index = 0; index < deps.limit; index += 1) {
     const claimId = deps.createId("analysis-worker");
-    const analysis = await deps.storage.claimTranscriptAnalysis(deps.now().toISOString(), claimId);
+    const analysis = await deps.storage.claimTranscriptAnalysis(deps.now().toISOString(), claimId, index === 0 ? deps.analysisId : undefined);
     if (!analysis) break;
     result.claimed += 1;
     const actualClaimId = analysis.claimId ?? claimId;

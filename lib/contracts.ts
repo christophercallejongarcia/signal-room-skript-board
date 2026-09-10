@@ -845,7 +845,7 @@ export interface StorageAdapter {
   /** Idempotently queues the current finished transcript of one Reel. */
   enqueueTranscriptAnalysis(signalId: string, now: string): Promise<TranscriptAnalysis | null>;
   /** Claims the oldest queued or expired analysis job for one local worker. */
-  claimTranscriptAnalysis(now: string, claimId: string): Promise<TranscriptAnalysis | null>;
+  claimTranscriptAnalysis(now: string, claimId: string, analysisId?: string): Promise<TranscriptAnalysis | null>;
   /** Settles only the current claim; stale workers receive null. */
   settleTranscriptAnalysis(id: string, claimId: string, result: SettleTranscriptAnalysis): Promise<TranscriptAnalysis | null>;
   /** Explicitly requeues a failed analysis when its attempt budget allows it. */

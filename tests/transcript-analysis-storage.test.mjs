@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { processTranscriptAnalyses } from "../lib/transcript-analysis-run.ts";
 
 const signal = {
   id: "ig-analysis-1",
@@ -120,3 +121,30 @@ test("file storage rejects a late result after the signal text changes", async (
   }
 });
 
+test("manual worker completes the selected Reel while an older queued Reel stays untouched", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "transcript-analysis-selected-"));
+  const previous = process.cwd();
+  process.chdir(dir);
+  try {
+    const { fileStorage } = await import(`../lib/adapters/storage/file.ts?selected=${Date.now()}`);
+    const older = { ...signal, id: "ig-analysis-older", externalId: "analysis-older", transcript: "Older Reel." };
+    const selectedSignal = { ...signal, id: "ig-analysis-selected", externalId: "analysis-selected", transcript: "Selected Reel." };
+    await fileStorage.saveSignals([older]);
+    await fileStorage.saveSignals([selectedSignal]);
+    const [selected] = await fileStorage.listTranscriptAnalyses({ signalId: selectedSignal.id });
+    const result = await processTranscriptAnalyses({
+      storage: fileStorage,
+      bridge: async () => ({ framework: "none", findings: [] }),
+      now: () => new Date("2026-09-10T10:01:00.000Z"),
+      createId: () => "selected-claim",
+      limit: 1,
+      analysisId: selected.id,
+    });
+    assert.equal(result.completed, 1);
+    assert.equal((await fileStorage.listTranscriptAnalyses({ signalId: selectedSignal.id }))[0].status, "complete");
+    assert.equal((await fileStorage.listTranscriptAnalyses({ signalId: older.id }))[0].status, "queued");
+  } finally {
+    process.chdir(previous);
+    await rm(dir, { recursive: true, force: true });
+  }
+});

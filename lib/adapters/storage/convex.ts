@@ -35,6 +35,12 @@ function isMissingScriptFunction(error: unknown): boolean {
   return message.includes("Could not find public function") && message.includes("scripts:");
 }
 
+function transcriptAnalysisWorkerToken() {
+  const token = process.env.TRANSCRIPT_ANALYSIS_WORKER_TOKEN?.trim();
+  if (!token) throw new Error("TRANSCRIPT_ANALYSIS_WORKER_TOKEN is required for the Convex analysis worker.");
+  return token;
+}
+
 /** The slice a collection pass and the briefing after it touch. Declared once for both callers. */
 export function collectStorageOver(convex: ConvexCaller): ConvexCollectStorage {
   return {
@@ -121,14 +127,15 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
       return (await client.query(anyApi.transcriptAnalyses.list, options)) as TranscriptAnalysis[];
     },
     async enqueueTranscriptAnalysis(signalId, now) {
-      return (await client.mutation(anyApi.transcriptAnalyses.enqueue, { signalId, now })) as TranscriptAnalysis | null;
+      return (await client.mutation(anyApi.transcriptAnalyses.enqueue, { signalId, now, workerToken: transcriptAnalysisWorkerToken() })) as TranscriptAnalysis | null;
     },
-    async claimTranscriptAnalysis(now, claimId) {
-      return (await client.mutation(anyApi.transcriptAnalyses.claim, { now, claimId })) as TranscriptAnalysis | null;
+    async claimTranscriptAnalysis(now, claimId, analysisId) {
+      return (await client.mutation(anyApi.transcriptAnalyses.claim, { now, claimId, workerToken: transcriptAnalysisWorkerToken(), ...(analysisId ? { analysisId } : {}) })) as TranscriptAnalysis | null;
     },
     async settleTranscriptAnalysis(id, claimId, result: SettleTranscriptAnalysis) {
       return (await client.mutation(anyApi.transcriptAnalyses.settle, {
         id,
+        workerToken: transcriptAnalysisWorkerToken(),
         claimId,
         status: result.status,
         now: result.now,
@@ -142,7 +149,7 @@ export function createConvexStorage(url: string): StorageAdapter & { upsertCreat
     },
     async retryTranscriptAnalysis(id, now) {
       try {
-        return (await client.mutation(anyApi.transcriptAnalyses.retry, { id, now })) as TranscriptAnalysis | null;
+        return (await client.mutation(anyApi.transcriptAnalyses.retry, { id, now, workerToken: transcriptAnalysisWorkerToken() })) as TranscriptAnalysis | null;
       } catch (error) {
         const data = error instanceof ConvexError ? (error.data as { message?: string }) : null;
         throw new Error(data?.message ?? (error instanceof Error ? error.message : "Transcript analysis retry failed."));

@@ -258,7 +258,7 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       return analysis;
     });
   },
-  async claimTranscriptAnalysis(now, claimId) {
+  async claimTranscriptAnalysis(now, claimId, analysisId) {
     return serialized(async () => {
       const store = await load();
       const nowMs = Date.parse(now);
@@ -277,6 +277,7 @@ export const fileStorage: StorageAdapter & { upsertCreator(creator: Creator): Pr
       }
       const candidate = [...store.transcriptAnalyses]
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .filter((analysis) => !analysisId || analysis.id === analysisId)
         .find((analysis) => (
           analysis.attempts < TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS
           && (analysis.status === "queued" || (analysis.status === "running" && Number.isFinite(Date.parse(analysis.claimExpiresAt ?? "")) && Date.parse(analysis.claimExpiresAt!) <= nowMs))

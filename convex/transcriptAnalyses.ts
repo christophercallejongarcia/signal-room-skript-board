@@ -1,4 +1,4 @@
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { env, internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { analysisText, createTranscriptAnalysis, hashTranscriptText, validateTranscriptAnalysisSettlement, TRANSCRIPT_ANALYSIS_CLAIM_TIMEOUT_MS, TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS } from "../lib/transcript-analysis";
 import { transcriptAnalysisChunkFields, transcriptAnalysisFields, transcriptAnalysisFindingFields } from "./schema";
@@ -14,6 +14,11 @@ async function findSignal(ctx: MutationCtx, id: string) {
 
 async function findAnalysis(ctx: MutationCtx, id: string) {
   return ctx.db.query("transcriptAnalyses").withIndex("by_external_id", (q) => q.eq("id", id)).unique();
+}
+
+function requireWorker(workerToken: string) {
+  const expected = env.TRANSCRIPT_ANALYSIS_WORKER_TOKEN;
+  if (!expected || workerToken !== expected) throw new ConvexError({ kind: "unauthorized", message: "Transcript analysis worker is not authorized." });
 }
 
 /** Shared write boundary for automatic, manual and catch-up transcript paths. */
@@ -39,6 +44,15 @@ export const list = query({
 });
 
 export const enqueue = mutation({
+  args: { signalId: v.string(), now: v.string(), workerToken: v.string() },
+  handler: async (ctx, { signalId, now, workerToken }) => {
+    requireWorker(workerToken);
+    const signal = await findSignal(ctx, signalId);
+    return signal ? enqueueForSignal(ctx, signal, now) : null;
+  },
+});
+
+export const enqueueInternal = internalMutation({
   args: { signalId: v.string(), now: v.string() },
   handler: async (ctx, { signalId, now }) => {
     const signal = await findSignal(ctx, signalId);
@@ -46,47 +60,61 @@ export const enqueue = mutation({
   },
 });
 
-export const claim = mutation({
-  args: { now: v.string(), claimId: v.string() },
-  handler: async (ctx, { now, claimId }) => {
-    const nowMs = Date.parse(now);
-    if (!Number.isFinite(nowMs)) throw new Error("now must be an ISO date.");
-    const [queued, running] = await Promise.all([
-      ctx.db.query("transcriptAnalyses").withIndex("by_status_createdAt", (q) => q.eq("status", "queued")).order("asc").take(100),
-      ctx.db.query("transcriptAnalyses").withIndex("by_status_createdAt", (q) => q.eq("status", "running")).order("asc").take(100),
-    ]);
-    for (const analysis of running) {
-      if (analysis.attempts >= TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS && Date.parse(analysis.claimExpiresAt ?? "") <= nowMs) {
-        await ctx.db.patch(analysis._id, {
-          status: "failed",
-          error: "The analysis attempt limit was reached after an expired claim.",
-          claimId: undefined,
-          claimedAt: undefined,
-          claimExpiresAt: undefined,
-        });
-      }
+async function claimJob(ctx: MutationCtx, args: { now: string; claimId: string; analysisId?: string }) {
+  const { now, claimId, analysisId } = args;
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(nowMs)) throw new Error("now must be an ISO date.");
+  const [queued, running] = analysisId
+    ? await (async () => {
+        const selected = await findAnalysis(ctx, analysisId);
+        return [selected?.status === "queued" ? [selected] : [], selected?.status === "running" ? [selected] : []] as const;
+      })()
+    : await Promise.all([
+        ctx.db.query("transcriptAnalyses").withIndex("by_status_createdAt", (q) => q.eq("status", "queued")).order("asc").take(100),
+        ctx.db.query("transcriptAnalyses").withIndex("by_status_createdAt", (q) => q.eq("status", "running")).order("asc").take(100),
+      ]);
+  for (const analysis of running) {
+    if (analysis.attempts >= TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS && Date.parse(analysis.claimExpiresAt ?? "") <= nowMs) {
+      await ctx.db.patch(analysis._id, {
+        status: "failed",
+        error: "The analysis attempt limit was reached after an expired claim.",
+        claimId: undefined,
+        claimedAt: undefined,
+        claimExpiresAt: undefined,
+      });
     }
-    const candidate = [...queued, ...running]
-      .filter((analysis) => analysis.attempts < TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS)
-      .filter((analysis) => analysis.status === "queued" || (Date.parse(analysis.claimExpiresAt ?? "") <= nowMs))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-    if (!candidate) return null;
-    const claimed = {
-      status: "running" as const,
-      attempts: candidate.attempts + 1,
-      claimedAt: now,
-      claimExpiresAt: new Date(nowMs + TRANSCRIPT_ANALYSIS_CLAIM_TIMEOUT_MS).toISOString(),
-      claimId,
-      error: undefined,
-    };
-    await ctx.db.patch(candidate._id, claimed);
-    const row = await ctx.db.get(candidate._id);
-    return row ? publicRow(row) : null;
+  }
+  const candidate = [...queued, ...running]
+    .filter((analysis) => analysis.attempts < TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS)
+    .filter((analysis) => analysis.status === "queued" || (Date.parse(analysis.claimExpiresAt ?? "") <= nowMs))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  if (!candidate) return null;
+  await ctx.db.patch(candidate._id, {
+    status: "running",
+    attempts: candidate.attempts + 1,
+    claimedAt: now,
+    claimExpiresAt: new Date(nowMs + TRANSCRIPT_ANALYSIS_CLAIM_TIMEOUT_MS).toISOString(),
+    claimId,
+    error: undefined,
+  });
+  const row = await ctx.db.get(candidate._id);
+  return row ? publicRow(row) : null;
+}
+
+export const claim = mutation({
+  args: { now: v.string(), claimId: v.string(), analysisId: v.optional(v.string()), workerToken: v.string() },
+  handler: async (ctx, args) => {
+    requireWorker(args.workerToken);
+    return claimJob(ctx, args);
   },
 });
 
-export const settle = mutation({
-  args: {
+export const claimInternal = internalMutation({
+  args: { now: v.string(), claimId: v.string(), analysisId: v.optional(v.string()) },
+  handler: claimJob,
+});
+
+const settleArgs = {
     id: v.string(),
     claimId: v.string(),
     status: v.union(v.literal("complete"), v.literal("failed")),
@@ -97,8 +125,20 @@ export const settle = mutation({
     textLength: v.optional(v.number()),
     complete: v.optional(v.boolean()),
     error: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function settleJob(ctx: MutationCtx, args: {
+  id: string;
+  claimId: string;
+  status: "complete" | "failed";
+  now: string;
+  framework?: "pas" | "bbb" | "none";
+  findings?: Array<{ feature: "hook" | "tension" | "loop" | "proof" | "example" | "transition" | "rhythm" | "cta"; explanation: string; quote: string; start: number; end: number; timecode?: { start: number; end: number } }>;
+  chunks?: Array<{ index: number; start: number; end: number; status: "complete" | "missing" }>;
+  textLength?: number;
+  complete?: boolean;
+  error?: string;
+}) {
     const analysis = await findAnalysis(ctx, args.id);
     if (!analysis || analysis.claimId !== args.claimId) return null;
     const signal = await findSignal(ctx, analysis.signalId);
@@ -119,12 +159,22 @@ export const settle = mutation({
     });
     const row = await ctx.db.get(analysis._id);
     return row ? publicRow(row) : null;
+}
+
+export const settle = mutation({
+  args: { ...settleArgs, workerToken: v.string() },
+  handler: async (ctx, args) => {
+    requireWorker(args.workerToken);
+    return settleJob(ctx, args);
   },
 });
 
-export const retry = mutation({
-  args: { id: v.string(), now: v.string() },
-  handler: async (ctx, { id, now }) => {
+export const settleInternal = internalMutation({
+  args: settleArgs,
+  handler: settleJob,
+});
+
+async function retryJob(ctx: MutationCtx, { id, now }: { id: string; now: string }) {
     const analysis = await findAnalysis(ctx, id);
     if (!analysis) return null;
     if (analysis.status !== "failed") throw new ConvexError({ kind: "analysis-retry", reason: "status", message: "Only failed analyses can be retried." });
@@ -141,5 +191,17 @@ export const retry = mutation({
     });
     const row = await ctx.db.get(analysis._id);
     return row ? publicRow(row) : null;
+}
+
+export const retry = mutation({
+  args: { id: v.string(), now: v.string(), workerToken: v.string() },
+  handler: async (ctx, args) => {
+    requireWorker(args.workerToken);
+    return retryJob(ctx, args);
   },
+});
+
+export const retryInternal = internalMutation({
+  args: { id: v.string(), now: v.string() },
+  handler: retryJob,
 });

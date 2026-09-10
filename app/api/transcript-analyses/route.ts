@@ -36,13 +36,13 @@ export async function POST(request: Request) {
     if (action.action === "retry") {
       const analysis = await storage.retryTranscriptAnalysis(action.analysisId, new Date().toISOString());
       if (!analysis) return NextResponse.json({ error: `unknown analysis ${action.analysisId}` }, { status: 404 });
-      await processTranscriptAnalyses({ storage, limit: 1 });
+      await processTranscriptAnalyses({ storage, limit: 1, analysisId: analysis.id });
       return NextResponse.json({ analyses: await storage.listTranscriptAnalyses({ signalId: analysis.signalId, limit: 20 }) });
     }
 
     const analysis = await storage.enqueueTranscriptAnalysis(action.signalId, new Date().toISOString());
     if (!analysis) return NextResponse.json({ error: `unknown or unfinished Reel ${action.signalId}` }, { status: 409 });
-    await processTranscriptAnalyses({ storage, limit: 1 });
+    await processTranscriptAnalyses({ storage, limit: 1, analysisId: analysis.id });
     return NextResponse.json({ analyses: await storage.listTranscriptAnalyses({ signalId: action.signalId, limit: 20 }) });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: 502 });

@@ -99,6 +99,8 @@ The Reel view also queues finished transcripts for a bounded content-analysis wo
 
 Run one bounded local worker batch with `npm run worker:transcript-analysis`. An optional numeric argument such as `npm run worker:transcript-analysis -- 5` changes the batch size up to 20.
 
+Queue up to 20 older finished transcripts before that worker pass with `curl -X POST http://localhost:3000/api/transcript-analyses -H 'content-type: application/json' -d '{"action":"catch-up","limit":20}'`. Convex mode also requires the same random `TRANSCRIPT_ANALYSIS_WORKER_TOKEN` in `.env.local` and the Convex deployment. The token remains server-side.
+
 - binds to localhost only
 - allows configured browser origins only
 - caps request bodies at 64 KB
