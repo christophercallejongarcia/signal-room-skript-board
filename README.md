@@ -42,7 +42,7 @@ The contracts are the deliberate seam. The interface can remain recognizable whi
 
 ## Quick start
 
-Requirements: Node.js 20 or newer and npm.
+Requirements: Node.js 22.18 or newer and npm. CI uses Node.js 22 so the test runner can import TypeScript directly.
 
 ```bash
 git clone https://github.com/earlyaidopters/signal-room-starter.git

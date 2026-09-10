@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import {
   buildScriptLintPrompt,
   resolveSlopCheckRoot,
@@ -30,9 +31,9 @@ test("the Lektorat schema requires bounded reviewable suggestions", () => {
   assert.equal(schema.additionalProperties, false);
 });
 
-test("the Bridge reads the installed .agents skill and carries both Slop stages", () => {
+test("the Bridge uses the repository's Slop rules without a machine-local skill installation", () => {
   const root = resolveSlopCheckRoot();
-  assert.match(root, /\.agents[\\/]skills[\\/]slop-check$/);
+  assert.equal(root, fileURLToPath(new URL("../.agents/skills/slop-check", import.meta.url)));
   assert.doesNotMatch(root, /\.Codex[\\/]skills/);
   const prompt = buildScriptLintPrompt(validateScriptLintRequest(valid));
   for (const phrase of ["REGEX-STUFE", "MODELL-STUFE", "SD-28", "Modalpartikeln", "untrusted source text", "Viele Workflows"]) {
