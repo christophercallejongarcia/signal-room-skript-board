@@ -3,6 +3,8 @@
 import {
   ArrowCounterClockwise,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
   ArrowsClockwise,
   Binoculars,
   BookmarkSimple,
@@ -1064,6 +1066,12 @@ function NetworkToggle({ network, onNetwork }: { network: Network; onNetwork: (n
   );
 }
 
+const DISCOVER_SORTS = {
+  date: { asc: "oldest", desc: "newest" },
+  outlier: { asc: "outlier-asc", desc: "outlier" },
+  views: { asc: "views-asc", desc: "views" },
+} satisfies Record<string, Record<"asc" | "desc", DiscoverSort>>;
+
 function DiscoverView({
   rankedSignals,
   creators,
@@ -1092,7 +1100,9 @@ function DiscoverView({
   const [view, setView] = useState<DiscoverViewMode>("all");
   const [published, setPublished] = useState<PublishedWindow>("90");
   const [channel, setChannel] = useState("all");
-  const [sort, setSort] = useState<DiscoverSort>("newest");
+  const [sortBy, setSortBy] = useState<keyof typeof DISCOVER_SORTS>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const sort = DISCOVER_SORTS[sortBy][sortDirection];
   const [perPage, setPerPage] = useState(24);
   const [cols, setCols] = useState(4);
 
@@ -1171,17 +1181,6 @@ function DiscoverView({
           </select>
         </div>
         <div>
-          <label htmlFor="f-sort">Sort by</label>
-          <select id="f-sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="outlier">Multiplier: high to low</option>
-            <option value="outlier-asc">Multiplier: low to high</option>
-            <option value="views">Most {isIg ? "plays" : "views"}</option>
-            <option value="views-asc">Fewest {isIg ? "plays" : "views"}</option>
-          </select>
-        </div>
-        <div>
           <label htmlFor="f-threshold">Outlier threshold</label>
           <select id="f-threshold" value={threshold} onChange={(e) => onThreshold(Number(e.target.value) as OutlierThreshold)}>
             {OUTLIER_THRESHOLDS.map((value) => (
@@ -1201,6 +1200,32 @@ function DiscoverView({
           <strong>{filtered.length}</strong>
           <span>matches</span>
         </div>
+      </section>
+
+      <section className="discover-sort" aria-label="Sortierung">
+        <div className="discover-sort-field">
+          <label htmlFor="f-sort">Sortieren nach</label>
+          <select id="f-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)}>
+            <option value="date">Datum</option>
+            <option value="outlier">Multiplikator</option>
+            <option value="views">{isIg ? "Plays" : "Views"}</option>
+          </select>
+        </div>
+        <div className="view-toggle" role="group" aria-label="Sortierrichtung">
+          <button type="button" className={sortDirection === "asc" ? "active" : ""} aria-pressed={sortDirection === "asc"} onClick={() => setSortDirection("asc")}>
+            <ArrowUp size={16} aria-hidden="true" /> Aufsteigend
+          </button>
+          <button type="button" className={sortDirection === "desc" ? "active" : ""} aria-pressed={sortDirection === "desc"} onClick={() => setSortDirection("desc")}>
+            <ArrowDown size={16} aria-hidden="true" /> Absteigend
+          </button>
+        </div>
+        <span className="discover-sort-hint" role="status">
+          {sortBy === "date"
+            ? sortDirection === "asc" ? "Älteste zuerst" : "Neueste zuerst"
+            : sortBy === "outlier"
+              ? sortDirection === "asc" ? "Kleinste Multiplikatoren zuerst" : "Größte Multiplikatoren zuerst"
+              : sortDirection === "asc" ? "Wenigste Aufrufe zuerst" : "Meiste Aufrufe zuerst"}
+        </span>
       </section>
 
       <DiscoverFeed key={feedKey} signals={filtered} batchSize={perPage} controls={

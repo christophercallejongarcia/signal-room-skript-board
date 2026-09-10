@@ -335,6 +335,30 @@ main {
   font-size: 12px;
 }
 
+.discover-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-soft);
+}
+.discover-sort-field { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.discover-sort-field label, .discover-sort-hint { color: var(--muted); font-size: 12px; }
+.discover-sort-field select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.discover-sort .view-toggle button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.discover-sort .view-toggle button.active { background: var(--accent); color: var(--page); }
+
 .results-row {
   display: flex;
   align-items: center;

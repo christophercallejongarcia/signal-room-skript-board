@@ -21,6 +21,7 @@ The desk is one client shell (`components/signal-room.tsx`) with nine tabs; it o
 
 ### Discover feed
 
+The visible sorting bar separates the criterion (date, audience multiplier, or plays/views) from the `Aufsteigend` and `Absteigend` buttons. The selected direction stays active when the criterion changes, and a plain-language hint describes the resulting order. These controls reuse the existing global sort before revealing batches.
 Discover filters the complete loaded corpus through `filterDiscover` and sorts all matches through `sortDiscover` before rendering. Date, plays (falling back to views), and audience multiplier each support both directions; equal values are ordered by newest publication and canonical Signal id. `components/discover-feed.tsx` reveals 12, 24, or 48 additional cards when its footer approaches the viewport, with a manual load button when automatic observation is unavailable. There is no fixed total-card limit. Network, view, date window, creator, sort, threshold, or batch-size changes reset the visible batch; changing the column count or updating a saved mark preserves it. The counter reports visible versus matching Signals, and the footer identifies completion. This is incremental rendering of the existing browser snapshot, not server pagination: it adds no provider request, storage write, credential, or new trust boundary. Existing snapshot loading and error handling remain in the shell; an empty filtered feed retains its empty state.
 
 ## Domain model
