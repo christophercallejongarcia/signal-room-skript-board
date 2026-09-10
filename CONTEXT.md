@@ -163,6 +163,22 @@ Nicht: "Prompt", "Instruktion", "Feedback", "Direction" (nur als Feldname und en
 
 ## Ergänzende Begriffe
 
+**TranscriptAnalysis**
+Die gespeicherte Inhaltsanalyse eines fertigen Reel-Transkripts. Sie referenziert Signal, Textfassung, Text-Hash, Analyseversion und Lauf. PAS oder BBB sowie Hook, Spannung, offene Schleifen, Beweise, Beispiele, Übergänge, Rhythmus und CTA werden nur mit wörtlichen Fundstellen und Zeichenpositionen gespeichert. BBB bedeutet Behaupten, Begründen, Beispiel.
+Nicht: "Format Signal", "Caption-Analyse", "Zusammenfassung".
+
+**Textfassung**
+Der genaue Text, den eine TranscriptAnalysis geprüft hat. Eine vorhandene Arbeitsfassung hat Vorrang vor dem unveränderten Original. Ändert sich die bevorzugte Fassung oder ihr Hash, bleibt das frühere Ergebnis lesbar und wird als veraltet angezeigt. Zeitmarken erscheinen nur, wenn eine Fundstelle eindeutig auf ein Segment des Originals zurückgeführt werden kann.
+Nicht: "Version" ohne Bezug zum Text, "bereinigtes Original".
+
+**Analyse-Claim**
+Die atomare, zeitlich begrenzte Reservierung eines vorgemerkten Analysejobs durch den lokalen Worker. Ein manueller Lauf beansprucht die ausgewählte Analyse-ID; ein Batch beansprucht den ältesten verfügbaren Job. Ein abgelaufener Claim darf bis zum Versuchslimit übernommen werden. Claim-ID und Text-Hash verhindern, dass ein verspätetes Ergebnis eine neuere Fassung ersetzt.
+Nicht: "Transkript-Claim", "Lock".
+
+**Teilabdeckung**
+Eine gespeicherte Analyse, bei der das Zeichenlimit nicht alle Textteile erreicht hat. Geprüfte und fehlende Chunks bleiben sichtbar; `complete: false` verhindert, dass sie als vollständige Volltextanalyse zählt.
+Nicht: "fertige Vollanalyse", "stille Kürzung".
+
 **Skript**
 Ein eigenes Produktionsobjekt in der Tabelle `scripts`, verbunden mit einer Idea, einem optionalen Quell-Reel und weiteren Belegen. Das Skript beginnt in `hook-selection`, trägt Hook-Optionen und Abschnitte und bleibt vom Storyboard getrennt. Der Hauptbereich ist der `Scripts`-Tab, einzelne Skripte liegen unter `/script/<id>`. Der Text wird im Store gehalten und nie in den Vault oder in Git geschrieben. Ein freigegebenes Skript ist bis zum bewussten Wiederöffnen unveränderlich.
 Nicht: "Storyboard", "Outline", "Shotlist", "Konzept".
