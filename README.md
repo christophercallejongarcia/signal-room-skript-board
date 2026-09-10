@@ -109,7 +109,11 @@ The Reel view also queues finished transcripts for a bounded content-analysis wo
 
 Run one bounded local worker batch with `npm run worker:transcript-analysis`. An optional numeric argument such as `npm run worker:transcript-analysis -- 5` changes the batch size up to 20.
 
-Queue up to 20 older finished transcripts before that worker pass with `curl -X POST http://localhost:3000/api/transcript-analyses -H 'content-type: application/json' -d '{"action":"catch-up","limit":20}'`. Convex mode also requires the same random `TRANSCRIPT_ANALYSIS_WORKER_TOKEN` in `.env.local` and the Convex deployment. The token remains server-side.
+Queue up to 20 older finished transcripts before that worker pass with `curl -X POST http://localhost:3000/api/transcript-analyses -H 'content-type: application/json' -d '{"action":"catch-up","limit":20}'`. One request checks at most 1,000 finished Reels. If the response contains `nextCursor`, repeat the request with that value as `cursor` to continue after the last inspected Signal. Convex mode also requires the same random `TRANSCRIPT_ANALYSIS_WORKER_TOKEN` in `.env.local` and the Convex deployment. The token remains server-side.
+
+```bash
+curl -X POST http://localhost:3000/api/transcript-analyses -H 'content-type: application/json' -d '{"action":"catch-up","limit":20,"cursor":"ig-last-inspected"}'
+```
 
 The SDK uses the authentication context available to the local Codex CLI process. See the [official Codex documentation](https://developers.openai.com/codex/) for current setup guidance.
 

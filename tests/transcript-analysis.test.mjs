@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chunkTranscript, createTranscriptAnalysis, hashTranscriptText, parseTranscriptAnalysisAction, parseTranscriptAnalysisResponse, transcriptAnalysisView, timecodeForFinding, validateTranscriptAnalysisSettlement } from "../lib/transcript-analysis.ts";
-import { enqueueTranscriptAnalyses } from "../lib/transcript-analysis-run.ts";
+import { enqueueTranscriptAnalyses, TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT } from "../lib/transcript-analysis-run.ts";
 
 test("hashes the exact transcript text with SHA-256", () => {
   assert.equal(
@@ -112,9 +112,52 @@ test("bounded catch-up skips existing analyses without starving later unfinished
   assert.equal(result.existing, 2);
 });
 
+test("catch-up bounds lookup work and continues after its last inspected Signal", async () => {
+  const signals = Array.from({ length: TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT + 2 }, (_, index) => ({
+    id: `page-${String(index).padStart(4, "0")}`,
+    format: "reel",
+    transcript: `Transcript ${index}`,
+    transcriptStatus: "ready",
+  }));
+  const existing = new Map(signals.slice(0, -1).map((signal) => {
+    const analysis = createTranscriptAnalysis(signal, "2026-09-09T10:00:00.000Z", `run-${signal.id}`);
+    return [analysis.id, analysis];
+  }));
+  let lookups = 0;
+  const storage = {
+    async listSignals() { return signals; },
+    async listTranscriptAnalyses({ analysisId }) {
+      lookups += 1;
+      return existing.has(analysisId) ? [existing.get(analysisId)] : [];
+    },
+    async enqueueTranscriptAnalysis(signalId, now) {
+      return createTranscriptAnalysis(signals.find((signal) => signal.id === signalId), now, `run-${signalId}`);
+    },
+  };
+
+  const first = await enqueueTranscriptAnalyses(storage, { now: new Date("2026-09-10T10:00:00.000Z"), limit: 1 });
+  assert.equal(first.queued, 0);
+  assert.equal(first.nextCursor, `page-${String(TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT - 1).padStart(4, "0")}`);
+  assert.equal(lookups, TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT);
+
+  const second = await enqueueTranscriptAnalyses(storage, {
+    now: new Date("2026-09-10T10:01:00.000Z"),
+    limit: 1,
+    cursor: first.nextCursor,
+  });
+  assert.deepEqual(second.analyses.map((analysis) => analysis.signalId), [`page-${String(TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT + 1).padStart(4, "0")}`]);
+  assert.equal(second.nextCursor, undefined);
+  assert.equal(lookups, TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT + 2);
+  await assert.rejects(
+    enqueueTranscriptAnalyses(storage, { limit: 1, cursor: "missing-cursor" }),
+    /cursor/i,
+  );
+});
+
 test("API actions validate signal ids, bounded catch-up and explicit retries", () => {
   assert.deepEqual(parseTranscriptAnalysisAction({ action: "run", signalId: " reel-1 " }), { action: "run", signalId: "reel-1" });
   assert.deepEqual(parseTranscriptAnalysisAction({ action: "catch-up", limit: 8 }), { action: "catch-up", limit: 8 });
+  assert.deepEqual(parseTranscriptAnalysisAction({ action: "catch-up", limit: 8, cursor: " reel-500 " }), { action: "catch-up", limit: 8, cursor: "reel-500" });
   assert.deepEqual(parseTranscriptAnalysisAction({ action: "retry", analysisId: "analysis-1" }), { action: "retry", analysisId: "analysis-1" });
   assert.throws(() => parseTranscriptAnalysisAction({ action: "catch-up", limit: 0 }), /limit/i);
   assert.throws(() => parseTranscriptAnalysisAction({ action: "retry" }), /analysisId/i);

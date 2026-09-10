@@ -15,35 +15,47 @@ import {
 import type { SignalRecord, StorageAdapter, TranscriptAnalysis, TranscriptAnalysisFinding, TranscriptAnalysisChunkState, TranscriptAnalysisStatus } from "./contracts.ts";
 
 export type TranscriptAnalysisQueueStorage = Pick<StorageAdapter, "listSignals" | "listTranscriptAnalyses" | "enqueueTranscriptAnalysis">;
-export type TranscriptAnalysisQueueResult = { queued: number; existing: number; skipped: number; analyses: TranscriptAnalysis[] };
+export type TranscriptAnalysisQueueResult = { queued: number; existing: number; skipped: number; analyses: TranscriptAnalysis[]; nextCursor?: string };
+export const TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT = 1_000;
 
 export async function enqueueTranscriptAnalyses(
   storage: TranscriptAnalysisQueueStorage,
-  options: { now?: Date; limit?: number } = {},
+  options: { now?: Date; limit?: number; cursor?: string } = {},
 ): Promise<TranscriptAnalysisQueueResult> {
   const now = (options.now ?? new Date()).toISOString();
   const limit = Math.min(Math.max(Math.floor(options.limit ?? 20), 0), 100);
   const signals = await storage.listSignals();
   const candidates = signals.filter((signal) => signal.format === "reel" && isFinishedTranscript(signal));
+  const cursorIndex = options.cursor ? candidates.findIndex((signal) => signal.id === options.cursor) : -1;
+  if (options.cursor && cursorIndex < 0) throw new TranscriptAnalysisRequestError("The catch-up cursor does not match a finished Reel.");
+  const startIndex = cursorIndex + 1;
   const analyses: TranscriptAnalysis[] = [];
   let existing = 0;
-  for (const signal of candidates) {
+  let inspected = 0;
+  let nextCursor: string | undefined;
+  for (let index = startIndex; index < candidates.length; index += 1) {
+    if (analyses.length >= limit || inspected >= TRANSCRIPT_ANALYSIS_CATCH_UP_INSPECTION_LIMIT) {
+      nextCursor = candidates[index - 1]?.id ?? options.cursor;
+      break;
+    }
+    const signal = candidates[index];
     const prospective = createTranscriptAnalysis(signal, now);
     if (!prospective) continue;
+    inspected += 1;
     const [existingAnalysis] = await storage.listTranscriptAnalyses({ analysisId: prospective.id, limit: 1 });
     if (existingAnalysis) {
       existing += 1;
       continue;
     }
-    if (analyses.length >= limit) break;
     const analysis = await storage.enqueueTranscriptAnalysis(signal.id, now);
     if (analysis) analyses.push(analysis);
   }
   return {
     queued: analyses.length,
     existing,
-    skipped: Math.max(0, candidates.length - analyses.length - existing),
+    skipped: Math.max(0, candidates.length - startIndex - analyses.length - existing),
     analyses,
+    ...(nextCursor ? { nextCursor } : {}),
   };
 }
 

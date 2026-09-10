@@ -17,3 +17,13 @@ test("analysis API rejects unbounded worker commands before storage or Bridge ac
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /limit/i);
 });
+
+test("analysis API rejects a catch-up cursor outside the current finished-Reel snapshot", async () => {
+  const response = await POST(new Request("http://localhost/api/transcript-analyses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "catch-up", limit: 1, cursor: "missing-reel" }),
+  }));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /cursor/i);
+});

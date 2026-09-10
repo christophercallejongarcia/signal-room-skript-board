@@ -257,13 +257,17 @@ export function timecodeForFinding(
 export type TranscriptAnalysisAction =
   | { action: "run"; signalId: string }
   | { action: "retry"; analysisId: string }
-  | { action: "catch-up"; limit: number }
+  | { action: "catch-up"; limit: number; cursor?: string }
   | { action: "process"; limit: number };
 
 function requiredId(value: unknown, name: string) {
   const id = typeof value === "string" ? value.trim().slice(0, 240) : "";
   if (!id) throw new Error(`${name} is required.`);
   return id;
+}
+
+function optionalId(value: unknown, name: string) {
+  return value === undefined ? undefined : requiredId(value, name);
 }
 
 function boundedLimit(value: unknown, fallback: number) {
@@ -278,7 +282,10 @@ export function parseTranscriptAnalysisAction(value: unknown): TranscriptAnalysi
   const input = value as Record<string, unknown>;
   if (input.action === "run") return { action: "run", signalId: requiredId(input.signalId, "signalId") };
   if (input.action === "retry") return { action: "retry", analysisId: requiredId(input.analysisId, "analysisId") };
-  if (input.action === "catch-up") return { action: "catch-up", limit: boundedLimit(input.limit, 20) };
+  if (input.action === "catch-up") {
+    const cursor = optionalId(input.cursor, "cursor");
+    return { action: "catch-up", limit: boundedLimit(input.limit, 20), ...(cursor ? { cursor } : {}) };
+  }
   if (input.action === "process") return { action: "process", limit: boundedLimit(input.limit, 3) };
   throw new Error("action must be run, retry, catch-up or process.");
 }

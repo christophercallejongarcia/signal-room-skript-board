@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server.js";
 import { getStorage } from "../../../lib/adapters/storage/index.ts";
-import { enqueueTranscriptAnalyses, processTranscriptAnalyses } from "../../../lib/transcript-analysis-run.ts";
+import { enqueueTranscriptAnalyses, processTranscriptAnalyses, TranscriptAnalysisRequestError } from "../../../lib/transcript-analysis-run.ts";
 import { parseTranscriptAnalysisAction } from "../../../lib/transcript-analysis.ts";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   const storage = getStorage();
   try {
     if (action.action === "catch-up") {
-      return NextResponse.json(await enqueueTranscriptAnalyses(storage, { limit: action.limit }));
+      return NextResponse.json(await enqueueTranscriptAnalyses(storage, { limit: action.limit, cursor: action.cursor }));
     }
     if (action.action === "process") {
       return NextResponse.json(await processTranscriptAnalyses({ storage, limit: action.limit }));
@@ -45,6 +45,6 @@ export async function POST(request: Request) {
     await processTranscriptAnalyses({ storage, limit: 1, analysisId: analysis.id });
     return NextResponse.json({ analyses: await storage.listTranscriptAnalyses({ signalId: action.signalId, limit: 20 }) });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: 502 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: error instanceof TranscriptAnalysisRequestError ? 400 : 502 });
   }
 }
