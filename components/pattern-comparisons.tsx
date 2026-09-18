@@ -20,7 +20,7 @@ function EvidenceGroup({ title, ids, evidence, signals, creators, onOpen }: { ti
   const handles = [...new Set(rows.map(({ signal }) => creators.find((creator) => creator.id === signal.creatorId)?.handle).filter(Boolean))];
   return <div className="pattern-sample"><h4>{title} <span>{rows.length}</span></h4>{handles.length > 0 && <p className="pattern-creators">{handles.join(" · ")}</p>}{rows.length === 0 ? <p className="pattern-empty">Keine geprüften Reels.</p> : <ul>{rows.map(({ item, signal }) => <li key={item.id}>
     <div><strong>{signal.title}</strong>{signal.url && <a href={signal.url} target="_blank" rel="noreferrer" aria-label="Reel öffnen"><ArrowSquareOut size={13} /></a>}</div>
-    <small>{item.outlier?.toFixed(2)}x Outlier · {item.explanation}</small>
+    <small>{signal.id} · {item.outlier === undefined ? "Outlier unbekannt" : `${item.outlier.toFixed(2)}x Outlier`} · {item.explanation}</small>
     {item.quote && <blockquote>„{item.quote}“</blockquote>}
     {item.verdict === "unknown" && <button className="ghost-button" onClick={() => onOpen(signal.id)}>Reel öffnen und transkribieren</button>}
   </li>)}</ul>}</div>;

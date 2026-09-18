@@ -15,7 +15,7 @@ export const list = query({
     return Promise.all(runs.map(async (run) => {
       const [pattern, evidence] = await Promise.all([
         ctx.db.query("patterns").withIndex("by_external_id", (q) => q.eq("id", run.patternId)).unique(),
-        ctx.db.query("patternEvidence").withIndex("by_run", (q) => q.eq("runId", run.id)).take(100),
+        ctx.db.query("patternEvidence").withIndex("by_runId", (q) => q.eq("runId", run.id)).take(100),
       ]);
       return pattern ? { pattern: publicRow(pattern), run: publicRow(run), evidence: evidence.map(publicRow) } : null;
     })).then((items) => items.filter((item) => item !== null));
@@ -39,7 +39,7 @@ async function saveComparison(ctx: MutationCtx, args: SavePatternComparison) {
   }
   const pattern = await ctx.db.query("patterns").withIndex("by_external_id", (q) => q.eq("id", args.pattern.id)).unique();
   const run = await ctx.db.query("patternComparisonRuns").withIndex("by_external_id", (q) => q.eq("id", args.run.id)).unique();
-  const evidence = await ctx.db.query("patternEvidence").withIndex("by_run", (q) => q.eq("runId", args.run.id)).take(100);
+  const evidence = await ctx.db.query("patternEvidence").withIndex("by_runId", (q) => q.eq("runId", args.run.id)).take(100);
   if (!pattern || !run) throw new Error("Pattern comparison could not be stored.");
   return { pattern: publicRow(pattern), run: publicRow(run), evidence: evidence.map(publicRow) };
 }

@@ -2,7 +2,7 @@ import type { PatternEvidence, SavePatternComparison } from "./contracts";
 
 function evidence(runId: string, patternId: string, verdict: "present" | "absent", index: number): PatternEvidence {
   const position = verdict === "present" ? index : index + 5;
-  return { id: `${runId}:${position}`, patternId, runId, signalId: `signal-pattern-${verdict}-${index}`, analysisId: `demo-analysis-${position}`, verdict, explanation: verdict === "present" ? "Konkreter Ergebnisbeleg steht vor dem CTA." : "Die gespeicherte Definition wurde geprüft und ist nicht erfüllt.", ...(verdict === "present" ? { quote: "Ich zeige dir das Ergebnis im Dashboard.", start: 0, end: 40 } : {}), evaluatedAt: "2026-09-10T10:00:00.000Z", outlier: verdict === "present" ? 4 + index * 0.4 : 0.7 + index * 0.1 };
+  return { id: `${runId}:${position}`, patternId, runId, signalId: `signal-pattern-${verdict}-${index}`, analysisId: `demo-analysis-${position}`, verdict, explanation: verdict === "present" ? "Konkreter Ergebnisbeleg steht vor dem CTA." : "Die gespeicherte Definition wurde geprüft und ist nicht erfüllt.", quote: verdict === "present" ? "Ich zeige dir das Ergebnis im Dashboard." : "Hier sind drei Tipps für deinen nächsten Workflow.", start: 0, end: verdict === "present" ? 39 : 50, evaluatedAt: "2026-09-10T10:00:00.000Z", outlier: verdict === "present" ? 4 + index * 0.4 : 0.7 + index * 0.1 };
 }
 
 function comparison(sufficient: boolean): SavePatternComparison {

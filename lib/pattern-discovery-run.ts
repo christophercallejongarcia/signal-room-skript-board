@@ -1,16 +1,16 @@
 import type { Creator, PatternComparisonRun, PatternEvidence, PatternExclusions, PatternScope, PatternThresholds, SavePatternComparison, SignalRecord, StorageAdapter, TranscriptAnalysis } from "./contracts.ts";
-import { analysisText, hashTranscriptText } from "./transcript-analysis.ts";
+import { analysisText, createTranscriptAnalysis, hashTranscriptText, TRANSCRIPT_ANALYSIS_VERSION } from "./transcript-analysis.ts";
 import { STRATEGY_BRIDGE_URL } from "./config.ts";
 
 export type PatternDiscoveryRequest = PatternScope & { sourceSignalIds: string[] };
 export type PatternHypothesis = { name: string; definition: string; structure: string[] };
-export type PatternEvaluationAnswer = { verdict: "present" | "absent"; explanation: string; quote?: string; start?: number; end?: number };
+export type PatternEvaluationAnswer = { verdict: "present" | "absent"; explanation: string; quote: string; start: number; end: number };
 export type PatternDiscoveryBridge = {
   hypothesize(input: { sources: Array<{ signalId: string; text: string }> }): Promise<PatternHypothesis>;
   evaluate(input: { definition: string; signalId: string; text: string }): Promise<PatternEvaluationAnswer>;
 };
 type PatternStorage = Pick<StorageAdapter, "listCreators" | "listSignals" | "listTranscriptAnalyses" | "savePatternComparison">;
-export type PatternDiscoveryDeps = { storage: PatternStorage; bridge: PatternDiscoveryBridge; now: () => Date; createId: () => string; thresholds?: PatternThresholds };
+export type PatternDiscoveryDeps = { storage: PatternStorage; bridge: PatternDiscoveryBridge; now: () => Date; thresholds?: PatternThresholds };
 
 async function bridgeRequest(payload: unknown) {
   const response = await fetch(`${STRATEGY_BRIDGE_URL}/v1/pattern-discovery`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(125_000) });
@@ -25,11 +25,8 @@ export const localPatternDiscoveryBridge: PatternDiscoveryBridge = {
     const answer = await bridgeRequest({ action: "evaluate", ...input }) as Record<string, unknown>;
     const verdict = answer.verdict === "present" ? "present" : answer.verdict === "absent" ? "absent" : null;
     if (!verdict || typeof answer.explanation !== "string") throw new Error("The Pattern Bridge returned an invalid evaluation.");
-    if (verdict === "present") {
-      if (typeof answer.quote !== "string" || typeof answer.start !== "number" || typeof answer.end !== "number" || input.text.slice(answer.start, answer.end) !== answer.quote) throw new Error("The Pattern Bridge returned an unverified quote.");
-      return { verdict, explanation: answer.explanation, quote: answer.quote, start: answer.start, end: answer.end };
-    }
-    return { verdict, explanation: answer.explanation };
+    if (typeof answer.quote !== "string" || !answer.quote || !Number.isInteger(answer.start) || !Number.isInteger(answer.end) || (answer.start as number) < 0 || (answer.end as number) <= (answer.start as number) || input.text.slice(answer.start as number, answer.end as number) !== answer.quote) throw new Error("The Pattern Bridge returned an unverified quote.");
+    return { verdict, explanation: answer.explanation, quote: answer.quote, start: answer.start as number, end: answer.end as number };
   },
 };
 
@@ -41,7 +38,7 @@ export function parsePatternDiscoveryRequest(value: unknown): PatternDiscoveryRe
   const sourceSignalIds = Array.isArray(input.sourceSignalIds)
     ? [...new Set(input.sourceSignalIds.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean))]
     : [];
-  if (sourceSignalIds.length < 1 || sourceSignalIds.length > MAX_EVALUATIONS) throw new Error("Choose between 1 and 100 source Reels.");
+  if (sourceSignalIds.length < 1 || sourceSignalIds.length > MAX_EVALUATIONS) throw new Error("Choose between 1 and 20 source Reels.");
   if (input.market !== "de" && input.market !== "en") throw new Error("market must be de or en.");
   if (input.niche !== "core" && input.niche !== "foreign") throw new Error("niche must be core or foreign.");
   if (input.ageBucket !== "0-7" && input.ageBucket !== "8-30" && input.ageBucket !== "31-90") throw new Error("ageBucket is invalid.");
@@ -50,8 +47,16 @@ export function parsePatternDiscoveryRequest(value: unknown): PatternDiscoveryRe
   return { sourceSignalIds, market: input.market, niche: input.niche, topic: input.topic.trim(), ageBucket: input.ageBucket, owned: input.owned };
 }
 
-const DEFAULT_THRESHOLDS: PatternThresholds = { positiveReels: 5, positiveCreators: 3, negativeReels: 5 };
-const MAX_EVALUATIONS = 100;
+function configuredThreshold(name: string, fallback: number) {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(value) && value > 0 && value <= 20 ? value : fallback;
+}
+const DEFAULT_THRESHOLDS: PatternThresholds = {
+  positiveReels: configuredThreshold("PATTERN_MIN_POSITIVE_REELS", 5),
+  positiveCreators: configuredThreshold("PATTERN_MIN_POSITIVE_CREATORS", 3),
+  negativeReels: configuredThreshold("PATTERN_MIN_NEGATIVE_REELS", 5),
+};
+const MAX_EVALUATIONS = 20;
 
 function bucketFor(publishedAt: string, now: Date): PatternScope["ageBucket"] | null {
   const days = Math.floor((now.getTime() - Date.parse(publishedAt)) / 86_400_000);
@@ -75,7 +80,7 @@ function currentCompleteAnalysis(signal: SignalRecord, analyses: TranscriptAnaly
   return analyses
     .filter((item) => item.signalId === signal.id && item.textVersion === source.textVersion && item.textHash === hash)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .find((item) => item.status === "complete" && item.complete);
+    .find((item) => item.analysisVersion === TRANSCRIPT_ANALYSIS_VERSION && item.status === "complete" && item.complete);
 }
 
 function checkedText(signal: SignalRecord) {
@@ -106,22 +111,15 @@ export async function discoverPattern(request: PatternDiscoveryRequest, deps: Pa
   const now = deps.now();
   const nowIso = now.toISOString();
   const thresholds = deps.thresholds ?? DEFAULT_THRESHOLDS;
-  if (!request.sourceSignalIds.length || request.sourceSignalIds.length > MAX_EVALUATIONS) throw new Error("Choose between 1 and 100 source Reels.");
+  if (!request.sourceSignalIds.length || request.sourceSignalIds.length > MAX_EVALUATIONS) throw new Error("Choose between 1 and 20 source Reels.");
   if (![thresholds.positiveReels, thresholds.positiveCreators, thresholds.negativeReels].every((value) => Number.isInteger(value) && value > 0 && value <= MAX_EVALUATIONS)) {
-    throw new Error("Pattern thresholds must be positive integers up to 100.");
+    throw new Error("Pattern thresholds must be positive integers up to 20.");
   }
-  const [creators, allSignals, analyses] = await Promise.all([
-    deps.storage.listCreators(), deps.storage.listSignals(), deps.storage.listTranscriptAnalyses({ limit: 500 }),
-  ]);
+  const [creators, allSignals] = await Promise.all([deps.storage.listCreators(), deps.storage.listSignals()]);
   const creatorById = new Map(creators.map((creator) => [creator.id, creator]));
   const sourceSet = new Set(request.sourceSignalIds);
   const sourceSignals = [...new Map(allSignals.filter((signal) => sourceSet.has(signal.id)).map((signal) => [signal.id, signal])).values()];
   if (sourceSignals.some((signal) => !matchesScope(signal, creatorById.get(signal.creatorId), request, now))) throw new Error("Every hypothesis source must belong to the selected comparison scope.");
-  const sources = sourceSignals.flatMap((signal) => currentCompleteAnalysis(signal, analyses) ? [{ signalId: signal.id, text: checkedText(signal) }] : []);
-  if (sources.length !== sourceSet.size) throw new Error("Every hypothesis source needs a current, complete transcript analysis.");
-  const hypothesis = canonicalHypothesis(await deps.bridge.hypothesize({ sources }));
-  const patternId = `pattern-${hashTranscriptText(hypothesis.definition.toLocaleLowerCase("de-DE")).slice(0, 20)}`;
-
   const excluded: PatternExclusions = { duplicate: 0, market: 0, niche: 0, topic: 0, age: 0, owned: 0, incompleteAnalysis: 0, invalidOutlier: 0 };
   const uniqueSignals: SignalRecord[] = [];
   const seen = new Set<string>();
@@ -138,31 +136,38 @@ export async function discoverPattern(request: PatternDiscoveryRequest, deps: Pa
     uniqueSignals.push(signal);
   }
 
-  const basis = uniqueSignals
-    .map((signal) => ({ signal, analysis: currentCompleteAnalysis(signal, analyses), creator: creatorById.get(signal.creatorId)! }))
-    .slice(0, MAX_EVALUATIONS);
-  const dataHash = hashTranscriptText(basis.map(({ signal, analysis }) => `${signal.id}:${analysis?.id ?? "unknown"}:${signal.plays ?? signal.views}`).sort().join("|"));
+  const basisSignals = uniqueSignals.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || a.id.localeCompare(b.id)).slice(0, MAX_EVALUATIONS);
+  const analysisTargets = [...new Map([...sourceSignals, ...basisSignals].map((signal) => [signal.id, signal])).values()];
+  const analyses = (await Promise.all(analysisTargets.map(async (signal) => {
+    const expected = createTranscriptAnalysis(signal, nowIso);
+    return expected ? deps.storage.listTranscriptAnalyses({ analysisId: expected.id, limit: 1 }) : [];
+  }))).flat();
+  const sources = sourceSignals.flatMap((signal) => currentCompleteAnalysis(signal, analyses) ? [{ signalId: signal.id, text: checkedText(signal) }] : []);
+  if (sources.length !== sourceSet.size) throw new Error("Every hypothesis source needs a current, complete transcript analysis.");
+  const hypothesis = canonicalHypothesis(await deps.bridge.hypothesize({ sources }));
+  const patternId = `pattern-${hashTranscriptText(hypothesis.definition.toLocaleLowerCase("de-DE")).slice(0, 20)}`;
+  const basis = basisSignals.map((signal) => ({ signal, analysis: currentCompleteAnalysis(signal, analyses), creator: creatorById.get(signal.creatorId)! }));
+  const dataHash = hashTranscriptText(basis.map(({ signal, analysis, creator }) => `${signal.id}:${analysis?.id ?? "unknown"}:${signal.plays ?? signal.views}:${creator.audience}`).sort().join("|"));
   const runId = `pattern-run-${hashTranscriptText(`${patternId}:${JSON.stringify({ market: request.market, niche: request.niche, topic: request.topic, ageBucket: request.ageBucket, owned: request.owned })}:${JSON.stringify(thresholds)}:${dataHash}`).slice(0, 24)}`;
-  const evidence: PatternEvidence[] = [];
-  for (const { signal, analysis, creator } of basis) {
+  const evidence = await Promise.all(basis.map(async ({ signal, analysis, creator }): Promise<PatternEvidence> => {
     const evidenceId = `${runId}:${signal.id}`;
     if (!analysis) {
       excluded.incompleteAnalysis += 1;
-      evidence.push({ id: evidenceId, patternId, runId, signalId: signal.id, verdict: "unknown", explanation: "Keine aktuelle, vollständige Inhaltsanalyse.", evaluatedAt: nowIso });
-      continue;
+      return { id: evidenceId, patternId, runId, signalId: signal.id, verdict: "unknown", explanation: "Keine aktuelle, vollständige Inhaltsanalyse.", evaluatedAt: nowIso };
     }
     const answer = await deps.bridge.evaluate({ definition: hypothesis.definition, signalId: signal.id, text: checkedText(signal) });
     const plays = signal.plays ?? signal.views;
     const outlier = creator.audience > 0 && Number.isFinite(creator.audience) && Number.isFinite(plays) && plays >= 0 ? plays / creator.audience : undefined;
     if (outlier === undefined) excluded.invalidOutlier += 1;
-    evidence.push({
+    if (!answer.quote || !Number.isInteger(answer.start) || !Number.isInteger(answer.end) || answer.start < 0 || answer.end <= answer.start || checkedText(signal).slice(answer.start, answer.end) !== answer.quote) throw new Error("Pattern evaluation evidence does not match the checked transcript.");
+    return {
       id: evidenceId, patternId, runId, signalId: signal.id, analysisId: analysis.id,
       verdict: outlier === undefined ? "unknown" : answer.verdict,
       explanation: answer.explanation.trim().slice(0, 500) || "Explizit gegen die gespeicherte Definition geprüft.",
-      ...(answer.verdict === "present" && answer.quote ? { quote: answer.quote.slice(0, 500), start: answer.start, end: answer.end } : {}),
+      quote: answer.quote.slice(0, 500), start: answer.start, end: answer.start + answer.quote.slice(0, 500).length,
       evaluatedAt: nowIso, ...(outlier === undefined ? {} : { outlier }),
-    });
-  }
+    };
+  }));
   const positive = evidence.filter((item) => item.verdict === "present");
   const negative = evidence.filter((item) => item.verdict === "absent");
   const unknown = evidence.filter((item) => item.verdict === "unknown");
@@ -178,7 +183,7 @@ export async function discoverPattern(request: PatternDiscoveryRequest, deps: Pa
     thresholds, status, positiveEvidenceIds: positive.map((item) => item.id), negativeEvidenceIds: negative.map((item) => item.id), unknownEvidenceIds: unknown.map((item) => item.id),
     positiveCount: positive.length, negativeCount: negative.length, unknownCount: unknown.length, positiveCreatorCount,
     ...(positiveMedian === undefined ? {} : { positiveMedian }), ...(negativeMedian === undefined ? {} : { negativeMedian }), ...(medianDelta === undefined ? {} : { medianDelta }),
-    excluded, caution: "Beobachteter Median-Unterschied. Keine Kausalität oder Erfolgsgarantie; bevorzugt transkribierte starke Reels können die Auswahl verzerren.",
+    excluded, caution: `Verglichen: ${basis.length} von ${uniqueSignals.length} passenden Reels, höchstens ${MAX_EVALUATIONS}, neueste zuerst. Beobachteter Median-Unterschied. Keine Kausalität oder Erfolgsgarantie; bevorzugt transkribierte starke Reels können die Auswahl verzerren.`,
   };
   return deps.storage.savePatternComparison({ pattern, evidence, run });
 }

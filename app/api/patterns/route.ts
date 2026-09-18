@@ -12,7 +12,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = parsePatternDiscoveryRequest(await request.json().catch(() => ({})));
-    return NextResponse.json(await discoverPattern(input, { storage: getStorage(), bridge: localPatternDiscoveryBridge, now: () => new Date(), createId: () => crypto.randomUUID() }));
+    return NextResponse.json(await discoverPattern(input, { storage: getStorage(), bridge: localPatternDiscoveryBridge, now: () => new Date() }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: /required|must|Choose|Unexpected|invalid|needs/.test(message) ? 400 : 502 });

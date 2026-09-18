@@ -171,3 +171,5 @@ The use case computes Outlier medians only with a finite positive follower base.
 ## Deployment note
 
 The included Codex bridge is a local development bridge. Before deploying an AI endpoint, add real authentication, authorization, rate limiting, per-user isolation, audit logging, abuse controls, and a deployment-specific sandbox policy.
+
+Pattern comparisons select at most 20 matching Reels in deterministic publication/id order and show the selected/eligible count. Current analysis IDs are read directly. Both presence and absence require literal transcript evidence with matching positions. Thresholds can be set through PATTERN_MIN_POSITIVE_REELS, PATTERN_MIN_POSITIVE_CREATORS and PATTERN_MIN_NEGATIVE_REELS (positive integers up to 20).

@@ -33,7 +33,7 @@ function fakeStorage(creators, signals, analyses) {
     state,
     async listCreators() { return creators; },
     async listSignals() { return signals; },
-    async listTranscriptAnalyses() { return analyses; },
+    async listTranscriptAnalyses(options) { return analyses.filter((item) => item.id === options.analysisId); },
     async savePatternComparison(result) {
       const found = state.runs.find((run) => run.id === result.run.id);
       if (found) return { pattern: state.patterns[0], run: found, evidence: state.evidence };
@@ -61,7 +61,7 @@ test("the saved definition is checked explicitly and threshold equality proposes
         const present = input.signalId.startsWith("p");
         return present
           ? { verdict: "present", explanation: "Beleg gefunden.", quote: input.text.slice(0, 8), start: 0, end: 8 }
-          : { verdict: "absent", explanation: "Definition ausdrücklich nicht erfüllt." };
+          : { verdict: "absent", explanation: "Definition ausdrücklich nicht erfüllt.", quote: input.text.slice(0, 8), start: 0, end: 8 };
       },
     },
   });
@@ -90,7 +90,7 @@ test("unknown analyses, duplicate Reels, market and owned boundaries cannot impr
     storage, now: () => NOW, createId: () => "run-boundaries",
     bridge: {
       async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
-      async evaluate(input) { evaluated += 1; return { verdict: input.signalId.startsWith("p") ? "present" : "absent", explanation: "Explizit geprüft." }; },
+      async evaluate(input) { evaluated += 1; return { verdict: input.signalId.startsWith("p") ? "present" : "absent", explanation: "Explizit geprüft.", quote: input.text.slice(0, 8), start: 0, end: 8 }; },
     },
   });
   assert.equal(evaluated, 5);
@@ -113,7 +113,7 @@ test("one creator, missing followers and a non-positive delta stay hypotheses", 
     thresholds: { positiveReels: 5, positiveCreators: 3, negativeReels: 5 },
     bridge: {
       async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
-      async evaluate(input) { return { verdict: input.signalId.startsWith("p") || input.signalId.startsWith("missing") ? "present" : "absent", explanation: "Explizit geprüft." }; },
+      async evaluate(input) { return { verdict: input.signalId.startsWith("p") || input.signalId.startsWith("missing") ? "present" : "absent", explanation: "Explizit geprüft.", quote: input.text.slice(0, 8), start: 0, end: 8 }; },
     },
   });
   assert.equal(result.run.positiveCreatorCount, 1);
@@ -130,7 +130,7 @@ test("an identical definition and data basis save one bounded idempotent run", a
   const storage = fakeStorage(creators, signals, signals.map(analysis));
   const deps = { storage, now: () => NOW, createId: () => "ignored-random", bridge: {
     async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
-    async evaluate() { return { verdict: "present", explanation: "Explizit geprüft." }; },
+    async evaluate(input) { return { verdict: "present", explanation: "Explizit geprüft.", quote: input.text.slice(0, 8), start: 0, end: 8 }; },
   } };
   const request = { sourceSignalIds: signals.map((item) => item.id), market: "de", niche: "core", topic: "ki-agenten", ageBucket: "8-30", owned: false };
   const first = await discoverPattern(request, deps);
@@ -150,7 +150,7 @@ test("a complete comparison basis with a negative median difference is not a can
     storage, now: () => NOW, createId: () => "run-non-positive",
     bridge: {
       async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
-      async evaluate(input) { return { verdict: input.signalId.startsWith("p") ? "present" : "absent", explanation: "Explizit geprüft." }; },
+      async evaluate(input) { return { verdict: input.signalId.startsWith("p") ? "present" : "absent", explanation: "Explizit geprüft.", quote: input.text.slice(0, 8), start: 0, end: 8 }; },
     },
   });
   assert.equal(result.run.positiveCount, 5);
@@ -159,4 +159,37 @@ test("a complete comparison basis with a negative median difference is not a can
   assert.equal(result.run.medianDelta, -2);
   assert.equal(result.run.status, "non-positive");
   assert.equal(result.pattern.status, "hypothesis");
+});
+
+test("comparison selection is stable across storage order and negative evidence must be literal", async () => {
+  const creators = [creator("a")];
+  const signals = Array.from({ length: 25 }, (_, i) => reel(`reel-${String(i).padStart(2, "0")}`, "a", 1000));
+  const storage = fakeStorage(creators, signals, signals.map(analysis));
+  const request = { sourceSignalIds: [signals[0].id], market: "de", niche: "core", topic: "ki-agenten", ageBucket: "8-30", owned: false };
+  const deps = { storage, now: () => NOW, bridge: {
+    async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
+    async evaluate(input) { return { verdict: "absent", explanation: "Fehlt.", quote: input.text, start: 0, end: input.text.length }; },
+  } };
+  const first = await discoverPattern(request, deps);
+  signals.reverse();
+  const second = await discoverPattern(request, deps);
+  assert.equal(first.run.id, second.run.id);
+  assert.equal(first.evidence.length, 20);
+  assert.match(first.run.caution, /20 von 25/);
+  deps.bridge.evaluate = async () => ({ verdict: "absent", explanation: "Fehlt.", quote: "invented", start: 0, end: 8 });
+  await assert.rejects(discoverPattern(request, deps), /does not match/);
+});
+
+test("old analysis versions are unknown and truncated quotes keep exact positions", async () => {
+  const signals = [reel("current", "a", 5000, 12, { transcript: "a".repeat(600) }), reel("old", "a", 1000)];
+  const storage = fakeStorage([creator("a")], signals, [analysis(signals[0]), analysis(signals[1], { analysisVersion: "old" })]);
+  const result = await discoverPattern({ sourceSignalIds: ["current"], market: "de", niche: "core", topic: "ki-agenten", ageBucket: "8-30", owned: false }, {
+    storage, now: () => NOW, bridge: {
+      async hypothesize() { return { name: "Beweis", definition: "Beweis vor CTA", structure: ["Beweis"] }; },
+      async evaluate(input) { return { verdict: "present", explanation: "Beleg", quote: input.text, start: 0, end: input.text.length }; },
+    },
+  });
+  assert.equal(result.run.unknownCount, 1);
+  const evidence = result.evidence.find((item) => item.signalId === "current");
+  assert.equal(evidence.quote, signals[0].transcript.slice(evidence.start, evidence.end));
 });

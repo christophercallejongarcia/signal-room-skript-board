@@ -505,7 +505,7 @@ export default defineSchema({
     .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_createdAt", ["createdAt"]),
   patterns: defineTable(patternFields).index("by_external_id", ["id"]).index("by_updatedAt", ["updatedAt"]),
-  patternEvidence: defineTable(patternEvidenceFields).index("by_external_id", ["id"]).index("by_run", ["runId"]),
+  patternEvidence: defineTable(patternEvidenceFields).index("by_external_id", ["id"]).index("by_runId", ["runId"]),
   patternComparisonRuns: defineTable(patternRunFields).index("by_external_id", ["id"]).index("by_createdAt", ["createdAt"]),
   hashtagPosts: defineTable(hashtagPostFields)
     .index("by_external_id", ["id"])

@@ -111,3 +111,5 @@ Pattern discovery never invokes Apify or another paid provider. Reels without a 
 ## Reporting a vulnerability
 
 Do not open a public issue containing sensitive details. Use the private vulnerability-reporting channel configured for the GitHub repository.
+
+Pattern comparisons select at most 20 matching Reels in deterministic publication/id order and show the selected/eligible count. Current analysis IDs are read directly. Both presence and absence require literal transcript evidence with matching positions. Thresholds can be set through PATTERN_MIN_POSITIVE_REELS, PATTERN_MIN_POSITIVE_CREATORS and PATTERN_MIN_NEGATIVE_REELS (positive integers up to 20).
