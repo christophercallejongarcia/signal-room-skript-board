@@ -39,6 +39,18 @@ Still open (planned): clickable title options, prompt library, export of `skript
 
 Run it: `npm run dev:board` (local Convex deployment, logged-in `claude`, `codex` or `command-code`), then open `http://127.0.0.1:3100/board`. Checks: `npm run check`, `npm run test:e2e:board`, `npm run board:doctor`.
 
+### Signal Room today (built before the challenge)
+
+These screens show the existing Signal Room with its real data: 4,756 tracked Instagram reels from 45 channels, 3,226 visual reads. Thumbnails, faces, handles, captions and reel codes are blurred because they belong to other creators. **Today Signal Room is built for Instagram reels; it is being rebuilt for YouTube** as the research stage of YouTube-OS.
+
+| Discover | Briefing |
+|---|---|
+| ![Discover: Instagram content feed with counts, filters and reel cards (creators blurred)](docs/assets/signal-room-discover.png) | ![Briefing: the ten strongest reels of a day with score, outlier factor and angle (creators blurred)](docs/assets/signal-room-briefing.png) |
+| **Format Signals** | **Ideas** |
+| ![Format Signals: recurring hook shapes of 2x outlier reels over 90 days](docs/assets/signal-room-format-signals.png) | ![Ideas: inbox for new video ideas with develop step](docs/assets/signal-room-ideas.png) |
+| **Hooks** | |
+| ![Hooks: hook variants written against the outlier corpus through the local Codex bridge](docs/assets/signal-room-hooks.png) | |
+
 **How this copy was cleaned:** real creator data (transcripts, Instagram test data, screenshots with faces and handles), all research and plan files and the local home path were removed from the whole history with `git filter-repo`. The Instagram test fixture was replaced with synthetic data. Commit dates and messages are unchanged; commits that only touched removed files are gone.
 
 ![Signal Room Starter interface](docs/assets/signal-room-starter.jpg)
