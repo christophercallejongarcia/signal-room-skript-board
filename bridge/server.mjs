@@ -43,6 +43,7 @@ import {
   validateStoryboardRequest,
   validateStrategyRequest,
 } from "./request.mjs";
+import { BOARD_PREFIX, createBoardHandler, createBridgeInstance } from "./board/index.mjs";
 
 const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.BRIDGE_PORT || "3211", 10);
@@ -260,9 +261,18 @@ const routes = new Map([
   ],
 ]);
 
+/** Skript-Board routes live in their own module with their own token and body limit (ADR-0007). */
+const boardInstance = process.env.BOARD_BRIDGE_TOKEN ? createBridgeInstance() : null;
+const handleBoard = boardInstance ? createBoardHandler({ instance: boardInstance }) : null;
+
 const server = http.createServer(async (request, response) => {
   const origin = request.headers.origin;
   const url = new URL(request.url || "/", `http://${HOST}:${PORT}`);
+
+  if (url.pathname.startsWith(BOARD_PREFIX)) {
+    if (handleBoard) return handleBoard(request, response, url);
+    return sendJson(response, 503, { error: "Board ist in dieser Bridge nicht konfiguriert (BOARD_BRIDGE_TOKEN)." });
+  }
 
   if (origin && !allowedOrigins.has(origin)) {
     return sendJson(response, 403, { error: "Origin is not allowed." }, origin);

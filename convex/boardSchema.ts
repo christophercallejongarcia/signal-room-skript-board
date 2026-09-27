@@ -21,6 +21,29 @@ export const boardConfigFields = {
   updatedAt: v.number(),
 };
 
+/** Write lease of one editor tab (point 28). `generation` grows with every takeover. */
+export const boardLeaseValidator = v.object({
+  sessionId: v.string(),
+  generation: v.number(),
+  expiresAt: v.number(),
+  restoreEpoch: v.number(),
+  /** Oldest op the lease holder has not seen confirmed yet, reported by its heartbeat (point 42b). */
+  oldestUnconfirmedAt: v.optional(v.number()),
+});
+
+export const boardFields = {
+  id: v.string(),
+  title: v.string(),
+  videoSlug: v.optional(v.string()),
+  brandVoiceText: v.string(),
+  revision: v.number(),
+  lease: v.optional(boardLeaseValidator),
+  createdAt: v.number(),
+  lastOpenedAt: v.number(),
+  deletedAt: v.optional(v.number()),
+};
+
 export const boardTables = {
   boardConfig: defineTable(boardConfigFields).index("by_key", ["key"]),
+  boards: defineTable(boardFields).index("by_external_id", ["id"]).index("by_lastOpenedAt", ["lastOpenedAt"]),
 };

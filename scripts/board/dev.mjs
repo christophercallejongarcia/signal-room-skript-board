@@ -34,6 +34,12 @@ for (const key of ["BOARD_ACCESS_TOKEN", "BOARD_BRIDGE_TOKEN", "BOARD_SESSION_SE
 }
 
 const origins = `http://127.0.0.1:${webPort},http://localhost:${webPort}`;
+let buildId = "dev";
+try {
+  const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+  const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).trim() ? "+lokal" : "";
+  buildId = `${sha}${dirty}`;
+} catch {}
 const boardEnv = {
   ...env,
   BOARD_WEB_PORT: String(webPort),
@@ -42,6 +48,7 @@ const boardEnv = {
   BRIDGE_ALLOWED_ORIGINS: origins,
   NEXT_PUBLIC_STRATEGY_BRIDGE_URL: `http://127.0.0.1:${bridgePort}`,
   BOARD_BRIDGE_URL: `http://127.0.0.1:${bridgePort}`,
+  BOARD_BUILD_ID: buildId,
 };
 
 const children = [];
@@ -123,6 +130,6 @@ if (!(await waitForConvex())) {
   }
   const nextBin = path.join(REPO_ROOT, "node_modules", ".bin", "next");
   start("web", "36", spawn(nextBin, ["dev", "-H", "127.0.0.1", "-p", String(webPort)], { cwd: REPO_ROOT, env: boardEnv, stdio: ["ignore", "pipe", "pipe"] }));
-  start("bridge", "35", spawn(process.execPath, ["--watch", "bridge/server.mjs"], { cwd: REPO_ROOT, env: boardEnv, stdio: ["ignore", "pipe", "pipe"] }));
+  start("bridge", "35", spawn(process.execPath, ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--watch", "bridge/server.mjs"], { cwd: REPO_ROOT, env: boardEnv, stdio: ["ignore", "pipe", "pipe"] }));
   console.log(`Board: http://127.0.0.1:${webPort}/board · Bridge: http://127.0.0.1:${bridgePort}`);
 }
