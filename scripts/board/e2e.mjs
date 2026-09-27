@@ -152,6 +152,8 @@ async function main() {
       BOARD_ENGINES_ENABLED: "claude,codex,command-code",
       BOARD_BUILD_ID: "e2e",
       NEXT_PUBLIC_BOARD_TEST_HOOKS: "1",
+      // Explicitly empty: `next start` also reads the repo's .env.local, but never overrides a variable that is set.
+      APIFY_TOKEN: "",
     };
     if (!process.argv.includes("--no-build")) {
       console.log("next build …");

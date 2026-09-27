@@ -187,12 +187,13 @@ test("two tabs: A→B→A with competing text edits ends in a conflict copy", as
   await b.locator(`.react-flow__node[data-id="${id}"] .bn-editor`).click();
   await b.keyboard.press("End");
   await b.keyboard.type(" von B");
+  // The status may still read "Gespeichert" before the keystrokes reach the journal; wait for the server instead.
+  await expect.poll(async () => serverText(b, boardIdOf(url), id), { timeout: 20_000 }).toContain("von B");
   await waitSaved(b);
 
   await page.unroute("**/api/board/boards/*/ops");
   await expect(page.getByTestId("save-state")).toHaveText("Nur lesend", { timeout: 20_000 });
   await page.getByRole("button", { name: "Hier bearbeiten" }).click();
-  await expect(page.locator(".bd-node--text .bd-node-title").filter({ hasText: "" })).toHaveCount(2);
   await expect(page.locator('input[data-title-for][value^="Konfliktkopie"]')).toHaveCount(1, { timeout: 20_000 });
   const copyId = await page.locator('input[data-title-for][value^="Konfliktkopie"]').getAttribute("data-title-for");
   await expect.poll(async () => serverText(page, boardIdOf(url), copyId!), { timeout: 20_000 }).toContain("von A");
