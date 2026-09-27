@@ -118,10 +118,24 @@ describe("ops", () => {
     expect(stale.results[0].status).toBe("conflict");
     expect((await nodes(t, a.boardId))[0].position).toEqual({ x: 10, y: 10 });
     await apply(t, a, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 1, blocks: "[1]", markdown: "Neu" }]);
-    const lost = await apply(t, a, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 1, blocks: "[2]", markdown: "Lokal" }]);
+    // Another tab takes over and writes on the old base: conflict, the server text stays.
+    const b = await t.mutation(api.boardLease.acquire, { token, opsVersion: 1, boardId: a.boardId, sessionId: S2, takeover: true });
+    const tabB = { ...a, sessionId: S2, generation: b.granted ? b.generation : 0 };
+    const lost = await apply(t, tabB, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 1, blocks: "[2]", markdown: "Lokal" }]);
     expect(lost.results[0].status).toBe("conflict");
     const texts = await t.query(api.boardLoad.getTexts, { token, boardId: a.boardId, nodeIds: ["text-calm-otter-AAAAA"] });
     expect(texts.texts[0]).toEqual({ nodeId: "text-calm-otter-AAAAA", blocks: "[1]", rev: 2 });
+    // A base ahead of the server is always a conflict.
+    expect((await apply(t, tabB, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 5, blocks: "[3]", markdown: "x" }])).results[0].status).toBe("conflict");
+  });
+
+  test("a stale text base from the session that wrote the current revision is its own lost confirmation, not a conflict", async () => {
+    const t = convexTest(schema, modules);
+    const a = await setup(t);
+    await apply(t, a, [{ opId: opId(), type: "node.create", node: node("text-calm-otter-AAAAA", "textNode"), text: { blocks: "[]", markdown: "Start" } }]);
+    await apply(t, a, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 1, blocks: "[1]", markdown: "gelandet" }]);
+    const replay = await apply(t, a, [{ opId: opId(), type: "text.set", nodeId: "text-calm-otter-AAAAA", baseTextRev: 1, blocks: "[2]", markdown: "neuester Stand" }]);
+    expect(replay.results[0]).toMatchObject({ status: "applied", textRev: 3 });
   });
 
   test("an edge needs a source node and a chat, no self edges, no duplicates", async () => {

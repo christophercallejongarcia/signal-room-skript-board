@@ -151,6 +151,7 @@ async function main() {
       BOARD_YTDLP_FAKE: "1",
       BOARD_ENGINES_ENABLED: "claude,codex,command-code",
       BOARD_BUILD_ID: "e2e",
+      NEXT_PUBLIC_BOARD_TEST_HOOKS: "1",
     };
     if (!process.argv.includes("--no-build")) {
       console.log("next build …");

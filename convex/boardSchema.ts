@@ -101,6 +101,8 @@ export const boardTextBlocksFields = {
   /** BlockNote JSON as a string, at most 600 KB UTF-8, parse depth at most 64 (point 17). */
   blocks: v.string(),
   rev: v.number(),
+  /** Editor session that wrote the current revision; decides whether a stale base is our own or a conflict. */
+  writerSession: v.optional(v.string()),
 };
 
 export const boardTextMarkdownFields = {

@@ -82,7 +82,7 @@ async function liveChildren(ctx: MutationCtx, boardId: string, groupId: string):
   return nodes.filter((node) => node.parentId === groupId && node.deletedAt === undefined);
 }
 
-async function applyNodeCreate(ctx: MutationCtx, board: Doc<"boards">, op: Extract<Op, { type: "node.create" }>, now: number, nodeCount: { value: number }): Promise<Outcome> {
+async function applyNodeCreate(ctx: MutationCtx, board: Doc<"boards">, op: Extract<Op, { type: "node.create" }>, now: number, nodeCount: { value: number }, sessionId: string): Promise<Outcome> {
   const node: NodeShape = op.node;
   const existing = await nodeById(ctx, board.id, node.id);
   if (existing) throw new Conflict(`Node ${node.id} existiert bereits.`);
@@ -106,7 +106,7 @@ async function applyNodeCreate(ctx: MutationCtx, board: Doc<"boards">, op: Extra
     ...(text ? { textBytes: text.textBytes, blocksBytes: text.blocksBytes, textPreview: previewOf(text.markdown), textRev: 1 } : {}),
   });
   if (text) {
-    await ctx.db.insert("boardTextBlocks", { nodeId: node.id, boardId: board.id, blocks: text.blocks, rev: 1 });
+    await ctx.db.insert("boardTextBlocks", { nodeId: node.id, boardId: board.id, blocks: text.blocks, rev: 1, writerSession: sessionId });
     await ctx.db.insert("boardTextMarkdown", { nodeId: node.id, boardId: board.id, markdown: text.markdown, rev: 1, ...(op.text?.provenance ? { provenance: op.text.provenance } : {}) });
   }
   nodeCount.value += 1;
@@ -186,7 +186,13 @@ async function applyNodesRestore(ctx: MutationCtx, board: Doc<"boards">, op: Ext
   return { status: "applied" };
 }
 
-async function applyTextSet(ctx: MutationCtx, board: Doc<"boards">, op: Extract<Op, { type: "text.set" }>, now: number): Promise<Outcome> {
+/**
+ * Text conflict rule (point 27): a stale base is only a conflict if another
+ * session wrote the current revision. A base older than our own last write
+ * means our earlier op landed while its confirmation got lost (replay after
+ * reload), and the new content supersedes it.
+ */
+async function applyTextSet(ctx: MutationCtx, board: Doc<"boards">, op: Extract<Op, { type: "text.set" }>, now: number, sessionId: string): Promise<Outcome> {
   const node = await liveNode(ctx, board.id, op.nodeId);
   if (node.type !== "textNode") throw boardError("invalid", "Text nur an Text-Nodes.");
   const blocksRow = await ctx.db
@@ -198,11 +204,13 @@ async function applyTextSet(ctx: MutationCtx, board: Doc<"boards">, op: Extract<
     .withIndex("by_node", (q) => q.eq("nodeId", node.id))
     .unique();
   const currentRev = blocksRow?.rev ?? 0;
-  if (currentRev !== op.baseTextRev) throw new Conflict(`Text von ${node.id} wurde inzwischen geändert.`);
+  if (currentRev !== op.baseTextRev && (op.baseTextRev > currentRev || blocksRow?.writerSession !== sessionId)) {
+    throw new Conflict(`Text von ${node.id} wurde inzwischen geändert.`);
+  }
   const sizes = assertTextBudget({ blocks: op.blocks, markdown: op.markdown });
   const textRev = currentRev + 1;
-  if (blocksRow) await ctx.db.patch("boardTextBlocks", blocksRow._id, { blocks: op.blocks, rev: textRev });
-  else await ctx.db.insert("boardTextBlocks", { nodeId: node.id, boardId: board.id, blocks: op.blocks, rev: textRev });
+  if (blocksRow) await ctx.db.patch("boardTextBlocks", blocksRow._id, { blocks: op.blocks, rev: textRev, writerSession: sessionId });
+  else await ctx.db.insert("boardTextBlocks", { nodeId: node.id, boardId: board.id, blocks: op.blocks, rev: textRev, writerSession: sessionId });
   const provenance = op.provenance ?? markdownRow?.provenance;
   if (markdownRow) await ctx.db.patch("boardTextMarkdown", markdownRow._id, { markdown: op.markdown, rev: textRev, provenance });
   else await ctx.db.insert("boardTextMarkdown", { nodeId: node.id, boardId: board.id, markdown: op.markdown, rev: textRev, ...(provenance ? { provenance } : {}) });
@@ -277,10 +285,10 @@ async function applyBoardUpdate(ctx: MutationCtx, board: Doc<"boards">, op: Extr
   return { status: "applied" };
 }
 
-async function applyOne(ctx: MutationCtx, board: Doc<"boards">, op: Op, now: number, nodeCount: { value: number }): Promise<Outcome> {
+async function applyOne(ctx: MutationCtx, board: Doc<"boards">, op: Op, now: number, nodeCount: { value: number }, sessionId: string): Promise<Outcome> {
   switch (op.type) {
     case "node.create":
-      return applyNodeCreate(ctx, board, op, now, nodeCount);
+      return applyNodeCreate(ctx, board, op, now, nodeCount, sessionId);
     case "node.update":
       return applyNodeUpdate(ctx, board, op, now);
     case "nodes.delete":
@@ -288,7 +296,7 @@ async function applyOne(ctx: MutationCtx, board: Doc<"boards">, op: Op, now: num
     case "nodes.restore":
       return applyNodesRestore(ctx, board, op, now, nodeCount);
     case "text.set":
-      return applyTextSet(ctx, board, op, now);
+      return applyTextSet(ctx, board, op, now, sessionId);
     case "edge.create":
       return applyEdgeCreate(ctx, board, op, now);
     case "edge.delete":
@@ -351,7 +359,7 @@ export const applyOps = mutation({
       }
       let outcome: Outcome;
       try {
-        outcome = await applyOne(ctx, board, op, now, nodeCount);
+        outcome = await applyOne(ctx, board, op, now, nodeCount, args.sessionId);
       } catch (error) {
         if (error instanceof Conflict) outcome = { status: "conflict", reason: error.reason };
         else if (error instanceof TextTooLargeError) throw boardError("too-large", error.message);
