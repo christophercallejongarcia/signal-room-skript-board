@@ -1,7 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi, type FunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
-import { randomBytes } from "node:crypto";
 
 /**
  * Server-side access from Next route handlers to Convex and the bridge for the
@@ -122,6 +121,7 @@ const globalForBoard = globalThis as typeof globalThis & { __boardWebInstance?: 
 
 /** Identity of this Next process, stable across requests and hot reloads. */
 export function webInstance(): WebInstance {
-  globalForBoard.__boardWebInstance ??= { instanceId: `next-${randomBytes(6).toString("hex")}`, startedAt: Date.now() };
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  globalForBoard.__boardWebInstance ??= { instanceId: `next-${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`, startedAt: Date.now() };
   return globalForBoard.__boardWebInstance;
 }

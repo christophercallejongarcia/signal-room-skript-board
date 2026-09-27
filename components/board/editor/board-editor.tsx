@@ -16,6 +16,7 @@ import { useBoardTheme } from "@/lib/board/theme";
 import { claimEditorSessionId, webLocks } from "@/lib/board/web-locks";
 import { Canvas, type CanvasHandle } from "./canvas";
 import { EditorContext, type EditorContextValue } from "./context";
+import { SourcesProvider } from "./sources";
 
 const SAVE_LABEL: Record<SaveState, string> = {
   loading: "Lädt …",
@@ -242,8 +243,11 @@ function LoadedEditor({ session, theme, toggleTheme }: { session: BoardSession; 
   const notice = snapshot.notice && snapshot.notice !== dismissedNotice ? snapshot.notice : null;
   const showTakeover = !writable && (snapshot.saveState === "readonly" || /anderer Tab/.test(snapshot.notice ?? ""));
 
+  const videoIds = useMemo(() => [...snapshot.model.nodes.values()].filter((node) => node.type === "youtubeNode" && node.data.videoId).map((node) => node.data.videoId!), [snapshot.model]);
+
   return (
     <EditorContext.Provider value={context}>
+      <SourcesProvider session={session} videoIds={videoIds} writable={writable}>
       <div className="bd-editor" data-save-state={snapshot.saveState} data-writable={writable ? "true" : "false"}>
         <BoardHeader
           title={snapshot.meta?.title ?? ""}
@@ -293,6 +297,7 @@ function LoadedEditor({ session, theme, toggleTheme }: { session: BoardSession; 
           <Canvas ref={canvas} />
         </div>
       </div>
+      </SourcesProvider>
     </EditorContext.Provider>
   );
 }

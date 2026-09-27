@@ -10,11 +10,13 @@
 
 import type * as board from "../board.js";
 import type * as boardAdmin from "../boardAdmin.js";
+import type * as boardApify from "../boardApify.js";
 import type * as boardAuth from "../boardAuth.js";
 import type * as boardLease from "../boardLease.js";
 import type * as boardLoad from "../boardLoad.js";
 import type * as boardOps from "../boardOps.js";
 import type * as boardSchema from "../boardSchema.js";
+import type * as boardYoutube from "../boardYoutube.js";
 import type * as boards from "../boards.js";
 import type * as briefings from "../briefings.js";
 import type * as creators from "../creators.js";
@@ -42,11 +44,13 @@ import type {
 declare const fullApi: ApiFromModules<{
   board: typeof board;
   boardAdmin: typeof boardAdmin;
+  boardApify: typeof boardApify;
   boardAuth: typeof boardAuth;
   boardLease: typeof boardLease;
   boardLoad: typeof boardLoad;
   boardOps: typeof boardOps;
   boardSchema: typeof boardSchema;
+  boardYoutube: typeof boardYoutube;
   boards: typeof boards;
   briefings: typeof briefings;
   creators: typeof creators;

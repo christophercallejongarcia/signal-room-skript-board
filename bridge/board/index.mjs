@@ -4,6 +4,7 @@ import path from "node:path";
 import { logEvent } from "../../lib/board/eventlog.mjs";
 import { tryLock } from "../../lib/board/oslock.mjs";
 import { boardFile } from "../../lib/board/paths.mjs";
+import { youtubeRoute } from "./youtube.mjs";
 import { buildId, OPS_VERSION, PROTOCOL_VERSION, SUPPORTED_OPS_VERSIONS, SUPPORTED_PROTOCOL_VERSIONS } from "../../lib/board/versions.ts";
 
 /**
@@ -90,6 +91,7 @@ export async function readBoardJson(request, limit = boardBodyLimit()) {
  */
 export function createBoardHandler({ instance, env = process.env, extraRoutes = [] } = {}) {
   const expectedToken = env.BOARD_BRIDGE_TOKEN;
+  const youtube = youtubeRoute({ instance, readJson: readBoardJson });
   const routes = [
     {
       method: "GET",
@@ -108,6 +110,7 @@ export function createBoardHandler({ instance, env = process.env, extraRoutes = 
           supportedOpsVersions: SUPPORTED_OPS_VERSIONS,
         }),
     },
+    youtube.route,
     ...extraRoutes,
   ];
 

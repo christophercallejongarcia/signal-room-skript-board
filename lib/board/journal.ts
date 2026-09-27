@@ -24,7 +24,8 @@ type Base = JournalScope & {
 
 export type OpEntry = Base & { kind: "op"; op: Op };
 export type TextEntry = Base & { kind: "text"; nodeId: string; blocks: string; markdown: string; provenance?: Provenance; localVersion: number; baseTextRev: number };
-export type TitleEntry = Base & { kind: "title"; nodeId: string; title: string; localVersion: number };
+/** Title or notes of a node: `field` defaults to "title" (entry key `title:<id>` or `notes:<id>`). */
+export type TitleEntry = Base & { kind: "title"; nodeId: string; title: string; localVersion: number; field?: "title" | "notes" };
 export type JournalEntry = OpEntry | TextEntry | TitleEntry;
 
 export type JournalKey = [string, string, string, string];
@@ -35,7 +36,7 @@ export function journalKey(entry: Pick<JournalEntry, "deploymentId" | "boardId" 
 
 export const opKey = (opId: string) => `op:${opId}`;
 export const textKey = (nodeId: string) => `text:${nodeId}`;
-export const titleKey = (nodeId: string) => `title:${nodeId}`;
+export const titleKey = (nodeId: string, field: "title" | "notes" = "title") => `${field}:${nodeId}`;
 
 export class JournalWriteError extends Error {
   constructor(message = "Lokale Sicherung fehlgeschlagen.") {

@@ -454,3 +454,70 @@
 .bd-text-editor .bn-editor { padding: 10px 16px 24px 42px; background: transparent; font-size: 15px; }
 .board-root[data-theme="light"] .bd-text-editor .bn-container { --bn-colors-editor-background: var(--bd-surface); }
 .board-root[data-theme="dark"] .bd-text-editor .bn-container { --bn-colors-editor-background: var(--bd-surface); --bn-colors-editor-text: var(--bd-ink); }
+
+/* ---------- YouTube node (point 71) ---------- */
+
+.bd-node--youtube.is-selected .bd-node-head { background: var(--bd-youtube-sel); color: #fff; }
+.bd-youtube-body { position: relative; }
+.bd-youtube-meta {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: grid;
+  gap: 3px;
+  padding: 18px 8px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78) 40%);
+  color: #fff;
+  font-size: 11px;
+}
+.bd-youtube-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.bd-chip { padding: 1px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); font-weight: 600; }
+.bd-chip--accent { background: #f14141; }
+.bd-youtube-channel { overflow: hidden; opacity: 0.85; text-overflow: ellipsis; white-space: nowrap; }
+.bd-youtube-status { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.bd-youtube-status--ok { color: #86efac; }
+.bd-youtube-status--busy { color: #e5e7eb; }
+.bd-youtube-status--warn { color: #fcd34d; }
+.bd-youtube-status--error { color: #fca5a5; }
+.bd-notes-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 4px;
+  right: 4px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--bd-surface);
+  box-shadow: var(--bd-shadow);
+}
+.bd-notes {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: var(--bd-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+/* ---------- Node toolbar (selection bar above a node) ---------- */
+
+.bd-node-toolbar { display: flex; gap: 2px; padding: 4px; border-radius: 10px; background: var(--bd-surface); box-shadow: var(--bd-shadow-strong); }
+.bd-node-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bd-ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.bd-node-tool:hover { background: var(--bd-surface-3); }
+.bd-node-tool:disabled { opacity: 0.45; cursor: default; }
+.bd-node-tool--warn { color: var(--bd-warn); }

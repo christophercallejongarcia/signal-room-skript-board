@@ -1,7 +1,7 @@
 import { UndoStack, newOpId, type Command } from "./commands.ts";
 import { newNodeId } from "./ids.ts";
 import { confirmsOp, confirmsVersion, journalKey, JournalWriteError, opKey, textKey, titleKey, type JournalEntry, type JournalScope, type JournalStore, type OpEntry, type TextEntry, type TitleEntry } from "./journal.ts";
-import { assertTextBudget, TextTooLargeError } from "./limits.ts";
+import { assertTextBudget, LIMITS, TextTooLargeError, utf8Bytes } from "./limits.ts";
 import { applyOpLocal, emptyModel, modelFrom, type BoardModel } from "./model.ts";
 import { NODE_DEFAULTS, type BoardEdge, type BoardNode, type Op, type OpResult } from "./ops.ts";
 import { OpQueue, realClock, type Clock, type QueueStatus, type SendResult, type TransportError } from "./op-queue.ts";
@@ -63,7 +63,7 @@ export type SessionSnapshot = {
   version: number;
 };
 
-type Pending = { kind: "text" | "title"; nodeId: string; localVersion: number };
+type Pending = { kind: "text" | "title"; nodeId: string; localVersion: number; field?: "title" | "notes" };
 
 export type BoardSessionOptions = {
   boardId: string;
@@ -79,6 +79,7 @@ export class BoardSession {
   meta: BoardMeta | null = null;
   model: BoardModel = emptyModel();
   texts = new Map<string, TextState>();
+  /** Pending local titles and notes, keyed `title:<nodeId>` or `notes:<nodeId>`. */
   titles = new Map<string, { title: string; localVersion: number }>();
   saveState: SaveState = "loading";
   writable = false;
@@ -279,11 +280,12 @@ export class BoardSession {
       this.queue.enqueue(op);
     }
     for (const entry of entries.filter((e): e is TitleEntry => e.kind === "title")) {
+      const field = entry.field ?? "title";
       const localVersion = this.nextLocalVersion();
       await this.options.journal.put({ ...entry, ...this.scope, ...this.leaseStamp(), localVersion, updatedAt: this.clock.now() });
       if (entry.editorSessionId !== this.options.editorSessionId) await this.options.journal.remove(journalKey(entry));
-      this.titles.set(entry.nodeId, { title: entry.title, localVersion });
-      this.queue.touchText(`title:${entry.nodeId}`);
+      this.titles.set(titleKey(entry.nodeId, field), { title: entry.title, localVersion });
+      this.queue.touchText(titleKey(entry.nodeId, field));
     }
     this.emit();
     // Settle in the background so a missing network never blocks the board. Once everything is
@@ -388,18 +390,33 @@ export class BoardSession {
   }
 
   async setTitle(nodeId: string, title: string): Promise<boolean> {
+    return this.setField(nodeId, "title", title);
+  }
+
+  async setNotes(nodeId: string, notes: string): Promise<boolean> {
+    return this.setField(nodeId, "notes", notes);
+  }
+
+  private async setField(nodeId: string, field: "title" | "notes", value: string): Promise<boolean> {
     if (!this.writable || !this.model.nodes.has(nodeId)) return false;
+    // Same budgets as validateOp, checked here so one oversized field never blocks the whole queue.
+    if ((field === "notes" && utf8Bytes(value) > LIMITS.notesBytes) || (field === "title" && Array.from(value).length > LIMITS.titleChars)) {
+      this.notice = field === "notes" ? "Notizen sind zu lang (höchstens 8 KB)." : "Titel ist zu lang (höchstens 200 Zeichen).";
+      this.emit();
+      return false;
+    }
     const localVersion = this.nextLocalVersion();
     try {
-      await this.options.journal.put({ ...this.scope, ...this.leaseStamp(), kind: "title", entryKey: titleKey(nodeId), nodeId, title, localVersion, updatedAt: this.clock.now() });
+      await this.options.journal.put({ ...this.scope, ...this.leaseStamp(), kind: "title", field, entryKey: titleKey(nodeId, field), nodeId, title: value, localVersion, updatedAt: this.clock.now() });
     } catch (error) {
       this.failLocal(error);
       return false;
     }
-    this.titles.set(nodeId, { title, localVersion });
+    this.titles.set(titleKey(nodeId, field), { title: value, localVersion });
     const node = this.model.nodes.get(nodeId)!;
-    this.model = { ...this.model, nodes: new Map(this.model.nodes).set(nodeId, { ...node, data: { ...node.data, title } }) };
-    this.queue.touchText(`title:${nodeId}`);
+    this.model = { ...this.model, nodes: new Map(this.model.nodes).set(nodeId, { ...node, data: { ...node.data, [field]: value } }) };
+    this.userEdits += 1;
+    this.queue.touchText(titleKey(nodeId, field));
     this.emit();
     return true;
   }
@@ -415,19 +432,24 @@ export class BoardSession {
   }
 
   titleFor(nodeId: string): string {
-    return this.titles.get(nodeId)?.title ?? this.model.nodes.get(nodeId)?.data.title ?? "";
+    return this.titles.get(titleKey(nodeId))?.title ?? this.model.nodes.get(nodeId)?.data.title ?? "";
+  }
+
+  notesFor(nodeId: string): string {
+    return this.titles.get(titleKey(nodeId, "notes"))?.title ?? this.model.nodes.get(nodeId)?.data.notes ?? "";
   }
 
   /** Called by the queue when a debounce fires: build the op against the predicted revision. */
   private opsForDueKey(key: string): Op[] {
-    if (key.startsWith("title:")) {
+    if (key.startsWith("title:") || key.startsWith("notes:")) {
+      const field = key.startsWith("title:") ? ("title" as const) : ("notes" as const);
       const nodeId = key.slice(6);
-      const local = this.titles.get(nodeId);
+      const local = this.titles.get(key);
       const node = this.model.nodes.get(nodeId);
       if (!local || !node) return [];
-      const op: Op = { opId: newOpId(), type: "node.update", nodeId, baseRev: node.rev, patch: { data: { title: local.title } } };
+      const op: Op = { opId: newOpId(), type: "node.update", nodeId, baseRev: node.rev, patch: { data: { [field]: local.title } } };
       this.model = applyOpLocal(this.model, op);
-      this.pendingByOp.set(op.opId, { kind: "title", nodeId, localVersion: local.localVersion });
+      this.pendingByOp.set(op.opId, { kind: "title", nodeId, localVersion: local.localVersion, field });
       return [op];
     }
     const nodeId = key;
@@ -478,8 +500,9 @@ export class BoardSession {
   }
 
   private async confirmTitle(pending: Pending) {
-    await this.options.journal.confirm(journalKey({ ...this.scope, entryKey: titleKey(pending.nodeId) }), confirmsVersion(pending.localVersion));
-    if (this.titles.get(pending.nodeId)?.localVersion === pending.localVersion) this.titles.delete(pending.nodeId);
+    const key = titleKey(pending.nodeId, pending.field ?? "title");
+    await this.options.journal.confirm(journalKey({ ...this.scope, entryKey: key }), confirmsVersion(pending.localVersion));
+    if (this.titles.get(key)?.localVersion === pending.localVersion) this.titles.delete(key);
   }
 
   /** Text conflict (point 27): reload the server state, then the local content becomes a new text node. */
