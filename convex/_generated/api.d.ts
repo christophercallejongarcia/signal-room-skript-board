@@ -12,6 +12,7 @@ import type * as board from "../board.js";
 import type * as boardAdmin from "../boardAdmin.js";
 import type * as boardApify from "../boardApify.js";
 import type * as boardAuth from "../boardAuth.js";
+import type * as boardChat from "../boardChat.js";
 import type * as boardLease from "../boardLease.js";
 import type * as boardLoad from "../boardLoad.js";
 import type * as boardOps from "../boardOps.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   boardAdmin: typeof boardAdmin;
   boardApify: typeof boardApify;
   boardAuth: typeof boardAuth;
+  boardChat: typeof boardChat;
   boardLease: typeof boardLease;
   boardLoad: typeof boardLoad;
   boardOps: typeof boardOps;

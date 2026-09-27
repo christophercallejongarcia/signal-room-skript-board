@@ -237,6 +237,8 @@ export const boardMessageFields = {
   contextManifest: v.optional(provenanceValidator),
   usage: v.optional(v.object({ inputTokens: v.number(), outputTokens: v.number() })),
   error: v.optional(v.object({ code: v.string(), message: v.string() })),
+  /** Restore epoch the run started in; writes from an older epoch are refused (point 9d). */
+  restoreEpoch: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
 };

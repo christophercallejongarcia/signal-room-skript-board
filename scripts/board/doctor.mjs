@@ -7,7 +7,9 @@
  *   --teil 1   Voraussetzungen: Engines (Mini-Prompt), yt-dlp, Convex-Schreibprobe,
  *              YT-OS-Schreibprobe, sandbox-exec, ~/.signal-room/board
  *   --teil 2   Laufende Schichten von `npm run dev:board`: Health und Negativtests
- *   ohne Angabe beide Teile
+ *   --teil laeufe   Lauf-Journale je Besitzer (lebend oder tot), schreibfrei;
+ *              mit `--repair` werden Journale toter Besitzer nachgereicht (Punkt 34b)
+ *   ohne Angabe Teil 1, Teil 2 und Läufe
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -18,6 +20,7 @@ import { promisify } from "node:util";
 import { ENGINE_IDS, ENGINES, engineVersion, profileHash, resolveBinary } from "../../bridge/engines/engines.mjs";
 import { runEngineOnce } from "../../bridge/engines/oneshot.mjs";
 import { enabledEngines, gateStatus } from "../../lib/board/gates.mjs";
+import { journalStatus, repairDeadJournals } from "../../lib/board/run-journal.mjs";
 import { boardHome, ensureBoardDir } from "../../lib/board/paths.mjs";
 import { assertLocalConvex, convexCli, loadBoardEnv } from "./env.mjs";
 
@@ -107,6 +110,37 @@ export async function partOne(env) {
   }
 }
 
+/** Run journals (points 34a to 34c, 42b). Read-only unless `--repair`. */
+export async function partRuns(env) {
+  const deploymentId = env.CONVEX_DEPLOYMENT ?? env.NEXT_PUBLIC_CONVEX_URL ?? "unbekannt";
+  const journals = journalStatus(deploymentId);
+  if (journals.length === 0) report("L", "Lauf-Journale", true, "keine offenen");
+  for (const journal of journals) {
+    const age = `${Math.round(journal.ageMs / 1000)} s`;
+    if (!journal.supported) report("L", `Journal ${journal.runId}`, "skip", "fremde Deployment oder unbekanntes Format, bleibt unverändert");
+    else if (journal.ownerAlive) report("L", `Journal ${journal.runId}`, true, `Besitzer ${journal.owner} lebt · ${journal.hasFinal ? "Abschluss wartet auf Zustellung" : "läuft"} · ${age}`);
+    else report("L", `Journal ${journal.runId}`, journal.ageMs < 120_000, `Besitzer ${journal.owner} tot · ${journal.hasFinal ? "mit Abschluss" : "ohne Abschluss"} · ${age}. \`npm run board:doctor -- --teil laeufe --repair\``);
+  }
+  if (!process.argv.includes("--repair")) return;
+  const { ConvexHttpClient } = await import("convex/browser");
+  const { anyApi } = await import("convex/server");
+  const client = new ConvexHttpClient(env.NEXT_PUBLIC_CONVEX_URL);
+  const bridge = env.BOARD_BRIDGE_URL || `http://127.0.0.1:${env.BOARD_BRIDGE_PORT || 3311}`;
+  const results = await repairDeadJournals({
+    deploymentId,
+    deliver: async (runId, final) => {
+      const result = await client.mutation(anyApi.boardChat.finishRun, { token: env.BOARD_ACCESS_TOKEN, opsVersion: 1, runId, seq: final.seq, text: final.text, textHash: final.hash, status: final.status, ...(final.reasoning ? { reasoning: final.reasoning } : {}), ...(final.usage ? { usage: final.usage } : {}), ...(final.error ? { error: final.error } : {}) });
+      return result.status === "applied" || result.status === "terminal";
+    },
+    bridgeState: async (runId) => {
+      const response = await fetch(`${bridge}/v1/board/runs/${encodeURIComponent(runId)}`, { headers: { "x-board-bridge-token": env.BOARD_BRIDGE_TOKEN ?? "" }, signal: AbortSignal.timeout(5_000) });
+      if (!response.ok) throw new Error(`Bridge ${response.status}`);
+      return (await response.json()).state;
+    },
+  });
+  for (const result of results) report("L", `Reparatur ${result.runId ?? result.file}`, !["deliver-failed", "bridge-unreachable"].includes(result.action), result.action);
+}
+
 export async function partTwo(env) {
   const { runLiveChecks } = await import("./doctor-live.mjs");
   await runLiveChecks(env, report);
@@ -121,6 +155,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (fs.existsSync(new URL("./doctor-live.mjs", import.meta.url))) await partTwo(env);
     else report(2, "Teil 2", "skip", "kommt mit Phase 0b");
   }
+  if (part === "laeufe" || part === "alle") await partRuns(env);
   const failed = results.filter((r) => r.ok === false);
   console.log(failed.length ? `\n${failed.length} Prüfung(en) rot.` : "\nAlles grün.");
   process.exit(failed.length ? 1 : 0);

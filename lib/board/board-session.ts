@@ -431,6 +431,24 @@ export class BoardSession {
     }
   }
 
+  /** Brand voice text of the board (chat node, point 85), saved like any board change. */
+  async setBrandVoice(text: string): Promise<boolean> {
+    if (!this.meta) return false;
+    const ok = await this.run({ ops: [{ opId: newOpId(), type: "board.update", patch: { brandVoiceText: text } }], undo: null }, { recordUndo: false });
+    if (ok && this.meta) {
+      this.meta = { ...this.meta, brandVoiceText: text };
+      this.emit();
+    }
+    return ok;
+  }
+
+  /** Chat settings live on the chat node (engine, model, effort, brand voice); no undo step. */
+  async setNodeData(nodeId: string, data: Partial<Pick<BoardNode["data"], "engine" | "modelId" | "effort" | "brandVoice">>): Promise<boolean> {
+    const node = this.model.nodes.get(nodeId);
+    if (!node) return false;
+    return this.run({ ops: [{ opId: newOpId(), type: "node.update", nodeId, baseRev: node.rev, patch: { data } }], undo: null }, { recordUndo: false });
+  }
+
   titleFor(nodeId: string): string {
     return this.titles.get(titleKey(nodeId))?.title ?? this.model.nodes.get(nodeId)?.data.title ?? "";
   }

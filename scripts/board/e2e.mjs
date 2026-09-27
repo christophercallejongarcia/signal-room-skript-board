@@ -102,7 +102,8 @@ async function main() {
   const logDir = path.join(root, "logs");
   const home = path.join(root, "board-home");
   const ytos = path.join(root, "ytos");
-  for (const dir of [project, logDir, home, path.join(ytos, "videos")]) fs.mkdirSync(dir, { recursive: true });
+  const fakeStdin = path.join(root, "fake-stdin");
+  for (const dir of [project, logDir, home, path.join(ytos, "videos"), fakeStdin]) fs.mkdirSync(dir, { recursive: true });
   // A symlinked convex/ breaks the CLI bundler ("found wrong number of app bundles"), so copy it.
   fs.cpSync(path.join(REPO_ROOT, "convex"), path.join(project, "convex"), { recursive: true });
   fs.symlinkSync(path.join(REPO_ROOT, "lib"), path.join(project, "lib"));
@@ -150,6 +151,8 @@ async function main() {
       BOARD_ENGINE_FAKE: "1",
       BOARD_YTDLP_FAKE: "1",
       BOARD_ENGINES_ENABLED: "claude,codex,command-code",
+      // The fake engine keeps every prompt it got, so tests can check what reached the engine.
+      FAKE_ENGINE_STDIN_DIR: fakeStdin,
       BOARD_BUILD_ID: "e2e",
       NEXT_PUBLIC_BOARD_TEST_HOOKS: "1",
       // Explicitly empty: `next start` also reads the repo's .env.local, but never overrides a variable that is set.

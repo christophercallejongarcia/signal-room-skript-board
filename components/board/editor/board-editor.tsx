@@ -11,7 +11,7 @@ import { IdbJournal } from "@/lib/board/journal-idb";
 import { MemoryJournal, type JournalStore } from "@/lib/board/journal";
 import { canonicalYoutubeUrl, looksLikeUrl, sanitizeMarkdownMedia, youtubeVideoId } from "@/lib/board/markdown";
 import { freeSpot } from "@/lib/board/layout";
-import { NODE_DEFAULTS, type NodeShape, type Position } from "@/lib/board/ops";
+import { NODE_DEFAULTS, type NodeShape, type Position, type Provenance } from "@/lib/board/ops";
 import { useBoardTheme } from "@/lib/board/theme";
 import { claimEditorSessionId, webLocks } from "@/lib/board/web-locks";
 import { Canvas, type CanvasHandle } from "./canvas";
@@ -141,6 +141,16 @@ function LoadedEditor({ session, theme, toggleTheme }: { session: BoardSession; 
       deleteEdge: (edgeId: string) => void session.run(disconnectCommand(session.model, edgeId)),
       renameNode: (nodeId: string, title: string) => void session.setTitle(nodeId, title),
       focusTitleHandled: (nodeId: string) => setFocusTitleId((current) => (current === nodeId ? null : current)),
+      createAnswerNode: async (chatNodeId: string, answer: { title: string; markdown: string; provenance?: Provenance }) => {
+        const chat = session.model.nodes.get(chatNodeId);
+        if (!chat || !session.writable) return null;
+        const size = NODE_DEFAULTS.textNode;
+        const position = freeSpot(session.model, { x: chat.position.x + chat.width + 60, y: chat.position.y }, size);
+        const id = newNodeId("textNode");
+        const shape: NodeShape = { id, type: "textNode", position, width: size.width, height: size.height, zIndex: size.zIndex, data: { title: answer.title } };
+        const ok = await session.run(createNodeCommand(shape, { blocks: "", markdown: answer.markdown, ...(answer.provenance ? { provenance: answer.provenance } : {}) }));
+        return ok ? id : null;
+      },
     }),
     [session],
   );

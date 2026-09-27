@@ -6,7 +6,8 @@
  *   node fake-engine.mjs <claude|codex|command-code> [engine args…]
  *
  * It reads the whole prompt from stdin and answers in the recorded JSONL format
- * of that engine. Markers anywhere in the prompt change the behaviour:
+ * of that engine. Markers in the last user turn (or, without turns, anywhere
+ * in the prompt) change the behaviour; markers in the history do not:
  *   [[fake:logged-out]]      the engine's "not logged in" answer
  *   [[fake:rate-limit]]      the engine's rate-limit answer
  *   [[fake:silence=<ms>]]    wait before the first output (scaled)
@@ -50,8 +51,16 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function marker(prompt, name) {
-  const match = prompt.match(new RegExp(`\\[\\[fake:${name}(?:=(\\d+))?\\]\\]`));
+/** The last user turn, where the markers of this run live; the whole prompt if there are no turns. */
+function controlText(prompt) {
+  const turns = [...prompt.matchAll(/<turn role="user">\n?([\s\S]*?)<\/turn>/g)];
+  return turns.at(-1)?.[1] ?? prompt;
+}
+
+let control = "";
+
+function marker(_prompt, name) {
+  const match = control.match(new RegExp(`\\[\\[fake:${name}(?:=(\\d+))?\\]\\]`));
   if (!match) return null;
   return match[1] === undefined ? true : Number(match[1]);
 }
@@ -187,6 +196,7 @@ async function commandCode(prompt, model) {
 
 async function main() {
   const prompt = await readStdin();
+  control = controlText(prompt);
   const model = valueOf("--model", "-m") ?? (engine === "claude" ? "sonnet" : "fake-model");
   const hash = createHash("sha256").update(prompt).digest("hex");
   if (process.env.FAKE_ENGINE_STDIN_DIR) fs.writeFileSync(path.join(process.env.FAKE_ENGINE_STDIN_DIR, `${process.pid}.txt`), prompt);
