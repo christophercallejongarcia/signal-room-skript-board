@@ -250,3 +250,33 @@ Nicht: "Format Signal" (regelbasierte Hook-Form), "Framework" (PAS/BBB/none), "E
 **Pattern-Vergleichslauf**
 Der gespeicherte, idempotente Stand einer Pattern-Definition gegen eine konkrete Datenbasis. Definition, Lauf und begrenzte Reel-Belege liegen getrennt. Der Lauf speichert Markt, Nischenklasse, Topic, Veröffentlichungsaltersgruppe, Owned-Gruppe, 90-Tage-Fenster, Stichproben, Mediane, Differenz, unbekannte und ausgeschlossene Daten. Fehlende Gegenbelege werden nur nach bewusster Reel-Auswahl über die bestehende manuelle Transkriptaktion ergänzt.
 Nicht: "A/B-Test", "Signifikanztest", "automatischer Backfill".
+
+## Skript-Board
+
+**Board**
+Ein Canvas unter `/board/<id>` mit Quellen, Kontextkanten und Chat, gespeichert nur in Convex (Tabelle `boards`, ADR-0007). Ein Board hat einen Titel, eine optionale Video-Zuordnung (`videoSlug`), eine Brand Voice und eine monotone `revision`, die jede angewendete Änderung um eins erhöht. Schreiben darf immer nur der Tab mit der Schreib-Lease.
+Nicht: "Skript" (das ist die Tabelle `scripts`), "Projekt", "Workspace".
+
+**Board-Node**
+Ein Element auf dem Board mit Typ `youtubeNode`, `textNode`, `groupNode` oder `chatNode`, eigener ID im Schema `<typ>-<adjektiv>-<nomen>-<5 Zeichen>`, Position und Größe. Kinder einer Gruppe tragen `parentId`, Gruppen haben selbst kein `parentId`. Text-Inhalte liegen getrennt in `boardTextBlocks` (Editor) und `boardTextMarkdown` (Kontext und Export).
+Nicht: "Karte", "Widget", "Block" (Block ist ein Absatz im Editor).
+
+**Kontextkante**
+Eine gerichtete Verbindung von einem YouTube-, Text- oder Gruppen-Node zu einem Chat-Node, immer vom Handle `connector` zum Handle `chat-connector`. Nur was per Kontextkante am Chat hängt, geht als Quelle in dessen Läufe; eine Kante zu einer Gruppe bringt alle Kinder mit.
+Nicht: "Link", "Beziehung", "Kante zwischen Quellen".
+
+**Unterhaltung**
+Ein Gesprächsverlauf an einem Chat-Node (Tabelle `boardConversations`, Nachrichten in `boardMessages`). Ein Chat-Node kann mehrere Unterhaltungen haben; eine neue entsteht mit ihrer ersten Nachricht. Je Unterhaltung läuft höchstens ein Lauf gleichzeitig.
+Nicht: "Thread", "Session", "Chat" (Chat ist der Node).
+
+**Engine**
+Das lokale Modell-Programm, das einen Chat-Lauf beantwortet: Claude Code (Standard), Codex oder Command Code. Jede Engine läuft über die Abos, nur von der Bridge gestartet, in einer äußeren `sandbox-exec`-Sandbox und ohne Werkzeuge. Aktiv ist sie nur, wenn sie in `BOARD_ENGINES_ENABLED` steht und das Gate für ihre installierte Version bestanden hat.
+Nicht: "Provider", "Agent", "Strategy-Provider" (der bleibt Codex SDK für die Signal-Room-Läufe).
+
+**Board-Export**
+Das Schreiben von `skript.md` und optional `beats.md` aus je einem Text-Node nach `YTOS_ROOT/videos/<video>/`, nur nach Vorschau und ausdrücklicher Bestätigung. Die Vorschau friert Inhalt und Ziel-Hashes ein; ein Journal mit Sicherungen macht einen abgebrochenen Export rückgängig, ohne von Hand geänderte Dateien anzufassen. Der Export committet nichts.
+Nicht: "Sync", "Speichern", "Veröffentlichen".
+
+**Herkunft**
+Die Liste der Transkript-Versionen und Text-Quellen, aus denen ein Board-Text entstanden ist (`provenance`). Ein Chat-Lauf speichert sie als `contextManifest`, "Als Text-Node" überträgt sie weiter, transitiv über mehrere Stufen. Der Export liest sie für `quellen` im Frontmatter und für die Prüfung auf wörtlich übernommene Transkript-Sätze.
+Nicht: "Quellenangabe" (das ist nur die Anzeige), "Metadaten".

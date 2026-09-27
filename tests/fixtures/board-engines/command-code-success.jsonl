@@ -1,0 +1,111 @@
+{"type":"event","event":{"type":"run_start","sessionId":"01e8cd80-d56a-4dae-b121-74021842deb9"}}
+{"type":"event","event":{"type":"turn_start","turnNumber":1}}
+{"type":"event","event":{"type":"message_start"}}
+{"type":"event","event":{"type":"model_request_start","model":"deepseek/deepseek-v4-flash"}}
+{"type":"event","event":{"type":"model_trace","traceId":"f8fd1d459c63f62d9df6781d11c56e5f"}}
+{"type":"event","event":{"type":"thinking_start"}}
+{"type":"event","event":{"type":"thinking_delta","delta":"The"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" user"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" wants"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" three"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" short"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" sentences"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" about"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" coffee"}}
+{"type":"event","event":{"type":"thinking_delta","delta":","}}
+{"type":"event","event":{"type":"thinking_delta","delta":" each"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" on"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" its"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" own"}}
+{"type":"event","event":{"type":"thinking_delta","delta":" line"}}
+{"type":"event","event":{"type":"thinking_delta","delta":"."}}
+{"type":"event","event":{"type":"thinking_delta","delta":" Simple"}}
+{"type":"event","event":{"type":"thinking_delta","delta":"."}}
+{"type":"event","event":{"type":"thinking_end","text":"The user wants three short sentences about coffee, each on its own line. Simple."}}
+{"type":"event","event":{"type":"text_delta","delta":"K"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"K"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"aff"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaff"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ee"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" we"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee we"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ckt"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" mich"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" jeden"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Mor"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Mor"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"gen"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" mit"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" seinem"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Du"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Du"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ft"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft"}]}}
+{"type":"event","event":{"type":"text_delta","delta":".\n"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\n"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"Ein"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Esp"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Esp"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"resso"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" am"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Nach"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nach"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"mitt"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmitt"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ag"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" gibt"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" mir"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" neue"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Energie"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie"}]}}
+{"type":"event","event":{"type":"text_delta","delta":".\n"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\n"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"D"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nD"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"och"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" zu"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" viel"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" K"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel K"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"aff"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaff"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ee"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" ra"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee ra"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"ub"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raub"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"t"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" mir"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" den"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den"}]}}
+{"type":"event","event":{"type":"text_delta","delta":" Schl"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schl"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"af"}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf"}]}}
+{"type":"event","event":{"type":"text_delta","delta":"."}}
+{"type":"event","event":{"type":"message_update","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf."}]}}
+{"type":"event","event":{"type":"model_request_end","model":"deepseek/deepseek-v4-flash","usage":{"inputTokens":13323,"outputTokens":59,"cacheReadTokens":5760,"cacheWriteTokens":0},"stopReason":"stop"}}
+{"type":"event","event":{"type":"message_end","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf."}]}}
+{"type":"event","event":{"type":"turn_end","turnNumber":1,"hadToolCalls":false,"usage":{"inputTokens":13323,"outputTokens":59,"cacheReadTokens":5760,"cacheWriteTokens":0}}}
+{"type":"event","event":{"type":"run_end","result":{"finalText":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf.","stopReason":"end_turn","turnCount":1,"usage":{"inputTokens":13323,"outputTokens":59,"cacheReadTokens":5760,"cacheWriteTokens":0},"systemPromptTokens":null,"nextState":{"sessionId":"01e8cd80-d56a-4dae-b121-74021842deb9","messages":[{"role":"user","content":[{"type":"text","text":"Schreibe drei kurze Sätze über Kaffee, jeweils in einer eigenen Zeile."}],"meta":{"source":"user","createdAt":1790498868612,"messageId":"9d37c20c-3eee-4aca-9a49-a30425a22a29"}},{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf."}],"meta":{"source":"model","createdAt":1790498870072,"messageId":"61cb9e7b-a56d-4a58-9185-9fbe4cda2c66"}}],"interrupted":false,"modState":{"workspace":{"cwd":"/private/var/folders/kt/vdt5bdfj1f16gdf6q_1y6f380000gn/T/sr-board-capture-G49PRZ/work","platform":"darwin","branch":null,"gitStatus":null,"recentCommits":[],"additionalDirectories":[]},"compaction":{"tokens":13397,"basis":{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants three short sentences about coffee, each on its own line. Simple.","signature":""},{"type":"text","text":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf."}],"meta":{"source":"model","createdAt":1790498870072,"messageId":"61cb9e7b-a56d-4a58-9185-9fbe4cda2c66"}}}}}}}}
+{"type":"result","subtype":"success","sessionId":"01e8cd80-d56a-4dae-b121-74021842deb9","stopReason":"end_turn","usage":{"inputTokens":13323,"outputTokens":59,"cacheReadTokens":5760,"cacheWriteTokens":0},"durationMs":1503,"finalText":"Kaffee weckt mich jeden Morgen mit seinem Duft.\nEin Espresso am Nachmittag gibt mir neue Energie.\nDoch zu viel Kaffee raubt mir den Schlaf."}

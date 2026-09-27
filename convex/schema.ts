@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { boardTables } from "./boardSchema";
 
 /** Shape of one logged collection pass; shared with convex/runs.ts so the validator is declared once. */
 export const runFields = {
@@ -532,4 +533,5 @@ export default defineSchema({
   runs: defineTable(runFields)
     .index("by_external_id", ["id"])
     .index("by_startedAt", ["startedAt"]),
+  ...boardTables,
 });

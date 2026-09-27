@@ -1,0 +1,31 @@
+;; Äußere Sandbox für eine Board-Engine (PLAN.md Punkt 35).
+;; Grundregel: $HOME, andere Nutzer, Volumes und die Temp-Bereiche sind für
+;; Lesen und Schreiben gesperrt. System-Pfade bleiben lesbar, Schreiben nur im
+;; Temp-Ordner des Laufs. Dateinamen und Größen (Metadaten) bleiben sichtbar,
+;; Inhalte nicht. Netzwerk nur ausgehend.
+;; Achtung SBPL: Ein Allow hebt nur ein Deny mit derselben Operation auf,
+;; deshalb überall file-read* und file-write*.
+(version 1)
+(allow default)
+(deny network-inbound)
+(deny file-read* file-write*
+  (subpath "/Users")
+  (subpath "/Volumes")
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders"))
+(deny file-write*
+  (subpath "/private/etc")
+  (subpath "/private/var")
+  (subpath "/Library")
+  (subpath "/opt")
+  (subpath "/usr")
+  (subpath "/System")
+  (subpath "/Applications"))
+(allow file-read-metadata)
+(allow file-read* file-write* (subpath (param "RUN_DIR")))
+
+;; Codex (Freigaben aus dem Sandbox-Spike)
+;; Codex läuft mit CODEX_HOME im Temp-Ordner des Laufs. Dort liegt nur ein Symlink
+;; auf die echte auth.json. Lesen und Schreiben genau dieser Datei, damit ein
+;; Token-Refresh in die Originaldatei schreibt und der normale Codex-Login gültig bleibt.
+(allow file-read* file-write* (literal (string-append (param "HOME") "/.codex/auth.json")))

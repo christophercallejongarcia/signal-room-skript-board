@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as boardAdmin from "../boardAdmin.js";
+import type * as boardSchema from "../boardSchema.js";
 import type * as briefings from "../briefings.js";
 import type * as creators from "../creators.js";
 import type * as crons from "../crons.js";
@@ -16,13 +18,14 @@ import type * as hashtagPosts from "../hashtagPosts.js";
 import type * as hashtagSweep from "../hashtagSweep.js";
 import type * as hookRuns from "../hookRuns.js";
 import type * as ideas from "../ideas.js";
+import type * as patterns from "../patterns.js";
 import type * as refresh from "../refresh.js";
 import type * as runs from "../runs.js";
 import type * as scripts from "../scripts.js";
 import type * as signals from "../signals.js";
 import type * as slates from "../slates.js";
-import type * as transcriptDictionary from "../transcriptDictionary.js";
 import type * as transcriptAnalyses from "../transcriptAnalyses.js";
+import type * as transcriptDictionary from "../transcriptDictionary.js";
 
 import type {
   ApiFromModules,
@@ -31,6 +34,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  boardAdmin: typeof boardAdmin;
+  boardSchema: typeof boardSchema;
   briefings: typeof briefings;
   creators: typeof creators;
   crons: typeof crons;
@@ -39,13 +44,14 @@ declare const fullApi: ApiFromModules<{
   hashtagSweep: typeof hashtagSweep;
   hookRuns: typeof hookRuns;
   ideas: typeof ideas;
+  patterns: typeof patterns;
   refresh: typeof refresh;
   runs: typeof runs;
   scripts: typeof scripts;
   signals: typeof signals;
   slates: typeof slates;
-  transcriptDictionary: typeof transcriptDictionary;
   transcriptAnalyses: typeof transcriptAnalyses;
+  transcriptDictionary: typeof transcriptDictionary;
 }>;
 
 /**

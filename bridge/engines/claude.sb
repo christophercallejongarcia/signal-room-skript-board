@@ -1,0 +1,35 @@
+;; Äußere Sandbox für eine Board-Engine (PLAN.md Punkt 35).
+;; Grundregel: $HOME, andere Nutzer, Volumes und die Temp-Bereiche sind für
+;; Lesen und Schreiben gesperrt. System-Pfade bleiben lesbar, Schreiben nur im
+;; Temp-Ordner des Laufs. Dateinamen und Größen (Metadaten) bleiben sichtbar,
+;; Inhalte nicht. Netzwerk nur ausgehend.
+;; Achtung SBPL: Ein Allow hebt nur ein Deny mit derselben Operation auf,
+;; deshalb überall file-read* und file-write*.
+(version 1)
+(allow default)
+(deny network-inbound)
+(deny file-read* file-write*
+  (subpath "/Users")
+  (subpath "/Volumes")
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders"))
+(deny file-write*
+  (subpath "/private/etc")
+  (subpath "/private/var")
+  (subpath "/Library")
+  (subpath "/opt")
+  (subpath "/usr")
+  (subpath "/System")
+  (subpath "/Applications"))
+(allow file-read-metadata)
+(allow file-read* file-write* (subpath (param "RUN_DIR")))
+
+;; Claude Code (Freigaben aus dem Sandbox-Spike, siehe .scratch/skript-board/research/05-sandbox-spike.md)
+;; 1. Die Binärdatei selbst liegt unter $HOME (~/.local/share/claude/versions/<version>).
+(allow file-read* (literal (param "CLAUDE_BIN")))
+;; 2. Login liegt im macOS-Schlüsselbund. `security find-generic-password` liest
+;;    die Schlüsselbund-Datei selbst, nur lesend.
+(allow file-read* (literal (string-append (param "HOME") "/Library/Keychains/login.keychain-db")))
+;; 3. Der Schlüsselbund-Client braucht den Module-Directory-Cache des Security-Frameworks
+;;    (Sperrdatei und Modulverzeichnis, keine Geheimnisse).
+(allow file-read* file-write* (subpath (param "MDS_DIR")))
