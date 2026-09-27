@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { BOARD_ID_PATTERN } from "../lib/board/ids";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { assertWritable, boardError, requireToken } from "./boardAuth";
 
 /** Board list and lifecycle (PLAN.md points 15, 56). */
@@ -41,7 +41,7 @@ export const create = mutation({
     await assertWritable(ctx, { opsVersion: args.opsVersion, kind: "new" });
     if (!BOARD_ID_PATTERN.test(args.id)) throw boardError("invalid", "Ungültige Board-ID.");
     const title = args.title.trim();
-    if (!title || title.length > TITLE_MAX) throw boardError("invalid", `Titel muss 1 bis ${TITLE_MAX} Zeichen haben.`);
+    if (!title || Array.from(title).length > TITLE_MAX) throw boardError("invalid", `Titel muss 1 bis ${TITLE_MAX} Zeichen haben.`);
     const existing = await ctx.db
       .query("boards")
       .withIndex("by_external_id", (q) => q.eq("id", args.id))
@@ -53,9 +53,48 @@ export const create = mutation({
       title,
       brandVoiceText: args.brandVoiceText ?? "",
       revision: 0,
+      nodeCount: 0,
       createdAt: now,
       lastOpenedAt: now,
     });
     return { id: args.id, created: true };
+  },
+});
+
+async function boardForWrite(ctx: MutationCtx, boardId: string) {
+  const board = await ctx.db
+    .query("boards")
+    .withIndex("by_external_id", (q) => q.eq("id", boardId))
+    .unique();
+  if (!board || board.deletedAt !== undefined) throw boardError("not-found", "Board nicht gefunden.");
+  return board;
+}
+
+/** Rename from the board list (no lease needed; the title is last-write-wins). */
+export const rename = mutation({
+  args: { token: v.string(), opsVersion: v.number(), boardId: v.string(), title: v.string() },
+  returns: v.object({ id: v.string(), title: v.string(), revision: v.number() }),
+  handler: async (ctx, args) => {
+    requireToken(args.token);
+    await assertWritable(ctx, { opsVersion: args.opsVersion, kind: "new" });
+    const title = args.title.trim();
+    if (!title || Array.from(title).length > TITLE_MAX) throw boardError("invalid", `Titel muss 1 bis ${TITLE_MAX} Zeichen haben.`);
+    const board = await boardForWrite(ctx, args.boardId);
+    const revision = board.revision + 1;
+    await ctx.db.patch("boards", board._id, { title, revision });
+    return { id: board.id, title, revision };
+  },
+});
+
+/** Soft delete (point 56). The board and its nodes stay in the database. */
+export const remove = mutation({
+  args: { token: v.string(), opsVersion: v.number(), boardId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireToken(args.token);
+    await assertWritable(ctx, { opsVersion: args.opsVersion, kind: "new" });
+    const board = await boardForWrite(ctx, args.boardId);
+    await ctx.db.patch("boards", board._id, { deletedAt: Date.now(), revision: board.revision + 1, lease: undefined });
+    return null;
   },
 });

@@ -17,3 +17,7 @@ data/
 # review output and claudex loop state
 reviews/
 **/.claude/claudex/
+
+# Skript-Board: lokale Convex-Deployment und E2E-Ausgaben
+.convex/
+.scratch/skript-board/e2e-results/

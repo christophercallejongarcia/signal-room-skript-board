@@ -17,7 +17,8 @@
     "check": "npm run typecheck && npm test && npm run build",
     "dev:board": "node scripts/board/dev.mjs",
     "board:doctor": "node scripts/board/doctor.mjs",
-    "board:gate": "node scripts/board/gate.mjs"
+    "board:gate": "node scripts/board/gate.mjs",
+    "test:e2e:board": "node scripts/board/e2e.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.121",

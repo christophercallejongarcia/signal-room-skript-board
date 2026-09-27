@@ -56,8 +56,14 @@ export function boardJsonError(error: unknown): Response {
   return Response.json({ error: apiError.message, kind: apiError.kind, ...apiError.details }, { status: apiError.status, headers: { "cache-control": "no-store" } });
 }
 
+/** Read env at runtime by dynamic key, so Next never inlines NEXT_PUBLIC_* values at build time. */
+function runtimeEnv(name: string): string | undefined {
+  const env: Record<string, string | undefined> = process.env;
+  return env[name];
+}
+
 function requireEnv(name: string, minLength = 1): string {
-  const value = process.env[name]?.trim();
+  const value = runtimeEnv(name)?.trim();
   if (!value || value.length < minLength) throw new BoardApiError(503, "config", `${name} fehlt. Board mit \`npm run dev:board\` starten.`);
   return value;
 }
