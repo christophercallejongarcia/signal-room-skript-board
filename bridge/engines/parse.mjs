@@ -130,7 +130,8 @@ function commandCodeParser() {
       }
     } else if (line.type === "result") {
       if (line.subtype === "success") {
-        events.push({ type: "finish", usage: { inputTokens: num(line.usage?.inputTokens) + num(line.usage?.cacheReadTokens), outputTokens: num(line.usage?.outputTokens) } });
+        // inputTokens already contains cacheReadTokens (the sum swings with cache hits, inputTokens alone is stable; research 07).
+        events.push({ type: "finish", usage: { inputTokens: num(line.usage?.inputTokens), outputTokens: num(line.usage?.outputTokens) } });
       } else {
         const message = line.error?.message ?? line.message ?? line.subtype;
         events.push(engineError("command-code", classify("command-code", message), message));

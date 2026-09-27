@@ -88,11 +88,12 @@ export function profileHash(engine) {
 export function resolveBinary(engine, env = process.env) {
   const name = ENGINES[engine].binary;
   // Installed engines only: repo-local `node_modules/.bin` (npm run puts it first) carries the Codex SDK's own, older CLI.
+  // PATH order first, like Chris' terminal: an old global npm install in /usr/local/bin must not shadow ~/.local/bin.
   const dirs = [
+    ...(env.PATH || "").split(":").filter((dir) => dir && !dir.includes("node_modules")),
+    path.join(os.homedir(), ".local", "bin"),
     "/opt/homebrew/bin",
     "/usr/local/bin",
-    path.join(os.homedir(), ".local", "bin"),
-    ...(env.PATH || "").split(":").filter((dir) => !dir.includes("node_modules")),
   ].filter(Boolean);
   for (const dir of dirs) {
     const candidate = path.join(dir, name);

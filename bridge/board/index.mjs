@@ -1,9 +1,9 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { logEvent } from "../../lib/board/eventlog.mjs";
 import { tryLock } from "../../lib/board/oslock.mjs";
 import { boardFile } from "../../lib/board/paths.mjs";
+import { startSweeper } from "../engines/cleanup.mjs";
+import { chatRoutes } from "./chat.mjs";
 import { youtubeRoute } from "./youtube.mjs";
 import { buildId, OPS_VERSION, PROTOCOL_VERSION, SUPPORTED_OPS_VERSIONS, SUPPORTED_PROTOCOL_VERSIONS } from "../../lib/board/versions.ts";
 
@@ -15,29 +15,8 @@ import { buildId, OPS_VERSION, PROTOCOL_VERSION, SUPPORTED_OPS_VERSIONS, SUPPORT
 export const BOARD_PREFIX = "/v1/board/";
 export const TOKEN_HEADER = "x-board-bridge-token";
 
-/** Remove lock files of dead instances in `dir`: a lock we can take has no living owner (point 38a). */
-export function sweepDeadInstanceLocks(dir) {
-  let names = [];
-  try {
-    names = fs.readdirSync(dir).filter((name) => name.endsWith(".lock"));
-  } catch {
-    return 0;
-  }
-  let removed = 0;
-  for (const name of names) {
-    const file = path.join(dir, name);
-    const lock = tryLock(file);
-    if (!lock) continue;
-    fs.rmSync(file, { force: true });
-    lock.release();
-    removed += 1;
-  }
-  return removed;
-}
-
 /** One live bridge instance, proven by a kernel lock it holds until the process ends. */
 export function createBridgeInstance() {
-  sweepDeadInstanceLocks(boardFile("bridges"));
   const instanceId = `bridge-${randomBytes(6).toString("hex")}`;
   const lockFile = boardFile("bridges", `${instanceId}.lock`);
   const lock = tryLock(lockFile);
@@ -86,12 +65,15 @@ export async function readBoardJson(request, limit = boardBodyLimit()) {
 
 /**
  * Build the board request handler. `routes` maps "METHOD /path" to
- * `async ({ request, response, url, params }) => void`; later phases add chat,
- * runs, engines and YouTube through `extraRoutes`.
+ * `async ({ request, response, url, params }) => void`. Built in: health,
+ * YouTube ingest, chat, abort, runs, engines and drain.
  */
-export function createBoardHandler({ instance, env = process.env, extraRoutes = [] } = {}) {
+export function createBoardHandler({ instance, env = process.env, extraRoutes = [], sweep = true } = {}) {
   const expectedToken = env.BOARD_BRIDGE_TOKEN;
   const youtube = youtubeRoute({ instance, readJson: readBoardJson });
+  const chat = chatRoutes({ instance, readJson: readBoardJson, bodyLimit: () => boardBodyLimit(env), env });
+  // Clean up after dead bridges now and every 30 s (points 39, 39c).
+  if (sweep) startSweeper({ selfInstanceId: instance.instanceId });
   const routes = [
     {
       method: "GET",
@@ -111,6 +93,7 @@ export function createBoardHandler({ instance, env = process.env, extraRoutes = 
         }),
     },
     youtube.route,
+    ...chat.routes,
     ...extraRoutes,
   ];
 

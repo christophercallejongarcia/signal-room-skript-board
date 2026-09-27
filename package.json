@@ -18,7 +18,9 @@
     "dev:board": "node scripts/board/dev.mjs",
     "board:doctor": "node scripts/board/doctor.mjs",
     "board:gate": "node scripts/board/gate.mjs",
-    "test:e2e:board": "node scripts/board/e2e.mjs"
+    "test:e2e:board": "node scripts/board/e2e.mjs",
+    "board:calibrate": "node scripts/board/calibrate.mjs",
+    "board:stop": "node scripts/board/stop.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.121",

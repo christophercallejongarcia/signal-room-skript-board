@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -19,6 +19,10 @@ export const SLOT_COUNTS = {
   ingest: () => Number(process.env.BOARD_INGEST_SLOTS || 2),
 };
 
+export function killGraceMs() {
+  return Number(process.env.BOARD_KILL_GRACE_MS || 2_000);
+}
+
 export function slotsDir() {
   return ensureBoardDir("slots");
 }
@@ -38,6 +42,20 @@ export function processStart(pid) {
   }
 }
 
+/** Start times of several PIDs with one asynchronous `ps` call, so the event loop never waits for it. */
+export function processStarts(pids) {
+  return new Promise((resolve) => {
+    execFile("/bin/ps", ["-o", "pid=,lstart=", "-p", pids.join(",")], { encoding: "utf8" }, (_error, stdout) => {
+      const starts = {};
+      for (const line of String(stdout ?? "").split("\n")) {
+        const match = line.trim().match(/^(\d+)\s+(.+)$/);
+        if (match) starts[match[1]] = match[2].trim();
+      }
+      resolve(starts);
+    });
+  });
+}
+
 export function registerFile(runId) {
   return boardFile("runs", `${runId}.json`);
 }
@@ -50,7 +68,8 @@ function writeRegister(runId, entry) {
 }
 
 /**
- * @returns {Promise<{ code: number | null, slotBusy: boolean, timedOut: boolean, aborted: boolean, overflow: boolean, stdout: string, stderr: string, pid?: number }>}
+ * `onFinished(result)` runs before the register goes, so a finished marker never leaves a gap.
+ * @returns {Promise<{ code: number | null, slotBusy: boolean, timedOut: boolean, aborted: boolean, overflow: boolean, supervisorKilled: boolean, stdout: string, stderr: string, pid?: number }>}
  */
 export function runSupervised({
   runId,
@@ -65,17 +84,20 @@ export function runSupervised({
   maxStdoutBytes = 10 * 1024 * 1024,
   onLine,
   onStarted,
+  onFinished,
   instanceId = "bridge",
   tmpDir,
 }) {
   return new Promise((resolve) => {
-    const supervisor = spawn(process.execPath, ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", SUPERVISOR, slotsDir(), kind, String(SLOT_COUNTS[kind]()), "--", command, ...args], {
+    const supervisor = spawn(process.execPath, ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", SUPERVISOR, slotsDir(), kind, String(SLOT_COUNTS[kind]()), String(killGraceMs()), "--", command, ...args], {
       cwd,
       env,
       stdio: ["pipe", "pipe", "pipe", "ipc"],
       detached: true,
     });
-    const result = { code: null, slotBusy: false, timedOut: false, aborted: false, overflow: false, stdout: "", stderr: "", pid: undefined };
+    const result = { code: null, slotBusy: false, timedOut: false, aborted: false, overflow: false, supervisorKilled: false, stdout: "", stderr: "", pid: undefined };
+    // A dead supervisor turns send() into an error event; the close handler below deals with the rest.
+    supervisor.on("error", () => {});
     let stdoutBytes = 0;
     let finished = false;
 
@@ -91,20 +113,24 @@ export function runSupervised({
       }
     };
 
+    let registered = Promise.resolve();
     supervisor.on("message", (message) => {
       if (message?.type !== "started") return;
       result.pid = message.pid;
-      writeRegister(runId, {
-        runId,
-        kind,
-        ownerInstanceId: instanceId,
-        supervisorPid: supervisor.pid,
-        supervisorStart: processStart(supervisor.pid),
-        childPid: message.pid,
-        childPgid: message.pgid,
-        childStart: processStart(message.pid),
-        tmpDir: tmpDir ?? null,
-        startedAt: new Date().toISOString(),
+      registered = processStarts([supervisor.pid, message.pid]).then((starts) => {
+        if (finished) return;
+        writeRegister(runId, {
+          runId,
+          kind,
+          ownerInstanceId: instanceId,
+          supervisorPid: supervisor.pid,
+          supervisorStart: starts[supervisor.pid] ?? null,
+          childPid: message.pid,
+          childPgid: message.pgid,
+          childStart: starts[message.pid] ?? null,
+          tmpDir: tmpDir ?? null,
+          startedAt: new Date().toISOString(),
+        });
       });
       onStarted?.(message);
     });
@@ -136,14 +162,53 @@ export function runSupervised({
     if (input !== undefined) supervisor.stdin.end(input);
     else supervisor.stdin.end();
 
-    supervisor.on("close", (code) => {
+    supervisor.on("close", async (code, closeSignal) => {
+      await registered;
       finished = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       result.code = code;
       result.slotBusy = code === SLOT_BUSY_EXIT && result.stderr.includes("SLOT_BUSY");
-      fs.rmSync(registerFile(runId), { force: true });
-      resolve(result);
+      if (closeSignal === "SIGKILL" && result.pid) {
+        // The supervisor died hard while the child may live on and still hold the slot descriptor.
+        // This bridge owns the run, so it ends the child group itself and keeps the register until the group is gone.
+        result.supervisorKilled = true;
+        await endOrphanGroup(result.pid);
+      }
+      try {
+        onFinished?.(result);
+      } finally {
+        fs.rmSync(registerFile(runId), { force: true });
+        resolve(result);
+      }
     });
   });
+}
+
+export function groupAlive(pgid) {
+  try {
+    execFileSync("/usr/bin/pgrep", ["-g", String(pgid)], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function signalGroup(pgid, signal) {
+  try {
+    process.kill(-pgid, signal);
+  } catch {
+    // group already gone
+  }
+}
+
+/** SIGTERM to the group, SIGKILL after the grace period, then wait until no member is left. */
+export async function endOrphanGroup(pgid, { graceMs = killGraceMs() } = {}) {
+  if (!groupAlive(pgid)) return;
+  signalGroup(pgid, "SIGTERM");
+  const killAt = Date.now() + graceMs;
+  while (groupAlive(pgid)) {
+    if (Date.now() >= killAt) signalGroup(pgid, "SIGKILL");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }

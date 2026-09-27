@@ -42,6 +42,11 @@ export function doneFile(runId) {
   return boardFile("runs", `${runId}.done`);
 }
 
+/** Written by another bridge that stopped this run through its supervisor. */
+export function abortFile(runId) {
+  return boardFile("runs", `${runId}.abort`);
+}
+
 /** unknown | running | finished, answered from the shared register (point 33a). */
 export function runState(runId) {
   if (fs.existsSync(doneFile(runId))) return "finished";
@@ -95,7 +100,7 @@ function commandFor({ engine, modelId, effort, run, systemFile, env }) {
 }
 
 function pickFakeEnv(env) {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => key.startsWith("FAKE_ENGINE_")));
+  return Object.fromEntries(Object.entries(env).filter(([key]) => key.startsWith("FAKE_ENGINE_") || key === "BOARD_ENGINE_TIME_SCALE"));
 }
 
 /**
@@ -176,7 +181,9 @@ export async function startEngineRun({ runId, engine, modelId, effort = "low", p
     }
   };
 
-  const done = runSupervised({ runId, kind: "engine", command: command.command, args: command.args, cwd: command.cwd, env: command.env, input, signal: controller.signal, timeoutMs: limits.totalMs, maxStdoutBytes: 64 * 1024 * 1024, onLine, onStarted: () => announce("started"), instanceId, tmpDir: run.runDir }).then((result) => {
+  const done = runSupervised({ runId, kind: "engine", command: command.command, args: command.args, cwd: command.cwd, env: command.env, input, signal: controller.signal, timeoutMs: limits.totalMs, maxStdoutBytes: 64 * 1024 * 1024, onLine, onStarted: () => announce("started"), onFinished: (result) => {
+    if (!result.slotBusy) markFinished(runId, finished ? "complete" : "error");
+  }, instanceId, tmpDir: run.runDir }).then((result) => {
     clearTimeout(silenceTimer);
     if (result.slotBusy) {
       // Lost the race for the last slot: nothing ran, the same run ID may be retried.
@@ -185,12 +192,14 @@ export async function startEngineRun({ runId, engine, modelId, effort = "low", p
       events.close();
       return result;
     }
+    const abortedElsewhere = fs.existsSync(abortFile(runId));
+    fs.rmSync(abortFile(runId), { force: true });
     if (!finished && !errored) {
-      const reason = result.timedOut ? "total" : abortReason;
+      const reason = result.timedOut ? "total" : (abortReason ?? (abortedElsewhere ? "aborted" : null));
       if (reason === "aborted") events.push({ type: "error", code: "aborted", message: "Abgebrochen." });
       else if (reason === "first-output") events.push({ type: "error", code: "timeout", message: `${ENGINES[engine].label} hat nicht rechtzeitig angefangen zu antworten.` });
       else if (reason === "silence") events.push({ type: "error", code: "timeout", message: `${ENGINES[engine].label} antwortet seit zu langer Zeit nicht mehr.` });
-      else if (reason === "total") events.push({ type: "error", code: "timeout", message: `${ENGINES[engine].label} hat die Höchstdauer von ${Math.round(limits.totalMs / 60_000)} Minuten überschritten.` });
+      else if (reason === "total") events.push({ type: "error", code: "timeout", message: `${ENGINES[engine].label} hat die Höchstdauer von ${limits.totalMs >= 60_000 ? `${Math.round(limits.totalMs / 60_000)} Minuten` : `${Math.round(limits.totalMs / 1_000)} Sekunden`} überschritten.` });
       else {
         const byExit = engine === "command-code" ? commandCodeExitError(result.code) : null;
         const loggedOut = /not logged in|login/i.test(result.stderr);
@@ -198,7 +207,6 @@ export async function startEngineRun({ runId, engine, modelId, effort = "low", p
       }
     }
     removeRunDir(run.runDir);
-    markFinished(runId, finished ? "complete" : "error");
     logEvent({ instanceId, layer: "bridge", runId, engine, phase: "run", durationMs: Date.now() - started, code: finished ? "complete" : (abortReason ?? "error") });
     events.close();
     return result;
@@ -208,4 +216,21 @@ export async function startEngineRun({ runId, engine, modelId, effort = "low", p
     throw new RunRejected(429, "busy", "Alle Engine-Plätze sind belegt. Gleich erneut senden.", 10);
   }
   return { events, done, abort: () => stop("aborted") };
+}
+
+/**
+ * `runEngine` as an AsyncIterable of events (point 74). A refusal before the
+ * start (duplicate, drain, no slot) arrives as one `error` event with its status.
+ */
+export async function* runEngine(options) {
+  let handle;
+  try {
+    handle = await startEngineRun(options);
+  } catch (error) {
+    if (!(error instanceof RunRejected)) throw error;
+    yield { type: "error", code: error.code, message: error.message, status: error.status };
+    return;
+  }
+  yield* handle.events;
+  await handle.done;
 }

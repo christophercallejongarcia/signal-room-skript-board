@@ -2,7 +2,7 @@
 /**
  * Supervisor for one engine run or one yt-dlp call (PLAN.md point 39a).
  *
- *   node supervisor.mjs <slotDir> <kind> <slotCount> -- <command> [args…]
+ *   node supervisor.mjs <slotDir> <kind> <slotCount> <graceMs> -- <command> [args…]
  *
  * 1. Takes one of `slotCount` kernel slot locks `<slotDir>/<kind>-<n>.lock`, else exits 75.
  * 2. Starts the child in its own process group and hands it the locked
@@ -18,7 +18,6 @@ import path from "node:path";
 import { tryLock } from "../../lib/board/oslock.mjs";
 
 export const SLOT_BUSY_EXIT = 75;
-const KILL_GRACE_MS = Number(process.env.BOARD_KILL_GRACE_MS || 2_000);
 
 function groupAlive(pgid) {
   try {
@@ -39,7 +38,9 @@ function signalGroup(pgid, signal) {
 
 async function main() {
   const separator = process.argv.indexOf("--");
-  const [slotDir, kind, countText] = process.argv.slice(2, separator);
+  const [slotDir, kind, countText, graceText] = process.argv.slice(2, separator);
+  // The grace period comes over argv: the supervisor's env is the engine's minimal env.
+  const graceMs = Math.max(100, Number.parseInt(graceText, 10) || 2_000);
   const [command, ...args] = process.argv.slice(separator + 1);
   const count = Math.max(1, Number.parseInt(countText, 10) || 1);
 
@@ -68,19 +69,30 @@ async function main() {
     if (stopping) return;
     stopping = true;
     signalGroup(pgid, "SIGTERM");
-    setTimeout(() => signalGroup(pgid, "SIGKILL"), KILL_GRACE_MS).unref();
+    setTimeout(() => signalGroup(pgid, "SIGKILL"), graceMs).unref();
   };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
   process.on("disconnect", stop);
+  // The bridge is gone (EPIPE): stop forwarding, keep draining the child's output and end the group in order.
+  const lostBridge = (source) => () => {
+    source.unpipe();
+    source.resume();
+    stop();
+  };
+  process.stdout.on("error", lostBridge(child.stdout));
+  process.stderr.on("error", lostBridge(child.stderr));
   process.on("message", (message) => {
     if (message?.type === "abort") stop();
   });
 
+  const closed = new Promise((resolve) => child.on("close", resolve));
   const exit = await new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
   // The child may have left grandchildren in its group: end them too, then wait until the group is empty.
   if (groupAlive(pgid)) stop();
   while (groupAlive(pgid)) await new Promise((resolve) => setTimeout(resolve, 50));
+  // All output of the child is piped through before the slot goes.
+  await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 2_000))]);
   slot.lock.release();
   process.exitCode = exit.code ?? (exit.signal ? 128 + 15 : 1);
   // Flush piped output before leaving.
