@@ -8,9 +8,38 @@
 
 [Quick start](#quick-start) · [Architecture](#the-system-at-a-glance) · [Make it yours](#make-it-yours) · [Security boundary](#the-public-private-boundary)
 
-**This repository is private and is not published.** See [ADR-0006](docs/adr/0006-repo-ist-privates-produkt.md).
+**Public copy for the EA 30-Day Challenge.** The original Signal Room repo stays private ([ADR-0006](docs/adr/0006-repo-ist-privates-produkt.md)); this copy was cleaned before publishing (see below).
 
 </div>
+
+## 30-Day Challenge: what was built during the challenge
+
+To keep this honest: **Signal Room itself was built before the challenge.** Discover, Briefing, Production slate, Trend Radar, Hooks and Scripts are older work. The last commit before the challenge is from 18 Sep 2026 and sits on the branch [`vor-der-challenge`](../../tree/vor-der-challenge). The first three commits are Mark Kashef's clean-room starter.
+
+**During the challenge only the Skript-Board was built:** a self-hosted, Poppy-style script board under `/board`. It is stage 2 of [YouTube-OS](https://github.com/christophercallejongarcia/YT-OS): paste 2 or 3 outlier videos, connect them and your own notes to a chat, and write hooks, titles and a script with Claude Code, Codex or Command Code running on your own subscriptions.
+
+![Skript-Board with two YouTube sources, a text source and a chat answered by Claude Sonnet](docs/assets/skript-board-live.png)
+
+| | |
+|---|---|
+| Challenge commits | 9 commits on 27 Sep 2026, Phase 0a to Phase 5 ([compare](../../compare/vor-der-challenge...main)) |
+| Not public | Research and the build plan (26/27 Sep, five adversarial review rounds with Codex). They contain screenshots and notes about the original app, so they stay private. Code comments refer to its numbered points ("PLAN.md point 34"). |
+| Size | about 200 files, 22,000 lines added |
+| Tests | 548 unit and bridge tests, 50 Convex tests, 26 Playwright end-to-end tests, all green on 27 Sep 2026 |
+
+What works today (Phase 5):
+
+- Board list, canvas with text, YouTube and group nodes, context edges, undo, light and dark theme
+- YouTube node: paste a link, the transcript, views and channel factor arrive via `yt-dlp` (Apify as paid fallback)
+- Chat node: several conversations, `@` mentions of connected sources, model and effort choice, brand voice, context size against each model's budget, streaming, stop, "as text node"
+- Engines only run inside a macOS sandbox with no tools, gated per engine version
+- Nothing gets lost: every edit is journaled in the browser first; every chat answer is journaled on disk before Convex and delivered later if Next or Convex go down
+
+Still open (planned): clickable title options, prompt library, export of `skript.md` and `beats.md` to YouTube-OS, document nodes for playbooks.
+
+Run it: `npm run dev:board` (local Convex deployment, logged-in `claude`, `codex` or `command-code`), then open `http://127.0.0.1:3100/board`. Checks: `npm run check`, `npm run test:e2e:board`, `npm run board:doctor`.
+
+**How this copy was cleaned:** real creator data (transcripts, Instagram test data, screenshots with faces and handles), all research and plan files and the local home path were removed from the whole history with `git filter-repo`. The Instagram test fixture was replaced with synthetic data. Commit dates and messages are unchanged; commits that only touched removed files are gone.
 
 ![Signal Room Starter interface](docs/assets/signal-room-starter.jpg)
 

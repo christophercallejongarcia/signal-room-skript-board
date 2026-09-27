@@ -1,0 +1,73 @@
+[
+  {
+    "url": "https://www.instagram.com/p/SynthReel01/",
+    "code": "SynthReel01",
+    "pk": "1000000000000000001",
+    "id": "POLARIS_1000000000000000001",
+    "title": "Erfundenes Beispiel-Reel für die Tests",
+    "img": "",
+    "videoUrl": "",
+    "audioUrl": "",
+    "duration": 14.0,
+    "createTime": 1784060051,
+    "likeCount": 1234,
+    "commentCount": 42,
+    "userPk": "1000000001",
+    "userName": "beispiel_creator",
+    "userFullName": "Beispiel Creator",
+    "avatarUri": "",
+    "text": "Das passiert, wenn du deinen ganzen Alltag an eine KI abgibst. Erstmal öffne ChatGPT und gib diesen Prompt ein. Danach siehst du deinen digitalen Fingerabdruck in drei Sätzen. Das ist ein erfundenes Beispiel für die Tests.",
+    "segments": [
+      {
+        "start": 0,
+        "end": 5.46,
+        "text": " Das passiert, wenn du deinen ganzen Alltag an eine KI abgibst."
+      },
+      {
+        "start": 5.46,
+        "end": 9.1,
+        "text": " Erstmal öffne ChatGPT und gib diesen Prompt ein."
+      },
+      {
+        "start": 9.1,
+        "end": 14.0,
+        "text": " Danach siehst du deinen digitalen Fingerabdruck in drei Sätzen. Das ist ein erfundenes Beispiel für die Tests."
+      }
+    ],
+    "errMsg": "",
+    "timestamp": "2026-08-31T19:54:08.000Z"
+  },
+  {
+    "url": "https://www.instagram.com/p/SynthReel02/",
+    "code": "SynthReel02",
+    "pk": "1000000000000000002",
+    "id": "POLARIS_1000000000000000002",
+    "title": "Zweites erfundenes Beispiel-Reel",
+    "img": "",
+    "videoUrl": "",
+    "audioUrl": "",
+    "duration": 14.0,
+    "createTime": 1784060051,
+    "likeCount": 567,
+    "commentCount": 42,
+    "userPk": "1000000001",
+    "userName": "beispiel_creator",
+    "userFullName": "Beispiel Creator",
+    "avatarUri": "",
+    "text": "Ein zweites erfundenes Transkript. Es zeigt drei Schritte für einen KI-Assistenten im Alltag.",
+    "segments": [
+      {
+        "start": 0,
+        "end": 4.2,
+        "text": " Ein zweites erfundenes Transkript."
+      },
+      {
+        "start": 4.2,
+        "end": 9.0,
+        "text": " Es zeigt drei Schritte für einen KI-Assistenten im Alltag."
+      }
+    ],
+    "errMsg": "",
+    "timestamp": "2026-08-31T19:54:08.000Z"
+  }
+]

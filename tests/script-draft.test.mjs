@@ -56,7 +56,7 @@ function answer(beat = "Zeige zuerst den Input und benenne dann die konkrete Ent
   };
 }
 
-test("rejects a copied eight-word sentence from the real transcript fixture and names it", () => {
+test("rejects a copied eight-word sentence from the transcript fixture and names it", () => {
   assert.equal(SCRIPT_COPY_SENTENCE_MIN_WORDS, 8);
   const copied = "Erstmal öffne ChatGPT und gib diesen Prompt ein.";
   assert.throws(

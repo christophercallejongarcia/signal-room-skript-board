@@ -28,16 +28,16 @@ test("segments are joined when there is no flat text field; a bare shortcode fie
   assert.deepEqual(readTranscriptItems(items, reels), [{ id: "ig-CCC", transcript: "Erster Satz. zweiter" }]);
 });
 
-test("the real actor fixture maps code, text and timestamped segments", () => {
+test("the actor fixture (synthetic, same shape as a real run) maps code, text and timestamped segments", () => {
   const fixtureReels = [
-    { id: "ig-DayURKMsHHJ", externalId: "DayURKMsHHJ" },
-    { id: "ig-DbBwT5Ksm5b", externalId: "DbBwT5Ksm5b" },
+    { id: "ig-SynthReel01", externalId: "SynthReel01" },
+    { id: "ig-SynthReel02", externalId: "SynthReel02" },
   ];
   const results = readTranscriptItems(actorFixture, fixtureReels);
 
   assert.deepEqual(results.map(({ id, transcript }) => ({ id, transcript })), [
-    { id: "ig-DayURKMsHHJ", transcript: actorFixture[0].text.trim() },
-    { id: "ig-DbBwT5Ksm5b", transcript: actorFixture[1].text.trim() },
+    { id: "ig-SynthReel01", transcript: actorFixture[0].text.trim() },
+    { id: "ig-SynthReel02", transcript: actorFixture[1].text.trim() },
   ]);
   const segmented = readTranscriptItems([{ ...actorFixture[0], text: "" }], [fixtureReels[0]]);
   assert.equal(segmented[0].transcript, actorFixture[0].segments.map((segment) => segment.text.trim()).join(" "));
